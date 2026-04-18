@@ -1,39 +1,51 @@
+import type { ComponentProps } from 'react'
+import { Server } from 'lucide-react'
 import { getDb, agents } from '@backupos/db'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+
+type BadgeStatus = ComponentProps<typeof Badge>['status']
+
+function fmtDate(d: Date | null): string {
+  if (!d) return '—'
+  return d.toISOString().slice(0, 16).replace('T', ' ')
+}
 
 export default async function AgentsPage() {
-  const db         = getDb()
-  const agentList  = await db.select().from(agents).all()
+  const db        = getDb()
+  const agentList = await db.select().from(agents).all()
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>Agents</h1>
-        <button style={{
-          padding: '8px 16px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
-          borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-        }}>
-          Enroll agent
-        </button>
+        <Button variant="primary" size="md">
+          <Server size={14} />
+          Enrol agent
+        </Button>
       </div>
 
       {agentList.length === 0 ? (
         <div style={{
           backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)', padding: 60, textAlign: 'center',
+          borderRadius: 'var(--radius)',
         }}>
-          <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--fg)', marginBottom: 8 }}>
-            No agents enrolled
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 20 }}>
-            Install the BackupOS agent on your Linux or Windows hosts to start backing up.
-          </div>
-          <div style={{
-            display: 'inline-block',
-            backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', padding: '10px 16px',
-            fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg)',
-          }}>
-            curl -fsSL http://localhost:3000/install.sh | bash
+          <EmptyState
+            type="page"
+            icon={<Server size={48} />}
+            headline="No agents enrolled"
+            description="Install the BackupOS agent on your Linux or Windows hosts to start backing up."
+          />
+          <div style={{ padding: '0 24px 32px', display: 'flex', justifyContent: 'center' }}>
+            <code style={{
+              display: 'block',
+              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '10px 16px',
+              fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg)',
+            }}>
+              curl -fsSL http://localhost:3000/install.sh | bash
+            </code>
           </div>
         </div>
       ) : (
@@ -50,20 +62,14 @@ export default async function AgentsPage() {
                     {agent.hostname ?? agent.ip ?? '—'}
                   </div>
                 </div>
-                <span style={{
-                  padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500,
-                  backgroundColor: agent.status === 'connected' ? 'var(--ok-dim)' : 'var(--err-dim)',
-                  color: agent.status === 'connected' ? 'var(--ok)' : 'var(--err)',
-                }}>
-                  {agent.status ?? 'disconnected'}
-                </span>
+                <Badge status={(agent.status ?? 'disconnected') as BadgeStatus} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 2 }}>Platform</div>
                   <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                    {agent.platform ?? '—'} {agent.arch ? `/ ${agent.arch}` : ''}
+                    {agent.platform ?? '—'}{agent.arch ? ` / ${agent.arch}` : ''}
                   </div>
                 </div>
                 <div>
@@ -81,7 +87,7 @@ export default async function AgentsPage() {
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 2 }}>Last seen</div>
                   <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                    {agent.lastSeenAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
+                    {fmtDate(agent.lastSeenAt)}
                   </div>
                 </div>
               </div>
