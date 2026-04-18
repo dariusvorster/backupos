@@ -3,6 +3,7 @@ import { eq } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ResticEngine } from '@backupos/engine'
+import { EmptyState } from '@/components/ui/empty-state'
 
 function bytes(n: number | undefined): string {
   if (n == null) return '—'
@@ -67,13 +68,9 @@ export default async function SnapshotFilesPage({
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         {lsError ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--err)', fontSize: 13 }}>
-            Failed to list files: {lsError}
-          </div>
+          <EmptyState type="inline" headline="Failed to list files" description={lsError} />
         ) : files.length === 0 ? (
-          <div style={{ padding: 60, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-            No files found in snapshot.
-          </div>
+          <EmptyState type="inline" headline="No files found in snapshot" />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
