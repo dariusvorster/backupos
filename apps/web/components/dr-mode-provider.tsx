@@ -8,14 +8,12 @@ interface DrModeContextValue {
   hasFailed24h: boolean
 }
 
-const DrModeContext = createContext<DrModeContextValue>({
-  active: false,
-  toggle: () => {},
-  hasFailed24h: false,
-})
+const DrModeContext = createContext<DrModeContextValue | null>(null)
 
 export function useDrMode(): DrModeContextValue {
-  return useContext(DrModeContext)
+  const ctx = useContext(DrModeContext)
+  if (!ctx) throw new Error('useDrMode must be used within DrModeProvider')
+  return ctx
 }
 
 interface DrModeProviderProps {
