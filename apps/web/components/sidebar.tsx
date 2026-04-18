@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Activity, PlayCircle, Clock, Camera,
   Server, Database, Radar, RotateCcw, ListRestart,
-  TriangleAlert, FileClock, Settings, Sun, LogOut,
+  TriangleAlert, FileClock, Settings, Sun, LogOut, ShieldCheck,
 } from 'lucide-react'
 
 interface NavItem  { href: string; label: string; icon: React.ReactNode }
@@ -24,7 +24,8 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/jobs',      label: 'Jobs',      icon: <PlayCircle size={16} /> },
       { href: '/schedules', label: 'Schedules', icon: <Clock size={16} /> },
-      { href: '/snapshots', label: 'Snapshots', icon: <Camera size={16} /> },
+      { href: '/snapshots',     label: 'Snapshots',     icon: <Camera size={16} /> },
+      { href: '/verification', label: 'Verification', icon: <ShieldCheck size={16} /> },
     ],
   },
   {
