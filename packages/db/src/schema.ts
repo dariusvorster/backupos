@@ -274,3 +274,35 @@ export const storageAlerts = sqliteTable('storage_alerts', {
   firedAt:    integer('fired_at',    { mode: 'timestamp' }).notNull(),
   resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
 })
+
+// ── Verification tests ─────────────────────────────────────────────────────
+// Scheduled restore verification test configuration
+
+export const verificationTests = sqliteTable('verification_tests', {
+  id:             text('id').primaryKey(),
+  name:           text('name').notNull(),
+  jobId:          text('job_id').references(() => backupJobs.id),
+  targetType:     text('target_type').notNull(),
+  // 'temp_directory' | 'docker_volume' | 'proxmox_vm_clone' | 'ssh_target'
+  targetConfig:   text('target_config'),   // JSON — target-specific config
+  validationHook: text('validation_hook'), // shell command run after restore
+  schedule:       text('schedule'),        // cron expression
+  enabled:        integer('enabled', { mode: 'boolean' }).default(true),
+  lastResult:     text('last_result'),     // 'passed' | 'failed' | null
+  lastRunAt:      integer('last_run_at',  { mode: 'timestamp' }),
+  nextRunAt:      integer('next_run_at',  { mode: 'timestamp' }),
+  createdAt:      integer('created_at',   { mode: 'timestamp' }).notNull(),
+})
+
+// ── Verification runs ──────────────────────────────────────────────────────
+// Each execution of a verification test
+
+export const verificationRuns = sqliteTable('verification_runs', {
+  id:           text('id').primaryKey(),
+  testId:       text('test_id').references(() => verificationTests.id),
+  status:       text('status').notNull(), // 'running' | 'passed' | 'failed'
+  log:          text('log'),              // full log output
+  errorMessage: text('error_message'),
+  startedAt:    integer('started_at',   { mode: 'timestamp' }).notNull(),
+  completedAt:  integer('completed_at', { mode: 'timestamp' }),
+})
