@@ -1,7 +1,14 @@
+import type { ComponentProps } from 'react'
 import { getDb, backupMonitors, monitorResults } from '@backupos/db'
 import { eq, desc } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { StatCard } from '@/components/ui/stat-card'
+import { EmptyState } from '@/components/ui/empty-state'
+
+type BadgeStatus = ComponentProps<typeof Badge>['status']
 
 function bytes(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -31,32 +38,15 @@ export default async function MonitorDetailPage({ params }: { params: Promise<{ 
         <Link href="/monitors" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Monitors</Link>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>{monitor.name}</h1>
-          <button style={{
-            padding: '8px 16px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
-            border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          }}>
-            Sync now
-          </button>
+          <Button variant="primary" size="md">Sync now</Button>
         </div>
       </div>
 
       {latest && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-          {[
-            { label: 'Status',      value: latest.status },
-            { label: 'Last backup', value: latest.lastBackupAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—', mono: true },
-            { label: 'Size',        value: bytes(latest.sizeBytes), mono: true },
-          ].map(f => (
-            <div key={f.label} style={{
-              backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)', padding: '16px 20px',
-            }}>
-              <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 4 }}>{f.label}</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg)', fontFamily: f.mono ? 'var(--font-mono)' : undefined }}>
-                {f.value}
-              </div>
-            </div>
-          ))}
+          <StatCard label="Status"      value={latest.status ?? '—'} />
+          <StatCard label="Last backup" value={latest.lastBackupAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'} />
+          <StatCard label="Size"        value={bytes(latest.sizeBytes)} />
         </div>
       )}
 
@@ -65,9 +55,7 @@ export default async function MonitorDetailPage({ params }: { params: Promise<{ 
           Sync history
         </div>
         {results.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-            No syncs yet. Click &quot;Sync now&quot; to fetch the current status.
-          </div>
+          <EmptyState type="inline" headline="No syncs yet" description='Click "Sync now" to fetch the current status.' />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -84,13 +72,7 @@ export default async function MonitorDetailPage({ params }: { params: Promise<{ 
                     {r.checkedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
                   </td>
                   <td style={{ padding: '12px 20px' }}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 6,
-                      backgroundColor: r.status === 'healthy' ? 'var(--ok-dim)' : r.status === 'error' ? 'var(--err-dim)' : 'var(--warn-dim)',
-                      color: r.status === 'healthy' ? 'var(--ok)' : r.status === 'error' ? 'var(--err)' : 'var(--warn)',
-                    }}>
-                      {r.status}
-                    </span>
+                    <Badge status={(r.status ?? 'idle') as BadgeStatus} />
                   </td>
                   <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                     {bytes(r.sizeBytes)}
