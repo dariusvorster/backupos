@@ -2,6 +2,8 @@ import { getDb, repositories } from '@backupos/db'
 import { eq } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { StatCard } from '@/components/ui/stat-card'
 
 function bytes(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -23,39 +25,17 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
-        {[
-          { label: 'Backend',        value: repo.backend },
-          { label: 'Total size',     value: bytes(repo.sizeBytes), mono: true },
-          { label: 'Snapshots',      value: repo.snapshotCount ?? '—', mono: true },
-          { label: 'Last check',     value: repo.lastCheckStatus ?? 'unchecked' },
-        ].map(f => (
-          <div key={f.label} style={{
-            backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)', padding: '16px 20px',
-          }}>
-            <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 4 }}>{f.label}</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg)', fontFamily: f.mono ? 'var(--font-mono)' : undefined }}>
-              {String(f.value)}
-            </div>
-          </div>
-        ))}
+        <StatCard label="Backend"    value={repo.backend} />
+        <StatCard label="Total size" value={bytes(repo.sizeBytes)} />
+        <StatCard label="Snapshots"  value={String(repo.snapshotCount ?? '—')} />
+        <StatCard label="Last check" value={repo.lastCheckStatus ?? 'unchecked'} />
       </div>
 
       <div style={{ display: 'flex', gap: 12 }}>
-        <Link href={`/repositories/${id}/snapshots`} style={{
-          padding: '8px 16px', backgroundColor: 'var(--surf2)', color: 'var(--fg)',
-          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-          fontSize: 13, fontWeight: 500, textDecoration: 'none',
-        }}>
-          Browse snapshots
+        <Link href={`/repositories/${id}/snapshots`} style={{ textDecoration: 'none' }}>
+          <Button variant="secondary" size="md">Browse snapshots</Button>
         </Link>
-        <button style={{
-          padding: '8px 16px', backgroundColor: 'var(--surf2)', color: 'var(--fg)',
-          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-          fontSize: 13, fontWeight: 500, cursor: 'pointer',
-        }}>
-          Run check
-        </button>
+        <Button variant="secondary" size="md">Run check</Button>
       </div>
     </div>
   )
