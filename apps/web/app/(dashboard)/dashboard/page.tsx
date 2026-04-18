@@ -1,7 +1,12 @@
 import type { ComponentProps } from 'react'
-import { getDb, backupJobs, backupRuns, agents, repositories, desc, eq } from '@backupos/db'
+import {
+  getDb, backupJobs, backupRuns, agents, repositories, storageAlerts,
+  desc, eq, gte, and, isNull,
+} from '@backupos/db'
 import { StatCard } from '@/components/ui/stat-card'
 import { Badge } from '@/components/ui/badge'
+import { HealthScoreCard } from '@/components/ui/health-score-card'
+import { computeHealthScore, buildSparkline } from '@/lib/health-score'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -39,32 +44,66 @@ function fmtAge(d: Date | null): string {
 }
 
 export default async function DashboardPage() {
-  const db = getDb()
-  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const db      = getDb()
+  const now     = Date.now()
+  const since24h  = new Date(now - 24  * 60 * 60 * 1000)
+  const since7d   = new Date(now -  7  * 24 * 60 * 60 * 1000)
+  const since30d  = new Date(now - 30  * 24 * 60 * 60 * 1000)
 
-  const [jobs, recentRuns, allAgents, repos] = await Promise.all([
-    db.select().from(backupJobs).all(),
-    db.select({
-      id:          backupRuns.id,
-      jobId:       backupRuns.jobId,
-      jobName:     backupJobs.name,
-      status:      backupRuns.status,
-      startedAt:   backupRuns.startedAt,
-      duration:    backupRuns.duration,
-      dataAdded:   backupRuns.dataAdded,
-    })
-      .from(backupRuns)
-      .leftJoin(backupJobs, eq(backupRuns.jobId, backupJobs.id))
-      .orderBy(desc(backupRuns.startedAt))
-      .limit(20)
-      .all(),
-    db.select().from(agents).all(),
-    db.select().from(repositories).all(),
-  ])
+  const [jobs, recentRuns, allAgents, repos, successRuns24h, openAlerts, runs30d] =
+    await Promise.all([
+      db.select().from(backupJobs).all(),
+      db.select({
+        id:        backupRuns.id,
+        jobId:     backupRuns.jobId,
+        jobName:   backupJobs.name,
+        status:    backupRuns.status,
+        startedAt: backupRuns.startedAt,
+        duration:  backupRuns.duration,
+        dataAdded: backupRuns.dataAdded,
+      })
+        .from(backupRuns)
+        .leftJoin(backupJobs, eq(backupRuns.jobId, backupJobs.id))
+        .orderBy(desc(backupRuns.startedAt))
+        .limit(20)
+        .all(),
+      db.select().from(agents).all(),
+      db.select().from(repositories).all(),
+      db.select({ jobId: backupRuns.jobId })
+        .from(backupRuns)
+        .innerJoin(backupJobs, and(eq(backupRuns.jobId, backupJobs.id), eq(backupJobs.enabled, true)))
+        .where(and(eq(backupRuns.status, 'success'), gte(backupRuns.startedAt, since24h)))
+        .all(),
+      db.select({ id: storageAlerts.id })
+        .from(storageAlerts)
+        .where(isNull(storageAlerts.resolvedAt))
+        .all(),
+      db.select({ status: backupRuns.status, startedAt: backupRuns.startedAt })
+        .from(backupRuns)
+        .where(gte(backupRuns.startedAt, since30d))
+        .all(),
+    ])
 
-  const runs24h    = recentRuns.filter(r => r.startedAt && r.startedAt >= since24h)
-  const failed24h  = runs24h.filter(r => r.status === 'failed').length
+  const runs24h      = recentRuns.filter(r => r.startedAt && r.startedAt >= since24h)
+  const failed24h    = runs24h.filter(r => r.status === 'failed').length
   const agentsOnline = allAgents.filter(a => a.status === 'connected').length
+
+  const enabledJobs          = jobs.filter(j => j.enabled).length
+  const jobsWithSuccess24h   = new Set(successRuns24h.map(r => r.jobId)).size
+  const reposWithRecentCheck = repos.filter(
+    r => r.lastCheckStatus === 'ok' && r.lastCheckedAt !== null && r.lastCheckedAt >= since7d,
+  ).length
+
+  const healthScore = computeHealthScore({
+    enabledJobs,
+    jobsWithSuccessIn24h: jobsWithSuccess24h,
+    totalRepos: repos.length,
+    reposWithRecentCheck,
+    totalAgents: allAgents.length,
+    onlineAgents: agentsOnline,
+    openAlerts: openAlerts.length,
+  })
+  const sparkline = buildSparkline(runs30d)
 
   const th: React.CSSProperties = {
     padding: '10px 20px', textAlign: 'left', fontWeight: 500,
@@ -75,6 +114,15 @@ export default async function DashboardPage() {
   return (
     <div>
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Dashboard</h1>
+
+      {/* Health score hero */}
+      <HealthScoreCard
+        score={healthScore.score}
+        grade={healthScore.grade}
+        gradeColor={healthScore.gradeColor}
+        factors={healthScore.factors}
+        sparkline={sparkline}
+      />
 
       {/* KPI grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
