@@ -1,5 +1,12 @@
-import { getDb, repositories } from '@backupos/db'
+import type { ComponentProps } from 'react'
 import Link from 'next/link'
+import { Database } from 'lucide-react'
+import { getDb, repositories } from '@backupos/db'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+
+type BadgeStatus = ComponentProps<typeof Badge>['status']
 
 function bytes(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -9,37 +16,56 @@ function bytes(n: number | null | undefined): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`
 }
 
+function checkStatus(s: string | null): BadgeStatus {
+  if (s === 'ok')     return 'healthy'
+  if (s === 'errors') return 'error'
+  return 'idle'
+}
+
+function checkLabel(s: string | null): string {
+  if (s === 'ok')     return 'Healthy'
+  if (s === 'errors') return 'Errors'
+  return 'Unchecked'
+}
+
 export default async function RepositoriesPage() {
   const db    = getDb()
   const repos = await db.select().from(repositories).all()
+
+  const th: React.CSSProperties = {
+    padding: '10px 20px', textAlign: 'left', fontWeight: 500,
+    fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em',
+  }
+  const thR: React.CSSProperties = { ...th, textAlign: 'right' }
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>Repositories</h1>
-        <button style={{
-          padding: '8px 16px',
-          backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
-          borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-        }}>
+        <Button variant="primary" size="md">
+          <Database size={14} />
           Add repository
-        </button>
+        </Button>
       </div>
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         {repos.length === 0 ? (
-          <div style={{ padding: 60, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-            No repositories yet. Add a Restic repository to start storing backups.
-          </div>
+          <EmptyState
+            type="page"
+            icon={<Database size={48} />}
+            headline="No repositories yet"
+            description="Add a Restic repository to define where your backups are stored — local disk, Backblaze B2, Cloudflare R2, or any S3-compatible target."
+            primaryAction={{ label: 'Add repository', href: '#' }}
+          />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border2)' }}>
-                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Name</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Backend</th>
-                <th style={{ padding: '10px 20px', textAlign: 'right', fontWeight: 500 }}>Size</th>
-                <th style={{ padding: '10px 20px', textAlign: 'right', fontWeight: 500 }}>Snapshots</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Last check</th>
+              <tr style={{ borderBottom: '1px solid var(--border2)' }}>
+                <th style={th}>Name</th>
+                <th style={th}>Backend</th>
+                <th style={thR}>Size</th>
+                <th style={thR}>Snapshots</th>
+                <th style={th}>Last check</th>
               </tr>
             </thead>
             <tbody>
@@ -60,13 +86,7 @@ export default async function RepositoriesPage() {
                     {repo.snapshotCount ?? '—'}
                   </td>
                   <td style={{ padding: '12px 20px' }}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 6,
-                      backgroundColor: repo.lastCheckStatus === 'ok' ? 'var(--ok-dim)' : repo.lastCheckStatus === 'errors' ? 'var(--err-dim)' : 'var(--surf2)',
-                      color: repo.lastCheckStatus === 'ok' ? 'var(--ok)' : repo.lastCheckStatus === 'errors' ? 'var(--err)' : 'var(--fg-mute)',
-                    }}>
-                      {repo.lastCheckStatus ?? 'unchecked'}
-                    </span>
+                    <Badge status={checkStatus(repo.lastCheckStatus)} label={checkLabel(repo.lastCheckStatus)} />
                   </td>
                 </tr>
               ))}
