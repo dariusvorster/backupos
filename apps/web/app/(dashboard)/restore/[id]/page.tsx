@@ -1,7 +1,18 @@
+import type { ComponentProps } from 'react'
 import { getDb, restoreSpecs } from '@backupos/db'
 import { eq } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+
+type BadgeStatus = ComponentProps<typeof Badge>['status']
+
+function validationBadge(s: string | null): BadgeStatus {
+  if (s === 'valid')   return 'healthy'
+  if (s === 'invalid') return 'error'
+  return 'idle'
+}
 
 export default async function RestoreSpecPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -16,31 +27,16 @@ export default async function RestoreSpecPage({ params }: { params: Promise<{ id
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>{spec.name}</h1>
           <div style={{ display: 'flex', gap: 10 }}>
-            <Link href={`/restore/${id}/runs`} style={{
-              padding: '8px 14px', backgroundColor: 'var(--surf2)', color: 'var(--fg)',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-              fontSize: 13, fontWeight: 500, textDecoration: 'none',
-            }}>
-              Run history
+            <Link href={`/restore/${id}/runs`} style={{ textDecoration: 'none' }}>
+              <Button variant="secondary" size="md">Run history</Button>
             </Link>
-            <button style={{
-              padding: '8px 16px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
-              border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            }}>
-              Run now
-            </button>
+            <Button variant="primary" size="md">Run now</Button>
           </div>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 20 }}>
-        <span style={{
-          fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 6,
-          backgroundColor: spec.validationStatus === 'valid' ? 'var(--ok-dim)' : spec.validationStatus === 'invalid' ? 'var(--err-dim)' : 'var(--surf2)',
-          color: spec.validationStatus === 'valid' ? 'var(--ok)' : spec.validationStatus === 'invalid' ? 'var(--err)' : 'var(--fg-mute)',
-        }}>
-          {spec.validationStatus ?? 'untested'}
-        </span>
+        <Badge status={validationBadge(spec.validationStatus)} label={spec.validationStatus ?? 'untested'} />
         {spec.description && <span style={{ fontSize: 13, color: 'var(--fg-mute)' }}>{spec.description}</span>}
       </div>
 
