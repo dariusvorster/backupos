@@ -1,7 +1,12 @@
+import type { ComponentProps } from 'react'
 import { getDb, restoreRuns, restoreSpecs } from '@backupos/db'
 import { eq, desc } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
+
+type BadgeStatus = ComponentProps<typeof Badge>['status']
 
 export default async function RestoreRunsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -27,7 +32,7 @@ export default async function RestoreRunsPage({ params }: { params: Promise<{ id
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         {runs.length === 0 ? (
-          <div style={{ padding: 60, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>No runs yet</div>
+          <EmptyState type="inline" headline="No runs yet" />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -45,13 +50,7 @@ export default async function RestoreRunsPage({ params }: { params: Promise<{ id
                     {run.startedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
                   </td>
                   <td style={{ padding: '12px 20px' }}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 6,
-                      backgroundColor: run.status === 'success' ? 'var(--ok-dim)' : run.status === 'failed' ? 'var(--err-dim)' : 'var(--info-dim)',
-                      color: run.status === 'success' ? 'var(--ok)' : run.status === 'failed' ? 'var(--err)' : 'var(--info)',
-                    }}>
-                      {run.status}
-                    </span>
+                    <Badge status={(run.status ?? 'idle') as BadgeStatus} />
                   </td>
                   <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)' }}>{run.trigger ?? '—'}</td>
                   <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
