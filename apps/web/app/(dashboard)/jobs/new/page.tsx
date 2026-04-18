@@ -1,4 +1,5 @@
 import { getDb, repositories, agents } from '@backupos/db'
+import { Button } from '@/components/ui/button'
 
 const SOURCE_TYPES = [
   { value: 'filesystem',       label: 'Filesystem',        desc: 'Directories and files on the agent host' },
@@ -117,16 +118,7 @@ export default async function NewJobPage() {
             </div>
           </div>
 
-          <button
-            type="submit"
-            style={{
-              padding: '9px 20px', backgroundColor: 'var(--accent)',
-              color: 'var(--accent-fg)', border: 'none', borderRadius: 'var(--radius-sm)',
-              fontSize: 14, fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            Create job
-          </button>
+          <Button type="submit" variant="primary" size="md">Create job</Button>
         </form>
       </div>
     </div>
