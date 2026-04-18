@@ -33,6 +33,8 @@ steps:
     retry_count: 5
     on_failure: notify_only`
 
+import { Button } from '@/components/ui/button'
+
 export default function NewRestoreSpecPage() {
   return (
     <div style={{ maxWidth: 700 }}>
@@ -76,20 +78,8 @@ export default function NewRestoreSpecPage() {
         </div>
 
         <div style={{ display: 'flex', gap: 12 }}>
-          <button style={{
-            padding: '9px 20px', backgroundColor: 'var(--surf2)', color: 'var(--fg)',
-            border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-            fontSize: 14, fontWeight: 500, cursor: 'pointer',
-          }}>
-            Validate
-          </button>
-          <button style={{
-            padding: '9px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
-            border: 'none', borderRadius: 'var(--radius-sm)',
-            fontSize: 14, fontWeight: 600, cursor: 'pointer',
-          }}>
-            Save spec
-          </button>
+          <Button variant="secondary" size="md">Validate</Button>
+          <Button variant="primary" size="md">Save spec</Button>
         </div>
       </div>
     </div>
