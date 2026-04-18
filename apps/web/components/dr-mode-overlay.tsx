@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useDrMode } from '@/components/dr-mode-provider'
 import { File, Database, Server, X, ShieldAlert } from 'lucide-react'
 import { RestoreFileWizard }     from '@/components/dr/restore-file-wizard'
@@ -37,6 +37,10 @@ const CARDS = [
 export function DrModeOverlay({ jobs }: DrModeOverlayProps) {
   const { active, toggle } = useDrMode()
   const [wizard, setWizard] = useState<WizardType>(null)
+
+  useEffect(() => {
+    if (!active) setWizard(null)
+  }, [active])
 
   if (!active) return null
 

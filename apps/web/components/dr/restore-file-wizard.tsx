@@ -116,12 +116,18 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
   const [dryRunOk, setDryRunOk]     = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone]             = useState(false)
+  const [error, setError]           = useState<string | null>(null)
 
   async function execute() {
     setSubmitting(true)
-    await logDrAction({ action: 'restore_file', jobId, target: filePath, dryRun: false })
-    setSubmitting(false)
-    setDone(true)
+    setError(null)
+    try {
+      await logDrAction({ action: 'restore_file', jobId, target: filePath, dryRun: false })
+      setDone(true)
+    } catch {
+      setError('Something went wrong. Please try again.')
+      setSubmitting(false)
+    }
   }
 
   function printRunbook() {
@@ -163,10 +169,8 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
     const url  = URL.createObjectURL(blob)
     const win  = window.open(url)
     if (win) {
-      win.onload = () => {
-        win.print()
-        URL.revokeObjectURL(url)
-      }
+      win.onload = () => win.print()
+      win.addEventListener('afterprint', () => URL.revokeObjectURL(url))
     }
   }
 
@@ -225,7 +229,7 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
           <input
             type="text"
             value={filePath}
-            onChange={e => setFilePath(e.target.value)}
+            onChange={e => { setFilePath(e.target.value); setDryRunOk(false) }}
             placeholder="/home/user/documents/report.pdf"
             style={inputStyle}
           />
@@ -281,6 +285,9 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
               This action will be recorded in the audit log with DR mode flag.
             </span>
           </div>
+          {error && (
+            <div style={{ fontSize: 12, color: 'var(--err)', marginBottom: 12 }}>{error}</div>
+          )}
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => setStep(2)} style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg)' }}>Back</button>
             <button
