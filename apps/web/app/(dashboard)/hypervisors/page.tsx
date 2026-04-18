@@ -1,5 +1,20 @@
+import type { ComponentProps } from 'react'
 import { getDb, hypervisorIntegrations, hypervisorTargets } from '@backupos/db'
-import { eq } from '@backupos/db'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+
+type BadgeStatus = ComponentProps<typeof Badge>['status']
+
+function integrationBadge(s: string | null): BadgeStatus {
+  if (s === 'ok') return 'healthy'
+  return 'idle'
+}
+
+function vmBadge(s: string | null): BadgeStatus {
+  if (s === 'running') return 'healthy'
+  return 'idle'
+}
 
 export default async function HypervisorsPage() {
   const db           = getDb()
@@ -17,21 +32,15 @@ export default async function HypervisorsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>Hypervisors</h1>
-        <button style={{
-          padding: '8px 16px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
-          borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-        }}>
-          Add hypervisor
-        </button>
+        <Button variant="primary" size="md">Add hypervisor</Button>
       </div>
 
       {integrations.length === 0 ? (
-        <div style={{
-          backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)', padding: 60, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13,
-        }}>
-          No hypervisors configured. Add a Proxmox, XCP-ng, or VMware integration.
-        </div>
+        <EmptyState
+          type="page"
+          headline="No hypervisors configured"
+          description="Add a Proxmox, XCP-ng, or VMware integration."
+        />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {integrations.map(integration => {
@@ -50,13 +59,7 @@ export default async function HypervisorsPage() {
                       {integration.type} · {vmList.length} VMs/LXCs
                     </div>
                   </div>
-                  <span style={{
-                    padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500,
-                    backgroundColor: integration.status === 'ok' ? 'var(--ok-dim)' : 'var(--surf2)',
-                    color: integration.status === 'ok' ? 'var(--ok)' : 'var(--fg-mute)',
-                  }}>
-                    {integration.status ?? 'unknown'}
-                  </span>
+                  <Badge status={integrationBadge(integration.status)} label={integration.status ?? 'unknown'} />
                 </div>
 
                 {vmList.length > 0 && (
@@ -85,13 +88,7 @@ export default async function HypervisorsPage() {
                             {vm.node ?? '—'}
                           </td>
                           <td style={{ padding: '10px 20px' }}>
-                            <span style={{
-                              padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500,
-                              backgroundColor: vm.status === 'running' ? 'var(--ok-dim)' : 'var(--surf2)',
-                              color: vm.status === 'running' ? 'var(--ok)' : 'var(--fg-mute)',
-                            }}>
-                              {vm.status ?? 'unknown'}
-                            </span>
+                            <Badge status={vmBadge(vm.status)} label={vm.status ?? 'unknown'} />
                           </td>
                         </tr>
                       ))}
