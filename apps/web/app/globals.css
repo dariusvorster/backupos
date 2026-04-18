@@ -24,6 +24,7 @@
     --accent-dim:  rgba(245, 166, 35, 0.12);
     --accent-ring: rgba(245, 166, 35, 0.28);
     --accent-deep: #854F0B;
+    --white:       #FFFFFF;
 
     /* Semantic */
     --ok:      #00C896;   --ok-dim:     rgba(0, 200, 150, 0.12);

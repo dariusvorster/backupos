@@ -24,7 +24,7 @@ const COLOR: Record<Variant, string> = {
   primary:   'var(--accent-fg)',
   secondary: 'var(--fg)',
   ghost:     'var(--fg-mute)',
-  danger:    '#ffffff',
+  danger:    'var(--white)',
   icon:      'var(--fg-mute)',
 }
 const BORDER: Record<Variant, string> = {
