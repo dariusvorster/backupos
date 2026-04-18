@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@layer base {
+  :root.dark {
+    /* Surfaces */
+    --bg:       #0A0A0A;
+    --bg2:      #0F0F0F;
+    --surf:     #141414;
+    --surf2:    #1A1A1A;
+
+    /* Borders */
+    --border:   #242424;
+    --border2:  #2E2E2E;
+
+    /* Text */
+    --fg:       #EDEDED;
+    --fg-mute:  #9A9A9A;
+    --fg-dim:   #6B6B6B;
+    --fg-faint: #444444;
+
+    /* Accent — BackupOS amber */
+    --accent:      #F5A623;
+    --accent-fg:   #000000;
+    --accent-dim:  rgba(245, 166, 35, 0.12);
+    --accent-ring: rgba(245, 166, 35, 0.28);
+    --accent-deep: #854F0B;
+
+    /* Semantic */
+    --ok:      #00C896;   --ok-dim:     rgba(0, 200, 150, 0.12);
+    --warn:    #F5A623;   --warn-dim:   rgba(245, 166, 35, 0.12);
+    --err:     #E5484D;   --err-dim:    rgba(229, 72, 77, 0.12);
+    --info:    #4A9EFF;   --info-dim:   rgba(74, 158, 255, 0.12);
+
+    /* Typography */
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+    /* Spacing */
+    --space-1: 4px;   --space-2: 8px;   --space-3: 12px;
+    --space-4: 16px;  --space-5: 20px;  --space-6: 24px;
+    --space-8: 32px;  --space-10: 40px; --space-12: 48px;
+
+    /* Radius */
+    --radius-sm: 8px;
+    --radius:    12px;
+    --radius-lg: 16px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow:    0 4px 16px rgba(0,0,0,0.5);
+    --shadow-lg: 0 12px 48px rgba(0,0,0,0.6);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  html, body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+}

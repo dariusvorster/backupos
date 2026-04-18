@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BackupOS logo preview</title>
+<style>
+  :root {
+    --bg: #0A0A0A;
+    --bg2: #0F0F0F;
+    --surf: #141414;
+    --border: #242424;
+    --fg: #EDEDED;
+    --fg-mute: #9A9A9A;
+    --fg-dim: #6B6B6B;
+    --accent: #F5A623;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    padding: 48px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    color: var(--fg-mute);
+    margin-bottom: 48px;
+    font-size: 14px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    max-width: 1200px;
+  }
+  .card {
+    background: var(--surf);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+  .label {
+    font-size: 11px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+  }
+  .sizes {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }
+  .size-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .size-caption {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-dim);
+  }
+  .card.light-bg {
+    background: #FAFAFA;
+    border-color: #E5E5E5;
+  }
+  .card.light-bg .label {
+    color: #6B6B6B;
+  }
+  .card.light-bg .size-caption {
+    color: #6B6B6B;
+  }
+  .color-swatches {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    width: 100%;
+    max-width: 400px;
+  }
+  .swatch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: #0F0F0F;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .swatch-chip {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .swatch-label {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+  }
+  .swatch-name { color: var(--fg); font-weight: 500; }
+  .swatch-hex { color: var(--fg-dim); }
+  .tab-sim {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #1D1D1D;
+    padding: 8px 12px 8px 10px;
+    border-radius: 8px 8px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    max-width: 260px;
+    width: 100%;
+  }
+  .tab-sim img { width: 16px; height: 16px; }
+  .tab-title {
+    font-size: 12px;
+    color: var(--fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tab-close {
+    margin-left: auto;
+    color: var(--fg-dim);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<h1>BackupOS logo assets</h1>
+<p class="subtitle">Grid Shield mark, wordmark, favicon and monochrome variants.</p>
+
+<div class="grid">
+
+  <!-- Primary mark at multiple sizes -->
+  <div class="card">
+    <div class="label">Primary mark</div>
+    <div class="sizes">
+      <div class="size-row">
+        <svg width="80" height="80" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <rect width="48" height="48" rx="16" fill="#1A1206"/>
+          <rect x="6"  y="6"  width="16" height="16" rx="2" fill="#F5A623"/>
+          <rect x="26" y="6"  width="16" height="16" rx="2" fill="#854F0B"/>
+          <rect x="6"  y="26" width="16" height="16" rx="2" fill="#854F0B"/>
+          <rect x="26" y="26" width="16" height="16" rx="2" fill="#C77A14"/>
+          <rect x="18" y="18" width="12" height="12" rx="2" fill="#FEF5E0"/>
+        </svg>
+        <div class="size-caption">80px</div>
+      </div>
+      <div class="size-row">
+        <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <rect width="48" height="48" rx="16" fill="#1A1206"/>
+          <rect x="6"  y="6"  width="16" height="16" rx="2" fill="#F5A623"/>
+          <rect x="26" y="6"  width="16" height="16" rx="2" fill="#854F0B"/>
+          <rect x="6"  y="26" width="16" height="16" rx="2" fill="#854F0B"/>
+          <rect x="26" y="26" width="16" height="16" rx="2" fill="#C77A14"/>
+          <rect x="18" y="18" width="12" height="12" rx="2" fill="#FEF5E0"/>
+        </svg>
+        <div class="size-caption">48px</div>
+      </div>
+      <div class="size-row">
+        <svg width="32" height="32" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <rect width="48" height="48" rx="16" fill="#1A1206"/>
+          <rect x="6"  y="6"  width="16" height="16" rx="2" fill="#F5A623"/>
+          <rect x="26" y="6"  width="16" height="16" rx="2" fill="#854F0B"/>
+          <rect x="6"  y="26" width="16" height="16" rx="2" fill="#854F0B"/>
+          <rect x="26" y="26" width="16" height="16" rx="2" fill="#C77A14"/>
+          <rect x="18" y="18" width="12" height="12" rx="2" fill="#FEF5E0"/>
+        </svg>
+        <div class="size-caption">32px</div>
+      </div>
+      <div class="size-row">
+        <svg width="24" height="24" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <rect width="48" height="48" rx="16" fill="#1A1206"/>
+          <rect x="6"  y="6"  width="16" height="16" rx="2" fill="#F5A623"/>
+          <rect x="26" y="6"  width="16" height="16" rx="2" fill="#854F0B"/>
+          <rect x="6"  y="26" width="16" height="16" rx="2" fill="#854F0B"/>
+          <rect x="26" y="26" width="16" height="16" rx="2" fill="#C77A14"/>
+          <rect x="18" y="18" width="12" height="12" rx="2" fill="#FEF5E0"/>
+        </svg>
+        <div class="size-caption">24px</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wordmark -->
+  <div class="card">
+    <div class="label">Wordmark (horizontal)</div>
+    <svg width="180" height="40" viewBox="0 0 180 40" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(0, 8)">
+        <rect width="24" height="24" rx="8" fill="#1A1206"/>
+        <rect x="3"  y="3"  width="8" height="8" rx="1" fill="#F5A623"/>
+        <rect x="13" y="3"  width="8" height="8" rx="1" fill="#854F0B"/>
+        <rect x="3"  y="13" width="8" height="8" rx="1" fill="#854F0B"/>
+        <rect x="13" y="13" width="8" height="8" rx="1" fill="#C77A14"/>
+        <rect x="9"  y="9"  width="6" height="6" rx="1" fill="#FEF5E0"/>
+      </g>
+      <text x="36" y="26" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="500" letter-spacing="-0.16">
+        <tspan fill="#EDEDED">Backup</tspan><tspan fill="#F5A623">OS</tspan>
+      </text>
+    </svg>
+  </div>
+
+  <!-- Favicon -->
+  <div class="card">
+    <div class="label">Favicon (tab icon)</div>
+    <div class="sizes">
+      <div class="size-row">
+        <svg width="64" height="64" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="6" fill="#1A1206"/>
+          <rect x="4"  y="4"  width="10" height="10" fill="#F5A623"/>
+          <rect x="18" y="4"  width="10" height="10" fill="#854F0B"/>
+          <rect x="4"  y="18" width="10" height="10" fill="#854F0B"/>
+          <rect x="18" y="18" width="10" height="10" fill="#C77A14"/>
+          <rect x="12" y="12" width="8"  height="8"  fill="#FEF5E0"/>
+        </svg>
+        <div class="size-caption">64px</div>
+      </div>
+      <div class="size-row">
+        <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="6" fill="#1A1206"/>
+          <rect x="4"  y="4"  width="10" height="10" fill="#F5A623"/>
+          <rect x="18" y="4"  width="10" height="10" fill="#854F0B"/>
+          <rect x="4"  y="18" width="10" height="10" fill="#854F0B"/>
+          <rect x="18" y="18" width="10" height="10" fill="#C77A14"/>
+          <rect x="12" y="12" width="8"  height="8"  fill="#FEF5E0"/>
+        </svg>
+        <div class="size-caption">32px</div>
+      </div>
+      <div class="size-row">
+        <svg width="16" height="16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="6" fill="#1A1206"/>
+          <rect x="4"  y="4"  width="10" height="10" fill="#F5A623"/>
+          <rect x="18" y="4"  width="10" height="10" fill="#854F0B"/>
+          <rect x="4"  y="18" width="10" height="10" fill="#854F0B"/>
+          <rect x="18" y="18" width="10" height="10" fill="#C77A14"/>
+          <rect x="12" y="12" width="8"  height="8"  fill="#FEF5E0"/>
+        </svg>
+        <div class="size-caption">16px</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab simulation -->
+  <div class="card">
+    <div class="label">Browser tab</div>
+    <div class="tab-sim">
+      <svg width="16" height="16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <rect width="32" height="32" rx="6" fill="#1A1206"/>
+        <rect x="4"  y="4"  width="10" height="10" fill="#F5A623"/>
+        <rect x="18" y="4"  width="10" height="10" fill="#854F0B"/>
+        <rect x="4"  y="18" width="10" height="10" fill="#854F0B"/>
+        <rect x="18" y="18" width="10" height="10" fill="#C77A14"/>
+        <rect x="12" y="12" width="8"  height="8"  fill="#FEF5E0"/>
+      </svg>
+      <span class="tab-title">BackupOS — Dashboard</span>
+      <span class="tab-close">×</span>
+    </div>
+    <div class="tab-sim">
+      <svg width="16" height="16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <rect width="32" height="32" rx="6" fill="#1A1206"/>
+        <rect x="4"  y="4"  width="10" height="10" fill="#F5A623"/>
+        <rect x="18" y="4"  width="10" height="10" fill="#854F0B"/>
+        <rect x="4"  y="18" width="10" height="10" fill="#854F0B"/>
+        <rect x="18" y="18" width="10" height="10" fill="#C77A14"/>
+        <rect x="12" y="12" width="8"  height="8"  fill="#FEF5E0"/>
+      </svg>
+      <span class="tab-title">● BackupOS — Running</span>
+      <span class="tab-close">×</span>
+    </div>
+  </div>
+
+  <!-- Monochrome on dark -->
+  <div class="card">
+    <div class="label">Monochrome (currentColor)</div>
+    <div class="sizes">
+      <div class="size-row">
+        <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="color: #EDEDED">
+          <rect width="48" height="48" rx="16" fill="currentColor"/>
+          <rect x="6"  y="6"  width="16" height="16" rx="2" fill="#0A0A0A" fill-opacity="0.05"/>
+          <rect x="26" y="6"  width="16" height="16" rx="2" fill="#0A0A0A" fill-opacity="0.70"/>
+          <rect x="6"  y="26" width="16" height="16" rx="2" fill="#0A0A0A" fill-opacity="0.70"/>
+          <rect x="26" y="26" width="16" height="16" rx="2" fill="#0A0A0A" fill-opacity="0.45"/>
+          <rect x="18" y="18" width="12" height="12" rx="2" fill="#0A0A0A"/>
+        </svg>
+        <div class="size-caption">on dark</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monochrome on light -->
+  <div class="card light-bg">
+    <div class="label">Monochrome on light</div>
+    <div class="sizes">
+      <div class="size-row">
+        <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="color: #0A0A0A">
+          <rect width="48" height="48" rx="16" fill="currentColor"/>
+          <rect x="6"  y="6"  width="16" height="16" rx="2" fill="white" fill-opacity="0.95"/>
+          <rect x="26" y="6"  width="16" height="16" rx="2" fill="white" fill-opacity="0.30"/>
+          <rect x="6"  y="26" width="16" height="16" rx="2" fill="white" fill-opacity="0.30"/>
+          <rect x="26" y="26" width="16" height="16" rx="2" fill="white" fill-opacity="0.55"/>
+          <rect x="18" y="18" width="12" height="12" rx="2" fill="white"/>
+        </svg>
+        <div class="size-caption">on light</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Colour palette -->
+  <div class="card" style="grid-column: span 2;">
+    <div class="label">Colour palette</div>
+    <div class="color-swatches">
+      <div class="swatch">
+        <div class="swatch-chip" style="background:#F5A623"></div>
+        <div class="swatch-label">
+          <span class="swatch-name">Accent</span>
+          <span class="swatch-hex">#F5A623</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background:#C77A14"></div>
+        <div class="swatch-label">
+          <span class="swatch-name">Mid amber</span>
+          <span class="swatch-hex">#C77A14</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background:#854F0B"></div>
+        <div class="swatch-label">
+          <span class="swatch-name">Accent deep</span>
+          <span class="swatch-hex">#854F0B</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background:#1A1206"></div>
+        <div class="swatch-label">
+          <span class="swatch-name">Mark bg</span>
+          <span class="swatch-hex">#1A1206</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background:#FEF5E0"></div>
+        <div class="swatch-label">
+          <span class="swatch-name">Centre cream</span>
+          <span class="swatch-hex">#FEF5E0</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background:#0A0A0A"></div>
+        <div class="swatch-label">
+          <span class="swatch-name">App bg</span>
+          <span class="swatch-hex">#0A0A0A</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

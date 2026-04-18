@@ -1,0 +1,17 @@
+{
+  "name": "@backupos/agent-windows",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build:x64": "bun build src/index.ts --compile --outfile dist/backupos-agent-windows-x64.exe --target bun-windows-x64",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@backupos/agent-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

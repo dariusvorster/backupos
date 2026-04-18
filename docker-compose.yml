@@ -1,0 +1,27 @@
+services:
+  backupos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: backupos:latest
+    container_name: backupos
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - backupos_data:/app/data
+    environment:
+      - DATABASE_URL=file:/app/data/backupos.db
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - RESTIC_BINARY_PATH=/usr/local/bin/restic
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  backupos_data:
