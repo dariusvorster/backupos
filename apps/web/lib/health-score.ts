@@ -35,15 +35,15 @@ export function computeGrade(score: number): { grade: string; gradeColor: string
 export function computeHealthScore(input: HealthScoreInput): HealthScore {
   const jobScore = input.enabledJobs === 0
     ? 100
-    : Math.round((input.jobsWithSuccessIn24h / input.enabledJobs) * 100)
+    : Math.min(100, Math.round((input.jobsWithSuccessIn24h / input.enabledJobs) * 100))
 
   const repoScore = input.totalRepos === 0
     ? 100
-    : Math.round((input.reposWithRecentCheck / input.totalRepos) * 100)
+    : Math.min(100, Math.round((input.reposWithRecentCheck / input.totalRepos) * 100))
 
   const agentScore = input.totalAgents === 0
     ? 100
-    : Math.round((input.onlineAgents / input.totalAgents) * 100)
+    : Math.min(100, Math.round((input.onlineAgents / input.totalAgents) * 100))
 
   const alertScore = Math.max(0, 100 - input.openAlerts * 20)
 
@@ -87,7 +87,7 @@ export function computeHealthScore(input: HealthScoreInput): HealthScore {
   ]
 
   const score = Math.round(
-    (jobScore * 40 + repoScore * 20 + agentScore * 20 + alertScore * 20) / 100,
+    factors.reduce((acc, f) => acc + f.score * f.weight, 0) / 100,
   )
 
   const { grade, gradeColor } = computeGrade(score)
