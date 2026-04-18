@@ -2,6 +2,7 @@ import { getDb, snapshots, repositories } from '@backupos/db'
 import { eq, desc } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { EmptyState } from '@/components/ui/empty-state'
 
 function bytes(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -33,9 +34,11 @@ export default async function SnapshotsPage({ params }: { params: Promise<{ id: 
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         {snapshotList.length === 0 ? (
-          <div style={{ padding: 60, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-            No snapshots cached. Run a backup job to create snapshots.
-          </div>
+          <EmptyState
+            type="inline"
+            headline="No snapshots cached"
+            description="Run a backup job to create snapshots."
+          />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
