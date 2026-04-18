@@ -54,12 +54,12 @@ export function HealthScoreCard({
         role="button"
         tabIndex={0}
         onClick={() => setOpen(true)}
-        onKeyDown={e => e.key === 'Enter' && setOpen(true)}
+        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setOpen(true)}
         style={{
           backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
           borderRadius: 'var(--radius)', padding: 24, cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 32, marginBottom: 32,
-          outline: 'none',
+          outline: '2px solid transparent', outlineOffset: 2,
         }}
       >
         {/* Big number + grade */}
@@ -112,6 +112,8 @@ export function HealthScoreCard({
       {open && (
         <div
           onClick={() => setOpen(false)}
+          onKeyDown={e => e.key === 'Escape' && setOpen(false)}
+          tabIndex={-1}
           style={{
             position: 'fixed', inset: 0, zIndex: 50,
             backgroundColor: 'rgba(0,0,0,0.6)',
@@ -145,6 +147,7 @@ export function HealthScoreCard({
                 </div>
               </div>
               <button
+                aria-label="Close breakdown"
                 onClick={() => setOpen(false)}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
