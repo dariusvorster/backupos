@@ -2,66 +2,65 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import {
+  LayoutDashboard, Activity, PlayCircle, Clock, Camera,
+  Server, Database, Radar, RotateCcw, ListRestart,
+  TriangleAlert, FileClock, Settings, Sun, LogOut,
+} from 'lucide-react'
 
-interface NavItem {
-  href: string
-  label: string
-  icon: React.ReactNode
-}
-
-interface NavGroup {
-  label: string
-  items: NavItem[]
-}
-
-function Icon({ d }: { d: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d={d} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
+interface NavItem  { href: string; label: string; icon: React.ReactNode }
+interface NavGroup { label: string; items: NavItem[] }
 
 const NAV: NavGroup[] = [
   {
     label: 'OVERVIEW',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: <Icon d="M2 5.5h12M2 10.5h12M2 2h12v12H2z" /> },
+      { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+      { href: '/activity',  label: 'Activity',  icon: <Activity size={16} /> },
     ],
   },
   {
     label: 'BACKUP',
     items: [
-      { href: '/jobs',         label: 'Jobs',         icon: <Icon d="M8 1v14M1 8h14" /> },
-      { href: '/hypervisors',  label: 'Hypervisors',  icon: <Icon d="M2 4h12v8H2zM5 4V2M11 4V2M5 12v2M11 12v2" /> },
-      { href: '/repositories', label: 'Repositories', icon: <Icon d="M2 4h12v8H2zM5 8h6" /> },
-    ],
-  },
-  {
-    label: 'RESTORE',
-    items: [
-      { href: '/restore', label: 'Restore specs', icon: <Icon d="M14 8A6 6 0 1 1 2 8M2 8l3-3M2 8l3 3" /> },
+      { href: '/jobs',      label: 'Jobs',      icon: <PlayCircle size={16} /> },
+      { href: '/schedules', label: 'Schedules', icon: <Clock size={16} /> },
+      { href: '/snapshots', label: 'Snapshots', icon: <Camera size={16} /> },
     ],
   },
   {
     label: 'INFRASTRUCTURE',
     items: [
-      { href: '/agents',   label: 'Agents',   icon: <Icon d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 14s1-3 6-3 6 3 6 3" /> },
-      { href: '/monitors', label: 'Monitors', icon: <Icon d="M8 14V8M5 11l3-3 3 3M2 14h12" /> },
+      { href: '/agents',       label: 'Agents',       icon: <Server size={16} /> },
+      { href: '/repositories', label: 'Repositories', icon: <Database size={16} /> },
+      { href: '/monitors',     label: 'Monitors',     icon: <Radar size={16} /> },
+    ],
+  },
+  {
+    label: 'RESTORE',
+    items: [
+      { href: '/restore',      label: 'Restore specs', icon: <RotateCcw size={16} /> },
+      { href: '/restore/runs', label: 'Restore runs',  icon: <ListRestart size={16} /> },
+    ],
+  },
+  {
+    label: 'ADMIN',
+    items: [
+      { href: '/alerts', label: 'Alerts',    icon: <TriangleAlert size={16} /> },
+      { href: '/audit',  label: 'Audit log', icon: <FileClock size={16} /> },
     ],
   },
 ]
 
 function Logo() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', height: 56 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', height: 56, flexShrink: 0 }}>
       <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
-        <rect width="48" height="48" rx="12" fill="#1A1206" />
-        <rect x="4" y="4" width="19" height="19" fill="#F5A623" />
-        <rect x="25" y="4" width="19" height="19" fill="#854F0B" />
-        <rect x="4" y="25" width="19" height="19" fill="#854F0B" />
+        <rect width="48" height="48" rx="16" fill="#1A1206" />
+        <rect x="4"  y="4"  width="19" height="19" fill="#F5A623" />
+        <rect x="25" y="4"  width="19" height="19" fill="#854F0B" />
+        <rect x="4"  y="25" width="19" height="19" fill="#854F0B" />
         <rect x="25" y="25" width="19" height="19" fill="#C77A14" />
-        <rect x="19" y="19" width="10" height="10" fill="#FEF5E0" />
+        <rect x="14" y="14" width="20" height="20" fill="#FEF5E0" />
       </svg>
       <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)', letterSpacing: '-0.01em' }}>
         BackupOS
@@ -75,11 +74,9 @@ export function Sidebar() {
 
   return (
     <aside style={{
-      width: 240,
-      minWidth: 240,
+      width: 240, minWidth: 240,
       backgroundColor: 'var(--bg2)',
-      display: 'flex',
-      flexDirection: 'column',
+      display: 'flex', flexDirection: 'column',
       borderRight: '1px solid var(--border)',
       overflow: 'hidden',
     }}>
@@ -89,29 +86,24 @@ export function Sidebar() {
         {NAV.map(group => (
           <div key={group.label} style={{ marginBottom: 4 }}>
             <div style={{
-              fontSize: 11,
-              color: 'var(--fg-dim)',
-              letterSpacing: '0.08em',
-              padding: '12px 8px 4px',
-              fontWeight: 500,
+              fontSize: 11, color: 'var(--fg-dim)',
+              letterSpacing: '0.08em', fontWeight: 500,
+              padding: '12px 8px 4px', textTransform: 'uppercase',
             }}>
               {group.label}
             </div>
             {group.items.map(item => {
-              const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+              const active = pathname === item.href
+                || (item.href !== '/dashboard' && pathname.startsWith(item.href))
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '0 8px',
-                    height: 36,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '0 8px', height: 36,
                     borderRadius: 'var(--radius-sm)',
-                    fontSize: 13,
-                    fontWeight: active ? 500 : 400,
+                    fontSize: 13, fontWeight: active ? 500 : 400,
                     color: active ? 'var(--accent)' : 'var(--fg-mute)',
                     backgroundColor: active ? 'var(--accent-dim)' : 'transparent',
                     textDecoration: 'none',
@@ -128,26 +120,44 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div style={{ borderTop: 'none', padding: '12px 16px 16px' }}>
-        <Link
-          href="/settings"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontSize: 13,
-            color: 'var(--fg-dim)',
-            textDecoration: 'none',
-            padding: '4px 0',
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M13.5 8c0-.4-.04-.8-.1-1.18l1.6-1.24-1.5-2.6-1.94.77A5.5 5.5 0 0 0 9.5 3l-.3-2h-2.4l-.3 2a5.5 5.5 0 0 0-2.06.75L2.5 2.98l-1.5 2.6 1.6 1.24A5.5 5.5 0 0 0 2.5 8c0 .4.04.8.1 1.18l-1.6 1.24 1.5 2.6 1.94-.77c.61.42 1.3.73 2.06.75l.3 2h2.4l.3-2a5.5 5.5 0 0 0 2.06-.75l1.94.77 1.5-2.6-1.6-1.24C13.46 8.8 13.5 8.4 13.5 8Z" stroke="currentColor" strokeWidth="1.5" />
-          </svg>
-          Settings
-        </Link>
-        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--fg-dim)' }}>
+      <div style={{ padding: '8px 12px 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
+          <Link
+            href="/settings"
+            title="Settings"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 'var(--radius-sm)', color: 'var(--fg-mute)', textDecoration: 'none' }}
+          >
+            <Settings size={16} />
+          </Link>
+          <button
+            title="Toggle theme (v2)"
+            disabled
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 'var(--radius-sm)', color: 'var(--fg-faint)', background: 'none', border: 'none', cursor: 'not-allowed' }}
+          >
+            <Sun size={16} />
+          </button>
+          <button
+            title="Log out"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 'var(--radius-sm)', color: 'var(--fg-mute)', background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%',
+            backgroundColor: 'var(--accent-deep)',
+            color: 'var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 12, fontWeight: 600, flexShrink: 0,
+          }}>
+            A
+          </div>
+          <span style={{ fontSize: 13, color: 'var(--fg)', fontWeight: 500 }}>Admin</span>
+        </div>
+
+        <div style={{ fontSize: 11, color: 'var(--fg-dim)' }}>
           Solo · v0.1.0
         </div>
       </div>
