@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react'
 import {
   getDb, backupJobs, backupRuns, agents, repositories, storageAlerts,
+  verificationTests, verificationRuns,
   desc, eq, gte, and, isNull,
 } from '@backupos/db'
 import { StatCard } from '@/components/ui/stat-card'
@@ -50,7 +51,7 @@ export default async function DashboardPage() {
   const since7d   = new Date(now -  7  * 24 * 60 * 60 * 1000)
   const since30d  = new Date(now - 30  * 24 * 60 * 60 * 1000)
 
-  const [jobs, recentRuns, allAgents, repos, successRuns24h, openAlerts, runs30d] =
+  const [jobs, recentRuns, allAgents, repos, successRuns24h, openAlerts, runs30d, passedVerifications7d] =
     await Promise.all([
       db.select().from(backupJobs).all(),
       db.select({
@@ -82,6 +83,14 @@ export default async function DashboardPage() {
         .from(backupRuns)
         .where(gte(backupRuns.startedAt, since30d))
         .all(),
+      db.select({ jobId: verificationTests.jobId })
+        .from(verificationRuns)
+        .innerJoin(verificationTests, eq(verificationRuns.testId, verificationTests.id))
+        .where(and(
+          eq(verificationRuns.status, 'passed'),
+          gte(verificationRuns.startedAt, since7d),
+        ))
+        .all(),
     ])
 
   const runs24h      = recentRuns.filter(r => r.startedAt && r.startedAt >= since24h)
@@ -93,6 +102,11 @@ export default async function DashboardPage() {
   const reposWithRecentCheck = repos.filter(
     r => r.lastCheckStatus === 'ok' && r.lastCheckedAt !== null && r.lastCheckedAt >= since7d,
   ).length
+
+  const verifiedJobIds = new Set(passedVerifications7d.map(r => r.jobId).filter(Boolean))
+  const verifiedPct    = enabledJobs === 0
+    ? 100
+    : Math.min(100, Math.round((verifiedJobIds.size / enabledJobs) * 100))
 
   const healthScore = computeHealthScore({
     enabledJobs,
@@ -125,7 +139,7 @@ export default async function DashboardPage() {
       />
 
       {/* KPI grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 32 }}>
         <StatCard label="Backup jobs"  value={jobs.length} />
         <StatCard label="Repositories" value={repos.length} />
         <StatCard label="Agents"       value={allAgents.length} footer={`${agentsOnline} online`} />
@@ -135,6 +149,14 @@ export default async function DashboardPage() {
           delta={failed24h > 0
             ? { text: `${failed24h} failed`, direction: 'down' }
             : runs24h.length > 0 ? { text: 'all ok', direction: 'up' } : undefined}
+        />
+        <StatCard
+          label="Verified (7d)"
+          value={`${verifiedPct}%`}
+          footer={`${verifiedJobIds.size} / ${enabledJobs} jobs`}
+          delta={verifiedPct < 80
+            ? { text: 'below 80% target', direction: 'down' }
+            : { text: 'on target', direction: 'up' }}
         />
       </div>
 
