@@ -1,9 +1,26 @@
-import { getDb, restoreSpecs, restoreRuns } from '@backupos/db'
-import { desc } from '@backupos/db'
+import type { ComponentProps } from 'react'
 import Link from 'next/link'
+import { RotateCcw } from 'lucide-react'
+import { getDb, restoreSpecs, restoreRuns, desc } from '@backupos/db'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+
+type BadgeStatus = ComponentProps<typeof Badge>['status']
+
+function validationBadge(s: string | null): BadgeStatus {
+  if (s === 'valid')   return 'healthy'
+  if (s === 'invalid') return 'error'
+  return 'idle'
+}
+
+function fmtDate(d: Date | null): string {
+  if (!d) return '—'
+  return d.toISOString().slice(0, 16).replace('T', ' ')
+}
 
 export default async function RestorePage() {
-  const db    = getDb()
+  const db = getDb()
   const [specs, recentRuns] = await Promise.all([
     db.select().from(restoreSpecs).all(),
     db.select().from(restoreRuns).orderBy(desc(restoreRuns.startedAt)).limit(10).all(),
@@ -13,11 +30,11 @@ export default async function RestorePage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>Restore</h1>
-        <Link href="/restore/new" style={{
-          padding: '8px 16px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
-          borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none',
-        }}>
-          New restore spec
+        <Link href="/restore/new" style={{ textDecoration: 'none' }}>
+          <Button variant="primary" size="md">
+            <RotateCcw size={14} />
+            New restore spec
+          </Button>
         </Link>
       </div>
 
@@ -28,32 +45,25 @@ export default async function RestorePage() {
             Restore specs
           </div>
           {specs.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-              No restore specs yet.{' '}
-              <Link href="/restore/new" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Create one</Link>
-            </div>
+            <EmptyState
+              type="inline"
+              headline="No restore specs yet."
+              primaryAction={{ label: 'Create one', href: '/restore/new' }}
+            />
           ) : (
-            <div>
-              {specs.map(spec => (
-                <div key={spec.id} style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <Link href={`/restore/${spec.id}`} style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)', textDecoration: 'none' }}>
-                      {spec.name}
-                    </Link>
-                    {spec.description && (
-                      <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginTop: 2 }}>{spec.description}</div>
-                    )}
-                  </div>
-                  <span style={{
-                    fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 6,
-                    backgroundColor: spec.validationStatus === 'valid' ? 'var(--ok-dim)' : spec.validationStatus === 'invalid' ? 'var(--err-dim)' : 'var(--surf2)',
-                    color: spec.validationStatus === 'valid' ? 'var(--ok)' : spec.validationStatus === 'invalid' ? 'var(--err)' : 'var(--fg-mute)',
-                  }}>
-                    {spec.validationStatus ?? 'untested'}
-                  </span>
+            specs.map(spec => (
+              <div key={spec.id} style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <Link href={`/restore/${spec.id}`} style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)', textDecoration: 'none' }}>
+                    {spec.name}
+                  </Link>
                 </div>
-              ))}
-            </div>
+                <Badge
+                  status={validationBadge(spec.validationStatus)}
+                  label={spec.validationStatus ?? 'Untested'}
+                />
+              </div>
+            ))
           )}
         </div>
 
@@ -63,25 +73,20 @@ export default async function RestorePage() {
             Recent restore runs
           </div>
           {recentRuns.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-              No restore runs yet
-            </div>
+            <EmptyState
+              type="inline"
+              headline="No restore runs yet"
+            />
           ) : (
             recentRuns.map(run => (
               <div key={run.id} style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                    {run.startedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
+                    {fmtDate(run.startedAt)}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 2 }}>{run.trigger ?? 'manual'}</div>
                 </div>
-                <span style={{
-                  fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 6,
-                  backgroundColor: run.status === 'success' ? 'var(--ok-dim)' : run.status === 'failed' ? 'var(--err-dim)' : 'var(--info-dim)',
-                  color: run.status === 'success' ? 'var(--ok)' : run.status === 'failed' ? 'var(--err)' : 'var(--info)',
-                }}>
-                  {run.status}
-                </span>
+                <Badge status={run.status as BadgeStatus} />
               </div>
             ))
           )}
