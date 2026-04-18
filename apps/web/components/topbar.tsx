@@ -1,7 +1,9 @@
+// apps/web/components/topbar.tsx
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { Search, Bell } from 'lucide-react'
+import { Search, Bell, ShieldAlert } from 'lucide-react'
+import { useDrMode } from '@/components/dr-mode-provider'
 
 const LABELS: Record<string, string> = {
   dashboard:    'Dashboard',
@@ -18,6 +20,7 @@ const LABELS: Record<string, string> = {
   audit:        'Audit log',
   settings:     'Settings',
   new:          'New',
+  verification: 'Verification',
 }
 
 function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
@@ -33,59 +36,98 @@ function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
 }
 
 export function Topbar() {
-  const pathname = usePathname()
-  const crumbs   = buildBreadcrumb(pathname)
+  const pathname                         = usePathname()
+  const crumbs                           = buildBreadcrumb(pathname)
+  const { active, toggle, hasFailed24h } = useDrMode()
+
+  const pulse = hasFailed24h && !active
 
   return (
-    <header style={{
-      height: 56,
-      backgroundColor: 'var(--bg2)',
-      borderBottom: '1px solid var(--border)',
-      display: 'flex', alignItems: 'center',
-      padding: '0 24px', gap: 16, flexShrink: 0,
-    }}>
-      <nav style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, minWidth: 0, flex: 1 }}>
-        {crumbs.map((crumb, i) => (
-          <span key={crumb.href} style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-            {i > 0 && <span style={{ color: 'var(--fg-faint)' }}>/</span>}
-            <span style={{ color: i === crumbs.length - 1 ? 'var(--fg)' : 'var(--fg-mute)' }}>
-              {crumb.label}
-            </span>
-          </span>
-        ))}
-      </nav>
-
-      <div style={{
-        width: 320, flexShrink: 0,
-        display: 'flex', alignItems: 'center', gap: 8,
-        backgroundColor: 'var(--surf)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
-        padding: '0 12px', height: 32, cursor: 'text',
+    <>
+      {pulse && (
+        <style>{`
+          @keyframes dr-pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.35; }
+          }
+        `}</style>
+      )}
+      <header style={{
+        height: 56,
+        backgroundColor: active
+          ? 'color-mix(in srgb, var(--bg2) 90%, #cc0000 10%)'
+          : 'var(--bg2)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center',
+        padding: '0 24px', gap: 16, flexShrink: 0,
+        transition: 'background-color 0.3s ease',
       }}>
-        <Search size={13} color="var(--fg-dim)" />
-        <span style={{ fontSize: 13, color: 'var(--fg-dim)', flex: 1 }}>Search…</span>
-        <kbd style={{
-          fontSize: 11, color: 'var(--fg-faint)',
-          backgroundColor: 'var(--surf2)',
-          border: '1px solid var(--border)',
-          borderRadius: 4, padding: '1px 5px',
-          fontFamily: 'var(--font-mono)',
-        }}>⌘K</kbd>
-      </div>
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, minWidth: 0, flex: 1 }}>
+          {crumbs.map((crumb, i) => (
+            <span key={crumb.href} style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+              {i > 0 && <span style={{ color: 'var(--fg-faint)' }}>/</span>}
+              <span style={{ color: i === crumbs.length - 1 ? 'var(--fg)' : 'var(--fg-mute)' }}>
+                {crumb.label}
+              </span>
+            </span>
+          ))}
+        </nav>
 
-      <button
-        title="Notifications"
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 32, height: 32,
+        <div style={{
+          width: 320, flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 8,
+          backgroundColor: 'var(--surf)',
+          border: '1px solid var(--border)',
           borderRadius: 'var(--radius-sm)',
-          color: 'var(--fg-mute)',
-          background: 'none', border: 'none', cursor: 'pointer',
-        }}
-      >
-        <Bell size={16} />
-      </button>
-    </header>
+          padding: '0 12px', height: 32, cursor: 'text',
+        }}>
+          <Search size={13} color="var(--fg-dim)" />
+          <span style={{ fontSize: 13, color: 'var(--fg-dim)', flex: 1 }}>Search…</span>
+          <kbd style={{
+            fontSize: 11, color: 'var(--fg-faint)',
+            backgroundColor: 'var(--surf2)',
+            border: '1px solid var(--border)',
+            borderRadius: 4, padding: '1px 5px',
+            fontFamily: 'var(--font-mono)',
+          }}>⌘K</kbd>
+        </div>
+
+        {/* DR Mode toggle */}
+        <button
+          onClick={toggle}
+          title={active ? 'Exit DR Mode (⌘⇧D)' : 'Enter DR Mode (⌘⇧D)'}
+          aria-pressed={active}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 32, height: 32,
+            borderRadius: 'var(--radius-sm)',
+            color: active || pulse ? 'var(--err)' : 'var(--fg-mute)',
+            background: active
+              ? 'color-mix(in srgb, transparent 85%, var(--err) 15%)'
+              : 'none',
+            border: active
+              ? '1px solid color-mix(in srgb, transparent 70%, var(--err) 30%)'
+              : 'none',
+            cursor: 'pointer',
+            animation: pulse ? 'dr-pulse 2s ease-in-out infinite' : 'none',
+          }}
+        >
+          <ShieldAlert size={16} />
+        </button>
+
+        <button
+          title="Notifications"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 32, height: 32,
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--fg-mute)',
+            background: 'none', border: 'none', cursor: 'pointer',
+          }}
+        >
+          <Bell size={16} />
+        </button>
+      </header>
+    </>
   )
 }
