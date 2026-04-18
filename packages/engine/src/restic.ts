@@ -14,6 +14,8 @@ import type {
   RestoreResult,
   RetentionPolicy,
   Snapshot,
+  SnapshotFile,
+  ResticLsNodeJson,
 } from './types'
 
 export class ResticEngine {
@@ -85,6 +87,27 @@ export class ResticEngine {
       tags:     s.tags,
       username: s.username,
     }))
+  }
+
+  async ls(snapshotId: string): Promise<SnapshotFile[]> {
+    const result = await this.run(['ls', snapshotId, '--json'])
+    if (result.exitCode !== 0) throw new ResticError('ls', result)
+
+    const files: SnapshotFile[] = []
+    for (const line of result.stdout.trim().split('\n')) {
+      if (!line) continue
+      const obj = JSON.parse(line) as ResticLsNodeJson
+      if (obj.struct_type !== 'node') continue
+      files.push({
+        name:        obj.name,
+        type:        obj.type,
+        path:        obj.path,
+        size:        obj.size,
+        mtime:       obj.mtime,
+        permissions: obj.permissions,
+      })
+    }
+    return files
   }
 
   async check(readData = false): Promise<CheckResult> {

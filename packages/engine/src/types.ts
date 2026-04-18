@@ -109,3 +109,22 @@ export interface ResticForgetJson {
   remove?: Array<{ id: string }>
   keep?: Array<{ id: string }>
 }
+
+export interface SnapshotFile {
+  name: string
+  type: string        // 'file' | 'dir' | 'symlink'
+  path: string
+  size?: number
+  mtime?: string
+  permissions?: string
+}
+
+export interface ResticLsNodeJson {
+  struct_type: 'node' | 'snapshot'
+  name: string
+  type: string
+  path: string
+  size?: number
+  mtime?: string
+  permissions?: string
+}

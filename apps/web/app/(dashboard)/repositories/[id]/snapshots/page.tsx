@@ -49,8 +49,10 @@ export default async function SnapshotsPage({ params }: { params: Promise<{ id: 
             <tbody>
               {snapshotList.map(snap => (
                 <tr key={snap.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
-                    {snap.id.slice(0, 8)}
+                  <td style={{ padding: '12px 20px', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+                    <Link href={`/repositories/${id}/snapshots/${snap.id}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+                      {snap.id.slice(0, 8)}
+                    </Link>
                   </td>
                   <td style={{ padding: '12px 20px', fontSize: 13, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
                     {snap.hostname ?? '—'}
