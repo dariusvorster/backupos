@@ -1,84 +1,96 @@
-import { getDb } from '@backupos/db'
-import { backupJobs, backupRuns, agents, repositories } from '@backupos/db'
-import { desc } from '@backupos/db'
+import type { ComponentProps } from 'react'
+import { getDb, backupJobs, backupRuns, agents, repositories, desc, eq } from '@backupos/db'
+import { StatCard } from '@/components/ui/stat-card'
+import { Badge } from '@/components/ui/badge'
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string }> = {
-    success:     { bg: 'var(--ok-dim)',   color: 'var(--ok)' },
-    failed:      { bg: 'var(--err-dim)',  color: 'var(--err)' },
-    running:     { bg: 'var(--info-dim)', color: 'var(--info)' },
-    warning:     { bg: 'var(--warn-dim)', color: 'var(--warn)' },
-    connected:   { bg: 'var(--ok-dim)',   color: 'var(--ok)' },
-    disconnected:{ bg: 'var(--err-dim)',  color: 'var(--err)' },
-  }
-  const style = map[status] ?? { bg: 'var(--surf2)', color: 'var(--fg-mute)' }
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '2px 8px',
-      borderRadius: 6,
-      fontSize: 11,
-      fontWeight: 500,
-      backgroundColor: style.bg,
-      color: style.color,
-    }}>
-      {status}
-    </span>
-  )
+type BadgeStatus = ComponentProps<typeof Badge>['status']
+
+const VALID_STATUSES = new Set<string>([
+  'healthy', 'success', 'connected', 'online', 'running',
+  'warning', 'missed', 'failed', 'error', 'disconnected',
+  'offline', 'idle', 'paused', 'verifying',
+])
+
+function toBadge(s: string): BadgeStatus {
+  return VALID_STATUSES.has(s) ? (s as BadgeStatus) : 'idle'
 }
 
-function KpiCard({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
-  return (
-    <div style={{
-      backgroundColor: 'var(--surf)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
-      padding: '20px 24px',
-    }}>
-      <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 28, fontWeight: 600, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
-        {value}
-      </div>
-      {sub && <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginTop: 4 }}>{sub}</div>}
-    </div>
-  )
+function fmtDuration(s: number | null): string {
+  if (s == null) return '—'
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+function fmtBytes(b: number | null): string {
+  if (b == null) return '—'
+  if (b < 1024) return `${b} B`
+  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`
+  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`
+  return `${(b / 1024 ** 3).toFixed(2)} GB`
+}
+
+function fmtAge(d: Date | null): string {
+  if (!d) return '—'
+  const s = Math.floor((Date.now() - d.getTime()) / 1000)
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
 }
 
 export default async function DashboardPage() {
   const db = getDb()
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
+
   const [jobs, recentRuns, allAgents, repos] = await Promise.all([
     db.select().from(backupJobs).all(),
-    db.select().from(backupRuns).orderBy(desc(backupRuns.startedAt)).limit(10).all(),
+    db.select({
+      id:          backupRuns.id,
+      jobId:       backupRuns.jobId,
+      jobName:     backupJobs.name,
+      status:      backupRuns.status,
+      startedAt:   backupRuns.startedAt,
+      duration:    backupRuns.duration,
+      dataAdded:   backupRuns.dataAdded,
+    })
+      .from(backupRuns)
+      .leftJoin(backupJobs, eq(backupRuns.jobId, backupJobs.id))
+      .orderBy(desc(backupRuns.startedAt))
+      .limit(20)
+      .all(),
     db.select().from(agents).all(),
     db.select().from(repositories).all(),
   ])
 
-  const runsSince24h = recentRuns.filter(r => {
-    const ts = r.startedAt?.getTime() ?? 0
-    return Date.now() - ts < 24 * 60 * 60 * 1000
-  })
+  const runs24h    = recentRuns.filter(r => r.startedAt && r.startedAt >= since24h)
+  const failed24h  = runs24h.filter(r => r.status === 'failed').length
+  const agentsOnline = allAgents.filter(a => a.status === 'connected').length
+
+  const th: React.CSSProperties = {
+    padding: '10px 20px', textAlign: 'left', fontWeight: 500,
+    fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em',
+  }
+  const thR: React.CSSProperties = { ...th, textAlign: 'right' }
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>
-        Dashboard
-      </h1>
+      <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Dashboard</h1>
 
       {/* KPI grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
-        <KpiCard label="Backup jobs" value={jobs.length} />
-        <KpiCard label="Repositories" value={repos.length} />
-        <KpiCard label="Agents" value={allAgents.length} sub={`${allAgents.filter(a => a.status === 'connected').length} online`} />
-        <KpiCard
-          label="Runs (24h)"
-          value={runsSince24h.length}
-          sub={`${runsSince24h.filter(r => r.status === 'failed').length} failed`}
+        <StatCard label="Backup jobs"  value={jobs.length} />
+        <StatCard label="Repositories" value={repos.length} />
+        <StatCard label="Agents"       value={allAgents.length} footer={`${agentsOnline} online`} />
+        <StatCard
+          label="Runs (24 h)"
+          value={runs24h.length}
+          delta={failed24h > 0
+            ? { text: `${failed24h} failed`, direction: 'down' }
+            : runs24h.length > 0 ? { text: 'all ok', direction: 'up' } : undefined}
         />
       </div>
 
-      {/* Recent runs */}
+      {/* Recent runs table */}
       <div style={{
         backgroundColor: 'var(--surf)',
         border: '1px solid var(--border)',
@@ -90,32 +102,36 @@ export default async function DashboardPage() {
         </div>
         {recentRuns.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-            No backup runs yet
+            No backup runs yet. Enrol an agent to get started.
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Job</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Status</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Started</th>
-                <th style={{ padding: '10px 20px', textAlign: 'right', fontWeight: 500 }}>Duration</th>
+              <tr>
+                <th style={th}>Status</th>
+                <th style={th}>Job</th>
+                <th style={thR}>Duration</th>
+                <th style={thR}>Size added</th>
+                <th style={thR}>Age</th>
               </tr>
             </thead>
             <tbody>
               {recentRuns.map(run => (
                 <tr key={run.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '12px 20px', fontSize: 13, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
-                    {run.jobId ?? '—'}
-                  </td>
                   <td style={{ padding: '12px 20px' }}>
-                    <StatusBadge status={run.status} />
+                    <Badge status={toBadge(run.status)} />
                   </td>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                    {run.startedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
+                  <td style={{ padding: '12px 20px', fontSize: 13, color: 'var(--fg)' }}>
+                    {run.jobName ?? run.jobId ?? '—'}
                   </td>
                   <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                    {run.duration != null ? `${run.duration}s` : '—'}
+                    {fmtDuration(run.duration)}
+                  </td>
+                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                    {fmtBytes(run.dataAdded)}
+                  </td>
+                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                    {fmtAge(run.startedAt)}
                   </td>
                 </tr>
               ))}
@@ -124,7 +140,7 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      {/* Agents grid */}
+      {/* Agents card */}
       <div style={{
         backgroundColor: 'var(--surf)',
         border: '1px solid var(--border)',
@@ -149,7 +165,7 @@ export default async function DashboardPage() {
                 <div style={{ fontSize: 11, color: 'var(--fg-dim)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
                   {agent.hostname ?? agent.ip ?? '—'}
                 </div>
-                <StatusBadge status={agent.status ?? 'disconnected'} />
+                <Badge status={toBadge(agent.status ?? 'disconnected')} />
               </div>
             ))}
           </div>
