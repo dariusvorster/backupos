@@ -1,4 +1,5 @@
 import * as cron from 'node-cron'
+import { parseExpression } from 'cron-parser'
 import { getDb, backupJobs, backupRuns, repositories, agents, eq, and, lt } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
@@ -36,6 +37,10 @@ export async function initScheduler(): Promise<void> {
   // Check for disconnected agents every 5 minutes
   cron.schedule('*/5 * * * *', () => { void checkAgents(db) }, { timezone: 'UTC' })
   console.log('[scheduler] Agent health monitor active')
+
+  // Check for missed backups every 10 minutes
+  cron.schedule('*/10 * * * *', () => { void checkMissedBackups(db) }, { timezone: 'UTC' })
+  console.log('[scheduler] Missed-backup monitor active')
 }
 
 type Db = ReturnType<typeof getDb>
@@ -108,6 +113,39 @@ async function runJob(db: Db, job: Job): Promise<void> {
     }).where(eq(backupJobs.id, job.id))
 
     await sendAlert('backup_failed', { jobId: job.id, jobName: job.name, error: errorMessage })
+  }
+}
+
+// In-memory set prevents duplicate missed-backup alerts within a server session
+const missedAlertSent = new Set<string>()
+
+async function checkMissedBackups(db: Db): Promise<void> {
+  const jobs = await db
+    .select()
+    .from(backupJobs)
+    .where(eq(backupJobs.enabled, true))
+    .all()
+
+  for (const job of jobs) {
+    try {
+      const interval = parseExpression(job.schedule, { tz: 'UTC' })
+      const prevExpected = interval.prev().toDate()
+      // Give the job a 5-minute grace window
+      const grace = 5 * 60 * 1000
+      const lastRun = job.lastRunAt
+
+      const missed = !lastRun || lastRun.getTime() < prevExpected.getTime() - grace
+
+      if (missed && !missedAlertSent.has(job.id)) {
+        missedAlertSent.add(job.id)
+        await sendAlert('backup_missed', { jobId: job.id, jobName: job.name })
+      } else if (!missed) {
+        // Clear flag once the job has run successfully again
+        missedAlertSent.delete(job.id)
+      }
+    } catch {
+      // invalid cron expression — skip
+    }
   }
 }
 

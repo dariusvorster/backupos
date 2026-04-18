@@ -92,7 +92,16 @@ export const jobsRouter = router({
         startedAt:    new Date(),
       })
 
-      return { runId }
+      // Dispatch to a connected agent when one is assigned
+      const dispatched = job.agentId
+        ? ctx.dispatch(job.agentId, {
+            type:  'run_backup',
+            runId,
+            jobId: job.id,
+          })
+        : false
+
+      return { runId, dispatched }
     }),
 
   runs: authedProcedure

@@ -5,22 +5,25 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
-    "start": "next start",
+    "start": "tsx server.ts",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@backupos/api":    "workspace:*",
-    "@backupos/db":     "workspace:*",
-    "@backupos/engine": "workspace:*",
-    "@trpc/client":     "^11.0.0",
-    "@trpc/server":     "^11.0.0",
-    "better-auth":      "^1.2.0",
-    "next":             "^15.0.0",
-    "node-cron":        "^3.0.0",
-    "react":            "^19.0.0",
-    "react-dom":        "^19.0.0",
-    "resend":           "^4.0.0"
+    "@backupos/agent-protocol": "workspace:*",
+    "@backupos/api":            "workspace:*",
+    "@backupos/db":             "workspace:*",
+    "@backupos/engine":         "workspace:*",
+    "@trpc/client":             "^11.0.0",
+    "@trpc/server":             "^11.0.0",
+    "better-auth":              "^1.2.0",
+    "cron-parser":              "^4.9.0",
+    "next":                     "^15.0.0",
+    "node-cron":                "^3.0.0",
+    "react":                    "^19.0.0",
+    "react-dom":                "^19.0.0",
+    "resend":                   "^4.0.0",
+    "ws":                       "^8.18.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
@@ -28,7 +31,9 @@
     "@types/node-cron":     "^3.0.0",
     "@types/react":         "^19.0.0",
     "@types/react-dom":     "^19.0.0",
+    "@types/ws":            "^8.5.0",
     "tailwindcss":          "^4.0.0",
+    "tsx":                  "^4.19.0",
     "typescript":           "^5.7.0"
   }
 }

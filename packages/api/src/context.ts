@@ -7,6 +7,7 @@ export interface AuthUser {
 }
 
 export interface Context {
-  db:   BetterSQLite3Database<Record<string, unknown>>
-  user: AuthUser | null
+  db:       BetterSQLite3Database<Record<string, unknown>>
+  user:     AuthUser | null
+  dispatch: (agentId: string, msg: object) => boolean
 }

@@ -66,23 +66,38 @@ RUN addgroup --system --gid 1001 nodejs \
 # Copy restic from base stage
 COPY --from=base /usr/local/bin/restic /usr/local/bin/restic
 
-# Copy built web app
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder /app/apps/web/public ./apps/web/public
-
-# Copy built packages (needed at runtime via node_modules symlinks)
-COPY --from=builder /app/packages/db/dist           ./packages/db/dist
-COPY --from=builder /app/packages/engine/dist        ./packages/engine/dist
-COPY --from=builder /app/packages/app-hooks/dist     ./packages/app-hooks/dist
-COPY --from=builder /app/packages/hypervisors/dist   ./packages/hypervisors/dist
-COPY --from=builder /app/packages/monitors/dist      ./packages/monitors/dist
-COPY --from=builder /app/packages/restore/dist       ./packages/restore/dist
-COPY --from=builder /app/packages/agent-protocol/dist ./packages/agent-protocol/dist
-COPY --from=builder /app/packages/api/dist           ./packages/api/dist
+# Copy workspace node_modules and package manifests
 COPY --from=builder /app/node_modules                ./node_modules
+COPY --from=builder /app/package.json                ./package.json
+COPY --from=builder /app/pnpm-workspace.yaml         ./pnpm-workspace.yaml
 
-RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+# Copy built Next.js output
+COPY --from=builder /app/apps/web/.next              ./apps/web/.next
+COPY --from=builder /app/apps/web/public             ./apps/web/public
+COPY --from=builder /app/apps/web/package.json       ./apps/web/package.json
+COPY --from=builder /app/apps/web/server.ts          ./apps/web/server.ts
+COPY --from=builder /app/apps/web/lib                ./apps/web/lib
+COPY --from=builder /app/apps/web/tsconfig.json      ./apps/web/tsconfig.json
+
+# Copy built packages
+COPY --from=builder /app/packages/db/dist            ./packages/db/dist
+COPY --from=builder /app/packages/db/package.json    ./packages/db/package.json
+COPY --from=builder /app/packages/engine/dist        ./packages/engine/dist
+COPY --from=builder /app/packages/engine/package.json ./packages/engine/package.json
+COPY --from=builder /app/packages/app-hooks/dist     ./packages/app-hooks/dist
+COPY --from=builder /app/packages/app-hooks/package.json ./packages/app-hooks/package.json
+COPY --from=builder /app/packages/hypervisors/dist   ./packages/hypervisors/dist
+COPY --from=builder /app/packages/hypervisors/package.json ./packages/hypervisors/package.json
+COPY --from=builder /app/packages/monitors/dist      ./packages/monitors/dist
+COPY --from=builder /app/packages/monitors/package.json ./packages/monitors/package.json
+COPY --from=builder /app/packages/restore/dist       ./packages/restore/dist
+COPY --from=builder /app/packages/restore/package.json ./packages/restore/package.json
+COPY --from=builder /app/packages/agent-protocol/dist ./packages/agent-protocol/dist
+COPY --from=builder /app/packages/agent-protocol/package.json ./packages/agent-protocol/package.json
+COPY --from=builder /app/packages/api/dist           ./packages/api/dist
+COPY --from=builder /app/packages/api/package.json   ./packages/api/package.json
+
+RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data /app/apps/web
 
 USER nextjs
 
@@ -90,4 +105,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "apps/web/server.js"]
+CMD ["node_modules/.bin/tsx", "apps/web/server.ts"]
