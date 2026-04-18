@@ -73,7 +73,7 @@ export const backupJobs = sqliteTable('backup_jobs', {
   lastRunStatus: text('last_run_status'),   // 'success' | 'failed' | 'running'
   nextRunAt:     integer('next_run_at',     { mode: 'timestamp' }),
   createdAt:     integer('created_at',      { mode: 'timestamp' }).notNull(),
-  bandwidthProfileId: text('bandwidth_profile_id'),
+  bandwidthProfileId: text('bandwidth_profile_id').references(() => bandwidthProfiles.id),
 })
 
 // ── Backup runs ───────────────────────────────────────────────────────────
@@ -307,6 +307,9 @@ export const verificationRuns = sqliteTable('verification_runs', {
   startedAt:    integer('started_at',   { mode: 'timestamp' }).notNull(),
   completedAt:  integer('completed_at', { mode: 'timestamp' }),
 })
+
+// ── Bandwidth profiles ────────────────────────────────────────────────────
+// Named bandwidth limit profiles assignable to backup jobs
 
 export const bandwidthProfiles = sqliteTable('bandwidth_profiles', {
   id:          text('id').primaryKey(),
