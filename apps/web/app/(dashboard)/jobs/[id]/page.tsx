@@ -1,7 +1,28 @@
-import { getDb, backupJobs, backupRuns } from '@backupos/db'
-import { eq, desc } from '@backupos/db'
-import { notFound } from 'next/navigation'
+import type { ComponentProps } from 'react'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { getDb, backupJobs, backupRuns, eq, desc } from '@backupos/db'
+import { Badge } from '@/components/ui/badge'
+
+type BadgeStatus = ComponentProps<typeof Badge>['status']
+
+function fmtDuration(s: number | null): string {
+  if (s == null) return '—'
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+function fmtBytes(b: number | null): string {
+  if (b == null) return '—'
+  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`
+  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`
+  return `${(b / 1024 ** 3).toFixed(2)} GB`
+}
+
+function fmtDate(d: Date | null): string {
+  if (!d) return '—'
+  return d.toISOString().slice(0, 16).replace('T', ' ')
+}
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -17,6 +38,15 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     .limit(20)
     .all()
 
+  const fieldStyle: React.CSSProperties = {
+    backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)', padding: '16px 20px',
+  }
+  const th: React.CSSProperties = {
+    padding: '10px 20px', textAlign: 'left', fontWeight: 500,
+    fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em',
+  }
+
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -25,22 +55,22 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-        {[
-          { label: 'Source type', value: job.sourceType },
-          { label: 'Schedule', value: job.schedule, mono: true },
-          { label: 'Status', value: job.enabled ? 'enabled' : 'disabled' },
-          { label: 'Last run', value: job.lastRunAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—', mono: true },
-        ].map(f => (
-          <div key={f.label} style={{
-            backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)', padding: '16px 20px',
-          }}>
-            <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 6 }}>{f.label}</div>
-            <div style={{ fontSize: 14, color: 'var(--fg)', fontFamily: f.mono ? 'var(--font-mono)' : undefined }}>
-              {f.value}
-            </div>
-          </div>
-        ))}
+        <div style={fieldStyle}>
+          <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 6 }}>Source type</div>
+          <div style={{ fontSize: 14, color: 'var(--fg)' }}>{job.sourceType}</div>
+        </div>
+        <div style={fieldStyle}>
+          <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 6 }}>Schedule</div>
+          <div style={{ fontSize: 14, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{job.schedule}</div>
+        </div>
+        <div style={fieldStyle}>
+          <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 8 }}>Status</div>
+          <Badge status={job.enabled ? 'healthy' : 'paused'} label={job.enabled ? 'Enabled' : 'Disabled'} />
+        </div>
+        <div style={fieldStyle}>
+          <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 6 }}>Last run</div>
+          <div style={{ fontSize: 14, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{fmtDate(job.lastRunAt)}</div>
+        </div>
       </div>
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
@@ -52,33 +82,34 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Started</th>
-                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Status</th>
-                <th style={{ padding: '10px 20px', textAlign: 'right', fontWeight: 500 }}>Duration</th>
-                <th style={{ padding: '10px 20px', textAlign: 'right', fontWeight: 500 }}>Data added</th>
+              <tr style={{ borderBottom: '1px solid var(--border2)' }}>
+                <th style={th}>Status</th>
+                <th style={th}>Started</th>
+                <th style={{ ...th, textAlign: 'right' }}>Duration</th>
+                <th style={{ ...th, textAlign: 'right' }}>Data added</th>
               </tr>
             </thead>
             <tbody>
               {runs.map(run => (
-                <tr key={run.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                    {run.startedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
-                  </td>
+                <tr
+                  key={run.id}
+                  style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}
+                >
                   <td style={{ padding: '12px 20px' }}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 6,
-                      backgroundColor: run.status === 'success' ? 'var(--ok-dim)' : run.status === 'failed' ? 'var(--err-dim)' : 'var(--info-dim)',
-                      color: run.status === 'success' ? 'var(--ok)' : run.status === 'failed' ? 'var(--err)' : 'var(--info)',
-                    }}>
-                      {run.status}
-                    </span>
+                    <Link href={`/jobs/${id}/runs/${run.id}`} style={{ display: 'flex', textDecoration: 'none' }}>
+                      <Badge status={run.status as BadgeStatus} />
+                    </Link>
+                  </td>
+                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
+                    <Link href={`/jobs/${id}/runs/${run.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                      {fmtDate(run.startedAt)}
+                    </Link>
                   </td>
                   <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                    {run.duration != null ? `${run.duration}s` : '—'}
+                    {fmtDuration(run.duration)}
                   </td>
                   <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                    {run.dataAdded != null ? `${(run.dataAdded / 1024 / 1024).toFixed(1)} MB` : '—'}
+                    {fmtBytes(run.dataAdded)}
                   </td>
                 </tr>
               ))}
