@@ -73,6 +73,7 @@ export const backupJobs = sqliteTable('backup_jobs', {
   lastRunStatus: text('last_run_status'),   // 'success' | 'failed' | 'running'
   nextRunAt:     integer('next_run_at',     { mode: 'timestamp' }),
   createdAt:     integer('created_at',      { mode: 'timestamp' }).notNull(),
+  bandwidthProfileId: text('bandwidth_profile_id'),
 })
 
 // ── Backup runs ───────────────────────────────────────────────────────────
@@ -305,4 +306,20 @@ export const verificationRuns = sqliteTable('verification_runs', {
   errorMessage: text('error_message'),
   startedAt:    integer('started_at',   { mode: 'timestamp' }).notNull(),
   completedAt:  integer('completed_at', { mode: 'timestamp' }),
+})
+
+export const bandwidthProfiles = sqliteTable('bandwidth_profiles', {
+  id:          text('id').primaryKey(),
+  name:        text('name').notNull(),
+  description: text('description'),
+  isGlobal:    integer('is_global', { mode: 'boolean' }).default(false),
+  createdAt:   integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const bandwidthRules = sqliteTable('bandwidth_rules', {
+  id:        text('id').primaryKey(),
+  profileId: text('profile_id').notNull().references(() => bandwidthProfiles.id),
+  startHour: integer('start_hour').notNull(),
+  endHour:   integer('end_hour').notNull(),
+  limitKbps: integer('limit_kbps'),
 })
