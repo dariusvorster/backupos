@@ -22,7 +22,8 @@ export async function setEscrow(repoId: string, formData: FormData): Promise<{ e
 }
 
 export async function setEscrowAction(repoId: string, formData: FormData): Promise<void> {
-  await setEscrow(repoId, formData)
+  const result = await setEscrow(repoId, formData)
+  if (result.error) throw new Error(result.error)
 }
 
 export async function clearEscrow(repoId: string): Promise<void> {
