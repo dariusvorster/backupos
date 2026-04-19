@@ -110,6 +110,9 @@ export const backupRuns = sqliteTable('backup_runs', {
 
   startedAt:   integer('started_at',   { mode: 'timestamp' }).notNull(),
   completedAt: integer('completed_at', { mode: 'timestamp' }),
+
+  log:    text('log'),
+  phases: text('phases'),
 })
 
 // ── Snapshots ─────────────────────────────────────────────────────────────
