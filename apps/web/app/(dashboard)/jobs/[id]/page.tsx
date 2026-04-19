@@ -1,8 +1,10 @@
 import type { ComponentProps } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getDb, backupJobs, backupRuns, eq, desc } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, bandwidthProfiles, eq, desc } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
+import { setJobProfile } from '@/app/actions/bandwidth'
+import { fmtLimit } from '@/lib/bandwidth'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -38,6 +40,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     .limit(20)
     .all()
 
+  const profiles = await db.select().from(bandwidthProfiles).all()
+  const boundSetJobProfile = setJobProfile.bind(null, job.id)
+
   const fieldStyle: React.CSSProperties = {
     backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
     borderRadius: 'var(--radius)', padding: '16px 20px',
@@ -71,6 +76,46 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 6 }}>Last run</div>
           <div style={{ fontSize: 14, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{fmtDate(job.lastRunAt)}</div>
         </div>
+      </div>
+
+      <div style={{
+        backgroundColor: 'var(--surf)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        padding: '18px 20px',
+        marginBottom: 24,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 12 }}>
+          Bandwidth profile
+        </div>
+        <form action={boundSetJobProfile} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            name="profileId"
+            defaultValue={(job.bandwidthProfileId ?? '') as string}
+            style={{
+              padding: '6px 10px', fontSize: 13,
+              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none',
+            }}
+          >
+            <option value="">Use global default</option>
+            {profiles.map(p => (
+              <option key={p.id} value={p.id}>{p.name}{p.isGlobal ? ' (global)' : ''}</option>
+            ))}
+          </select>
+          <button type="submit" style={{
+            padding: '6px 14px', fontSize: 13, cursor: 'pointer',
+            borderRadius: 'var(--radius-sm)', border: 'none',
+            background: 'var(--accent)', color: '#fff',
+          }}>
+            Save
+          </button>
+        </form>
+        {profiles.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginTop: 8 }}>
+            No profiles configured. <a href="/settings/bandwidth" style={{ color: 'var(--accent)' }}>Create one in settings.</a>
+          </div>
+        )}
       </div>
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
