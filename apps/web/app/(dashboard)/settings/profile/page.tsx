@@ -15,6 +15,11 @@ async function handleUploadAvatar(formData: FormData): Promise<void> {
   await uploadAvatar(formData)
 }
 
+async function handleRemoveAvatar(): Promise<void> {
+  'use server'
+  await removeAvatar()
+}
+
 const TIMEZONES = [
   'UTC', 'Africa/Johannesburg', 'America/New_York', 'America/Chicago',
   'America/Denver', 'America/Los_Angeles', 'Europe/London',
@@ -58,7 +63,7 @@ export default async function ProfilePage() {
                 color: 'var(--fg)', backgroundColor: 'var(--surf2)', display: 'block',
               }}>Upload</button>
             </form>
-            <form action={removeAvatar}>
+            <form action={handleRemoveAvatar}>
               <button type="submit" style={{
                 padding: '6px 12px', borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border)', fontSize: 13, cursor: 'pointer',
