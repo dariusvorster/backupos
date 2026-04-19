@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { StatCard } from '@/components/ui/stat-card'
 import { computeForecast, fmtCents, fmtGb, fmtGbPerMonth, BACKEND_PRESETS } from '@/lib/growth-forecast'
 import { saveCostConfig } from '@/app/actions/repository-cost'
-import { TrendingUp, AlertTriangle, Info } from 'lucide-react'
+import { setEscrow, clearEscrow } from '@/app/actions/escrow'
+import { TrendingUp, AlertTriangle, Info, ShieldCheck, ShieldAlert } from 'lucide-react'
 
 function bytes(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -56,6 +57,9 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
   )
 
   const boundSaveCostConfig = saveCostConfig.bind(null, repo.id)
+  const boundSetEscrow   = async (formData: FormData): Promise<void> => { await setEscrow(repo.id, formData) }
+  const boundClearEscrow = clearEscrow.bind(null, repo.id)
+  const hasEscrow        = repo.escrowedKey !== null && repo.escrowedKey !== undefined
   const preset = BACKEND_PRESETS[repo.backend as keyof typeof BACKEND_PRESETS]
 
   return (
@@ -305,6 +309,101 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
             </button>
           </form>
         </details>
+      </div>
+
+      {/* Escrow card */}
+      <div style={{
+        backgroundColor: 'var(--surf)',
+        border: `1px solid ${hasEscrow ? 'color-mix(in srgb, var(--border) 60%, var(--ok) 40%)' : 'var(--border)'}`,
+        borderRadius: 'var(--radius)',
+        padding: '20px 24px',
+        marginBottom: 24,
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          {hasEscrow
+            ? <ShieldCheck size={16} color="var(--ok)" />
+            : <ShieldAlert size={16} color="var(--warn)" />
+          }
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)' }}>Password escrow</span>
+          <span style={{ flex: 1 }} />
+          <span style={{
+            fontSize: 12, fontWeight: 500,
+            color: hasEscrow ? 'var(--ok)' : 'var(--warn)',
+            padding: '2px 8px',
+            borderRadius: 'var(--radius-sm)',
+            backgroundColor: hasEscrow
+              ? 'color-mix(in srgb, transparent 85%, var(--ok) 15%)'
+              : 'color-mix(in srgb, transparent 85%, var(--warn) 15%)',
+            border: `1px solid ${hasEscrow
+              ? 'color-mix(in srgb, transparent 70%, var(--ok) 30%)'
+              : 'color-mix(in srgb, transparent 70%, var(--warn) 30%)'}`,
+          }}>
+            {hasEscrow ? 'Password in escrow ✓' : 'No escrow — password loss unrecoverable ⚠'}
+          </span>
+        </div>
+
+        {hasEscrow ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: 'var(--fg-mute)' }}>
+            <span>Your repository password is safely escrowed and can be recovered with your recovery passphrase at Settings.</span>
+            <form action={boundClearEscrow} style={{ flexShrink: 0 }}>
+              <button type="submit" style={{
+                fontSize: 12, padding: '4px 12px', cursor: 'pointer',
+                borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                color: 'var(--fg-mute)', background: 'var(--surf2)',
+              }}>
+                Remove escrow
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div>
+            <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 16, lineHeight: 1.5 }}>
+              BackupOS can store an encrypted copy of this repository password. You can recover it using your recovery passphrase. If you lose both, the backup is unrecoverable.
+            </p>
+            <form action={boundSetEscrow} style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 380 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--fg-mute)', marginBottom: 4 }}>Repository password</label>
+                <input
+                  name="password"
+                  type="password"
+                  required
+                  placeholder="Enter your current restic password"
+                  style={{ width: '100%', padding: '6px 10px', fontSize: 13, backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--fg-mute)', marginBottom: 4 }}>Recovery passphrase (min. 8 characters)</label>
+                <input
+                  name="passphrase"
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="Choose a memorable passphrase"
+                  style={{ width: '100%', padding: '6px 10px', fontSize: 13, backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--fg-mute)', marginBottom: 4 }}>Confirm passphrase</label>
+                <input
+                  name="confirm"
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="Repeat passphrase"
+                  style={{ width: '100%', padding: '6px 10px', fontSize: 13, backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <button type="submit" style={{
+                fontSize: 13, padding: '7px 16px', cursor: 'pointer',
+                borderRadius: 'var(--radius-sm)', border: 'none',
+                background: 'var(--accent)', color: '#fff', alignSelf: 'flex-start',
+              }}>
+                Enable escrow
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   )
