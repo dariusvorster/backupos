@@ -3,6 +3,11 @@ import { eq } from 'drizzle-orm'
 import { SnapshotActions } from '@/components/snapshot-actions'
 import { Pin, Lock } from 'lucide-react'
 
+function safeParseTags(json: string | null): string[] {
+  if (!json) return []
+  try { return JSON.parse(json) } catch { return [] }
+}
+
 interface PageProps {
   searchParams: Promise<{ repo?: string; filter?: string; tag?: string }>
 }
@@ -48,12 +53,11 @@ export default async function SnapshotsPage({ searchParams }: PageProps) {
   const filtered = allSnaps.filter(s => {
     if (listFilter === 'pinned') return s.pinned
     if (listFilter === 'held')   return s.retentionHold
-    if (listFilter === 'tagged') return !!s.customTags && JSON.parse(s.customTags).length > 0
+    if (listFilter === 'tagged') return safeParseTags(s.customTags).length > 0
     return true
   }).filter(s => {
     if (!tagFilter) return true
-    const tags: string[] = s.customTags ? JSON.parse(s.customTags) : []
-    return tags.includes(tagFilter)
+    return safeParseTags(s.customTags).includes(tagFilter)
   })
 
   const pinnedCount = allSnaps.filter(s => s.pinned).length
@@ -153,8 +157,8 @@ export default async function SnapshotsPage({ searchParams }: PageProps) {
             <tbody>
               {filtered.map((snap, i) => {
                 const job        = jobs.find(j => j.id === snap.jobId)
-                const resticTags: string[] = snap.tags       ? JSON.parse(snap.tags)       : []
-                const userTags:   string[] = snap.customTags ? JSON.parse(snap.customTags) : []
+                const resticTags: string[] = safeParseTags(snap.tags)
+                const userTags:   string[] = safeParseTags(snap.customTags)
                 return (
                   <tr key={snap.id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)', backgroundColor: 'var(--surf)' }}>
                     <td style={{ padding: '12px 16px' }}>

@@ -14,30 +14,34 @@ export async function addCustomTag(id: string, tag: string): Promise<void> {
   const trimmed = tag.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '')
   if (!trimmed) return
 
-  const db       = getDb()
-  const snapshot = await db.select({ customTags: snapshots.customTags })
-    .from(snapshots).where(eq(snapshots.id, id)).limit(1).then(r => r[0] ?? null)
-  if (!snapshot) return
+  const db = getDb()
+  await db.transaction(async tx => {
+    const snapshot = await tx.select({ customTags: snapshots.customTags })
+      .from(snapshots).where(eq(snapshots.id, id)).limit(1).then(r => r[0] ?? null)
+    if (!snapshot) return
 
-  const existing: string[] = snapshot.customTags ? JSON.parse(snapshot.customTags) : []
-  if (existing.includes(trimmed)) return
+    const existing: string[] = snapshot.customTags ? JSON.parse(snapshot.customTags) : []
+    if (existing.includes(trimmed)) return
 
-  await db.update(snapshots)
-    .set({ customTags: JSON.stringify([...existing, trimmed]) })
-    .where(eq(snapshots.id, id)).run()
+    await tx.update(snapshots)
+      .set({ customTags: JSON.stringify([...existing, trimmed]) })
+      .where(eq(snapshots.id, id)).run()
+  })
   revalidatePath('/snapshots')
 }
 
 export async function removeCustomTag(id: string, tag: string): Promise<void> {
-  const db       = getDb()
-  const snapshot = await db.select({ customTags: snapshots.customTags })
-    .from(snapshots).where(eq(snapshots.id, id)).limit(1).then(r => r[0] ?? null)
-  if (!snapshot) return
+  const db = getDb()
+  await db.transaction(async tx => {
+    const snapshot = await tx.select({ customTags: snapshots.customTags })
+      .from(snapshots).where(eq(snapshots.id, id)).limit(1).then(r => r[0] ?? null)
+    if (!snapshot) return
 
-  const existing: string[] = snapshot.customTags ? JSON.parse(snapshot.customTags) : []
-  await db.update(snapshots)
-    .set({ customTags: JSON.stringify(existing.filter(t => t !== tag)) })
-    .where(eq(snapshots.id, id)).run()
+    const existing: string[] = snapshot.customTags ? JSON.parse(snapshot.customTags) : []
+    await tx.update(snapshots)
+      .set({ customTags: JSON.stringify(existing.filter(t => t !== tag)) })
+      .where(eq(snapshots.id, id)).run()
+  })
   revalidatePath('/snapshots')
 }
 

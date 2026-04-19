@@ -29,7 +29,7 @@ export function SnapshotActions({ id, pinned: initialPinned, retentionHold: init
   const [tagInput,      setTagInput]      = useState('')
   const [showHoldForm,  setShowHoldForm]  = useState(false)
   const [showTagForm,   setShowTagForm]   = useState(false)
-  const [,              startTransition]  = useTransition()
+  const [isPending,     startTransition]  = useTransition()
 
   function togglePin() {
     const next = !pinned
@@ -90,7 +90,7 @@ export function SnapshotActions({ id, pinned: initialPinned, retentionHold: init
 
       {/* Action buttons row */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        <button onClick={togglePin} style={{ ...btnBase, color: pinned ? 'var(--accent)' : 'var(--fg-mute)', borderColor: pinned ? 'var(--accent)' : 'var(--border)' }}>
+        <button onClick={togglePin} disabled={isPending} style={{ ...btnBase, color: pinned ? 'var(--accent)' : 'var(--fg-mute)', borderColor: pinned ? 'var(--accent)' : 'var(--border)', opacity: isPending ? 0.5 : 1 }}>
           {pinned ? <PinOff size={11} /> : <Pin size={11} />}
           {pinned ? 'Unpin' : 'Pin'}
         </button>
