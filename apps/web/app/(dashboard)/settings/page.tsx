@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { getDb, repositories, isNotNull } from '@backupos/db'
+import { EscrowRecoverySection } from '@/components/escrow-recovery-section'
+import { Key } from 'lucide-react'
 
 const LINKED_ITEMS: Record<string, string> = {
   'Bandwidth limits': '/settings/bandwidth',
@@ -16,7 +19,14 @@ const itemStyle: React.CSSProperties = {
   fontSize: 13, color: 'var(--fg)',
 }
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const db = getDb()
+  const escrowedRepos = await db
+    .select({ id: repositories.id, name: repositories.name })
+    .from(repositories)
+    .where(isNotNull(repositories.escrowedKey))
+    .all()
+
   return (
     <div style={{ maxWidth: 560 }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Settings</h1>
@@ -53,6 +63,24 @@ export default function SettingsPage() {
           })}
         </div>
       ))}
+
+      {/* Password recovery */}
+      <div style={{
+        backgroundColor: 'var(--surf)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        padding: '20px 24px',
+        marginBottom: 16,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <Key size={16} color="var(--fg-mute)" />
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)' }}>Recover repository password</span>
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 16, lineHeight: 1.5 }}>
+          If you have forgotten a repository password, you can recover it here using your recovery passphrase — provided escrow was enabled for that repository.
+        </p>
+        <EscrowRecoverySection repos={escrowedRepos} />
+      </div>
     </div>
   )
 }
