@@ -7,8 +7,8 @@ import { encryptPassword, decryptPassword } from '@/lib/escrow'
 
 export async function setEscrow(repoId: string, formData: FormData): Promise<{ error?: string }> {
   const password   = ((formData.get('password')   ?? '') as string).trim()
-  const passphrase = ((formData.get('passphrase')  ?? '') as string).trim()
-  const confirm    = ((formData.get('confirm')     ?? '') as string).trim()
+  const passphrase = (formData.get('passphrase')  ?? '') as string             // no trim — spaces are valid
+  const confirm    = (formData.get('confirm')     ?? '') as string             // no trim — match raw input
 
   if (!password)              return { error: 'Repository password is required.' }
   if (passphrase.length < 8)  return { error: 'Recovery passphrase must be at least 8 characters.' }
@@ -28,7 +28,7 @@ export async function clearEscrow(repoId: string): Promise<void> {
 }
 
 export async function recoverPassword(repoId: string, formData: FormData): Promise<{ password?: string; error?: string }> {
-  const passphrase = ((formData.get('passphrase') ?? '') as string).trim()
+  const passphrase = (formData.get('passphrase') ?? '') as string  // no trim
   if (!passphrase) return { error: 'Recovery passphrase is required.' }
 
   const db   = getDb()
