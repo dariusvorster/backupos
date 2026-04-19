@@ -58,11 +58,20 @@ export async function uploadAvatar(formData: FormData): Promise<{ error?: string
     return { error: 'Only JPG, PNG, or WebP files are accepted.' }
   }
 
+  const buf   = Buffer.from(await file.arrayBuffer())
+  const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF
+  const isPng  = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47
+  const isWebp = buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+               && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  if (!isJpeg && !isPng && !isWebp) {
+    return { error: 'File content does not match an accepted image type.' }
+  }
+
   const dir = path.join(process.cwd(), 'public', 'avatars')
   await mkdir(dir, { recursive: true })
 
   const filename = `${me.id}.${ext}`
-  await writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()))
+  await writeFile(path.join(dir, filename), buf)
 
   const db = getDb()
   await db.update(user).set({ image: `/avatars/${filename}`, updatedAt: new Date() }).where(eq(user.id, me.id)).run()
