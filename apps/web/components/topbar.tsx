@@ -4,6 +4,7 @@
 import { usePathname } from 'next/navigation'
 import { Search, Bell, ShieldAlert } from 'lucide-react'
 import { useDrMode } from '@/components/dr-mode-provider'
+import { useCommandPalette } from '@/components/command-palette-provider'
 
 const LABELS: Record<string, string> = {
   dashboard:    'Dashboard',
@@ -39,6 +40,7 @@ export function Topbar() {
   const pathname                         = usePathname()
   const crumbs                           = buildBreadcrumb(pathname)
   const { active, toggle, hasFailed24h } = useDrMode()
+  const { openPalette }                  = useCommandPalette()
 
   const pulse = hasFailed24h && !active
 
@@ -73,14 +75,20 @@ export function Topbar() {
           ))}
         </nav>
 
-        <div style={{
-          width: 320, flexShrink: 0,
-          display: 'flex', alignItems: 'center', gap: 8,
-          backgroundColor: 'var(--surf)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-sm)',
-          padding: '0 12px', height: 32, cursor: 'text',
-        }}>
+        <div
+          onClick={openPalette}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => e.key === 'Enter' && openPalette()}
+          style={{
+            width: 320, flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 8,
+            backgroundColor: 'var(--surf)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '0 12px', height: 32, cursor: 'pointer',
+          }}
+        >
           <Search size={13} color="var(--fg-dim)" />
           <span style={{ fontSize: 13, color: 'var(--fg-dim)', flex: 1 }}>Search…</span>
           <kbd style={{
