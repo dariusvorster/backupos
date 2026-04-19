@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { getDb, infraOsServices } from '@backupos/db'
+import { getDb, infraOsServices, backupJobs } from '@backupos/db'
 import { eq } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 
@@ -36,6 +36,7 @@ export async function addInfraServiceAction(formData: FormData): Promise<void> {
 
 export async function removeInfraService(id: string): Promise<void> {
   const db = getDb()
+  await db.update(backupJobs).set({ infraServiceId: null }).where(eq(backupJobs.infraServiceId, id)).run()
   await db.delete(infraOsServices).where(eq(infraOsServices.id, id)).run()
   revalidatePath('/settings/infra-os')
   revalidatePath('/dashboard')
