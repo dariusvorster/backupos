@@ -412,13 +412,14 @@ export const verification = sqliteTable('verification', {
   identifier: text('identifier').notNull(),
   value:      text('value').notNull(),
   expiresAt:  integer('expires_at', { mode: 'timestamp' }).notNull(),
-  createdAt:  integer('created_at', { mode: 'timestamp' }),
+  createdAt:  integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt:  integer('updated_at', { mode: 'timestamp' }),
 })
 
-export const twoFactor = sqliteTable('two_factor', {
+export const twoFactorSecrets = sqliteTable('two_factor', {
   id:          text('id').primaryKey(),
   secret:      text('secret').notNull(),
   backupCodes: text('backup_codes').notNull(),
   userId:      text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
+  createdAt:   integer('created_at', { mode: 'timestamp' }).notNull(),
 })

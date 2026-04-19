@@ -71,6 +71,13 @@
       "when": 1776625317183,
       "tag": "0009_slow_wild_child",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1776625471153,
+      "tag": "0010_bored_umar",
+      "breakpoints": true
     }
   ]
 }
