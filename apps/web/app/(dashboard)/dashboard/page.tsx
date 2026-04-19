@@ -110,11 +110,17 @@ export default async function DashboardPage() {
     ? 100
     : Math.min(100, Math.round((verifiedJobIds.size / enabledJobs) * 100))
 
-  const coveredServiceIds = new Set(
+  const coveredInfraServiceIds = new Set(
     jobs.map(j => j.infraServiceId).filter((id): id is string => id !== null && id !== undefined)
   )
-  const allServices = await db.select().from(infraOsServices).all()
-  const coveredInfraServices = allServices.filter(s => coveredServiceIds.has(s.id)).length
+  const allServices = await db.select({
+    id:          infraOsServices.id,
+    name:        infraOsServices.name,
+    serviceType: infraOsServices.serviceType,
+    host:        infraOsServices.host,
+    description: infraOsServices.description,
+  }).from(infraOsServices).all()
+  const coveredInfraServices = allServices.filter(s => coveredInfraServiceIds.has(s.id)).length
 
   const healthScore = computeHealthScore({
     enabledJobs,
@@ -148,7 +154,7 @@ export default async function DashboardPage() {
   const currentLimit = activeRule?.limitKbps ?? null
   const sparkValues  = build24hSparklineValues(globalRules)
 
-  const uncoveredServices = allServices.filter(s => !coveredServiceIds.has(s.id))
+  const uncoveredServices = allServices.filter(s => !coveredInfraServiceIds.has(s.id))
 
   const SOURCE_TYPE_MAP: Record<string, string> = {
     database:   'database',
