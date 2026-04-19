@@ -21,6 +21,9 @@ export interface HealthScoreInput {
   totalAgents: number
   onlineAgents: number
   openAlerts: number
+  verifiedJobs: number          // jobs with a passing restore test in last 7d
+  totalInfraServices: number    // total registered Infra OS services (0 = no integration)
+  coveredInfraServices: number  // services that have at least one backup job
 }
 
 export function computeGrade(score: number): { grade: string; gradeColor: string } {
@@ -47,20 +50,38 @@ export function computeHealthScore(input: HealthScoreInput): HealthScore {
 
   const alertScore = Math.max(0, 100 - input.openAlerts * 20)
 
-  const factors: HealthFactor[] = [
+  const verifyScore = input.enabledJobs === 0
+    ? 100
+    : Math.min(100, Math.round((input.verifiedJobs / input.enabledJobs) * 100))
+
+  const hasInfra    = input.totalInfraServices > 0
+  const infraScore  = hasInfra
+    ? Math.min(100, Math.round((input.coveredInfraServices / input.totalInfraServices) * 100))
+    : 100
+
+  const baseFactors: HealthFactor[] = [
     {
-      label: 'Jobs backed up in last 24h',
+      label: 'Jobs backed up (24h)',
       score: jobScore,
-      weight: 40,
+      weight: 30,
       value: `${input.jobsWithSuccessIn24h} / ${input.enabledJobs}`,
       detail: jobScore === 100
         ? 'All enabled jobs ran successfully'
         : `${input.enabledJobs - input.jobsWithSuccessIn24h} job(s) missed their last run`,
     },
     {
+      label: 'Restore verified (7d)',
+      score: verifyScore,
+      weight: 20,
+      value: `${input.verifiedJobs} / ${input.enabledJobs}`,
+      detail: verifyScore === 100
+        ? 'All enabled jobs have a passing restore test'
+        : `${input.enabledJobs - input.verifiedJobs} job(s) lack a passing restore verification`,
+    },
+    {
       label: 'Repositories checked (7d)',
       score: repoScore,
-      weight: 20,
+      weight: 15,
       value: `${input.reposWithRecentCheck} / ${input.totalRepos}`,
       detail: repoScore === 100
         ? 'All repositories have a recent integrity check'
@@ -69,7 +90,7 @@ export function computeHealthScore(input: HealthScoreInput): HealthScore {
     {
       label: 'Agents online',
       score: agentScore,
-      weight: 20,
+      weight: 15,
       value: `${input.onlineAgents} / ${input.totalAgents}`,
       detail: agentScore === 100
         ? 'All agents are connected'
@@ -86,8 +107,24 @@ export function computeHealthScore(input: HealthScoreInput): HealthScore {
     },
   ]
 
+  const factors: HealthFactor[] = hasInfra
+    ? [
+        ...baseFactors.map(f => ({ ...f, weight: Math.round(f.weight * 0.9) })),
+        {
+          label: 'Services with backups',
+          score: infraScore,
+          weight: 10,
+          value: `${input.coveredInfraServices} / ${input.totalInfraServices}`,
+          detail: infraScore === 100
+            ? 'All registered services have a backup job'
+            : `${input.totalInfraServices - input.coveredInfraServices} service(s) lack backup coverage`,
+        },
+      ]
+    : baseFactors
+
+  const totalWeight = factors.reduce((s, f) => s + f.weight, 0)
   const score = Math.round(
-    factors.reduce((acc, f) => acc + f.score * f.weight, 0) / 100,
+    factors.reduce((acc, f) => acc + f.score * f.weight, 0) / totalWeight,
   )
 
   const { grade, gradeColor } = computeGrade(score)
