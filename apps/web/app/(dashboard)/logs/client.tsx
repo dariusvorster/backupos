@@ -25,7 +25,7 @@ export function LogsClient({ initialLogs }: { initialLogs: LogEntry[] }) {
   const [search,    setSearch]    = useState('')
   const [isPending, startTransition] = useTransition()
 
-  function fetch(overrides: Partial<LogFilters> = {}) {
+  function refetch(overrides: Partial<LogFilters> = {}) {
     const filters: LogFilters = {
       component: overrides.component !== undefined ? overrides.component || undefined : component || undefined,
       level:     overrides.level     !== undefined ? overrides.level     || undefined : level     || undefined,
@@ -70,7 +70,7 @@ export function LogsClient({ initialLogs }: { initialLogs: LogEntry[] }) {
             {COMPONENTS.map(c => chip(c, component === c, () => {
               const next = component === c ? '' : c
               setComponent(next)
-              fetch({ component: next })
+              refetch({ component: next })
             }))}
           </div>
         </div>
@@ -80,14 +80,14 @@ export function LogsClient({ initialLogs }: { initialLogs: LogEntry[] }) {
             {LEVELS.map(l => chip(l, level === l, () => {
               const next = level === l ? '' : l
               setLevel(next)
-              fetch({ level: next })
+              refetch({ level: next })
             }))}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ fontSize: 11, color: 'var(--fg-dim)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Search</div>
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && fetch()} placeholder="Filter messages…"
+            onKeyDown={e => e.key === 'Enter' && refetch()} placeholder="Filter messages…"
             style={{ width: '100%', padding: '6px 10px', fontSize: 12, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', outline: 'none' }}
           />
         </div>
@@ -125,7 +125,7 @@ export function LogsClient({ initialLogs }: { initialLogs: LogEntry[] }) {
                 </div>
                 {expanded === entry.id && entry.payload && (
                   <pre style={{ margin: 0, padding: '8px 20px 8px 280px', backgroundColor: 'var(--bg2)', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--fg-mute)', overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
-                    {JSON.stringify(JSON.parse(entry.payload), null, 2)}
+                    {(() => { try { return JSON.stringify(JSON.parse(entry.payload), null, 2) } catch { return entry.payload } })()}
                   </pre>
                 )}
               </div>
