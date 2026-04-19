@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react'
 import {
   getDb, backupJobs, backupRuns, agents, repositories, storageAlerts,
-  verificationTests, verificationRuns, bandwidthProfiles, bandwidthRules,
+  verificationTests, verificationRuns, bandwidthProfiles, bandwidthRules, infraOsServices,
   desc, eq, gte, and, isNull,
 } from '@backupos/db'
 import { StatCard } from '@/components/ui/stat-card'
@@ -139,6 +139,19 @@ export default async function DashboardPage() {
   const currentLimit = activeRule?.limitKbps ?? null
   const sparkValues  = build24hSparklineValues(globalRules)
 
+  // Services with no backup job assigned
+  const allServices = await db.select().from(infraOsServices).all()
+  const coveredServiceIds = new Set(
+    jobs.map(j => j.infraServiceId).filter((id): id is string => id !== null && id !== undefined)
+  )
+  const uncoveredServices = allServices.filter(s => !coveredServiceIds.has(s.id))
+
+  const SOURCE_TYPE_MAP: Record<string, string> = {
+    database:   'database',
+    filesystem: 'filesystem',
+    container:  'docker_volume',
+  }
+
   const th: React.CSSProperties = {
     padding: '10px 20px', textAlign: 'left', fontWeight: 500,
     fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -226,6 +239,62 @@ export default async function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Services without backups */}
+      {uncoveredServices.length > 0 && (
+        <div style={{
+          backgroundColor: 'var(--surf)',
+          border: '1px solid color-mix(in srgb, var(--border) 60%, var(--warn) 40%)',
+          borderRadius: 'var(--radius)',
+          marginBottom: 32,
+        }}>
+          <div style={{
+            padding: '16px 20px', borderBottom: '1px solid var(--border2)',
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>Services without backups</span>
+            <span style={{
+              fontSize: 12, fontWeight: 500, color: 'var(--warn)',
+              padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+              backgroundColor: 'color-mix(in srgb, transparent 85%, var(--warn) 15%)',
+              border: '1px solid color-mix(in srgb, transparent 70%, var(--warn) 30%)',
+            }}>
+              {uncoveredServices.length} unprotected
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {uncoveredServices.map((svc, i) => {
+              const sourceType = SOURCE_TYPE_MAP[svc.serviceType] ?? 'filesystem'
+              const href = `/jobs/new?name=${encodeURIComponent(svc.name)}&sourceType=${encodeURIComponent(sourceType)}&infraServiceId=${encodeURIComponent(svc.id)}`
+              return (
+                <div key={svc.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 20px',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>{svc.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 2 }}>
+                      {svc.serviceType}{svc.host ? ` · ${svc.host}` : ''}{svc.description ? ` · ${svc.description}` : ''}
+                    </div>
+                  </div>
+                  <a
+                    href={href}
+                    style={{
+                      fontSize: 12, padding: '4px 12px',
+                      borderRadius: 'var(--radius-sm)', border: 'none',
+                      background: 'var(--accent)', color: '#fff', textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Create job →
+                  </a>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Recent runs table */}
       <div style={{
