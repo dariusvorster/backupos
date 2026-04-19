@@ -41,12 +41,22 @@ export async function enableTotp(formData: FormData): Promise<{ backupCodes?: st
 
   if (!secret) return { error: 'TOTP secret is missing.' }
   if (!code)   return { error: 'Verification code is required.' }
+
+  const db     = getDb()
+  const dbUser = await db.select({ twoFactorEnabled: user.twoFactorEnabled }).from(user).where(eq(user.id, me.id)).get()
+  if (dbUser?.twoFactorEnabled) return { error: 'TOTP is already enabled. Disable it first.' }
+
   if (!verifyTotpCode(secret, code)) return { error: 'Invalid TOTP code. Try again.' }
 
-  const backupCodes    = generateBackupCodes()
-  const hashedCodes    = backupCodes.map(hashBackupCode)
-  const encryptedSecret = encryptPassword(secret, encryptionKey())
-  const db = getDb()
+  let encryptedSecret: string
+  try {
+    encryptedSecret = encryptPassword(secret, encryptionKey())
+  } catch {
+    return { error: 'Server encryption key is not configured.' }
+  }
+
+  const backupCodes = generateBackupCodes()
+  const hashedCodes = backupCodes.map(hashBackupCode)
 
   await db.delete(twoFactorSecrets).where(eq(twoFactorSecrets.userId, me.id)).run()
   await db.insert(twoFactorSecrets).values({
@@ -96,7 +106,10 @@ export async function redeemBackupCode(formData: FormData): Promise<{ error?: st
   const code = ((formData.get('code') ?? '') as string).trim()
   if (!code) return { error: 'Backup code is required.' }
 
-  const db       = getDb()
+  const db     = getDb()
+  const dbUser = await db.select({ twoFactorEnabled: user.twoFactorEnabled }).from(user).where(eq(user.id, me.id)).get()
+  if (!dbUser?.twoFactorEnabled) return { error: 'TOTP is not enabled.' }
+
   const tfRecord = await db.select().from(twoFactorSecrets).where(eq(twoFactorSecrets.userId, me.id)).get()
   if (!tfRecord) return { error: 'No TOTP record found.' }
 
@@ -106,10 +119,16 @@ export async function redeemBackupCode(formData: FormData): Promise<{ error?: st
   if (idx === -1) return { error: 'Invalid backup code.' }
 
   storedHashes.splice(idx, 1)
-  await db.update(twoFactorSecrets)
-    .set({ backupCodes: JSON.stringify(storedHashes) })
-    .where(eq(twoFactorSecrets.userId, me.id))
-    .run()
+
+  if (storedHashes.length === 0) {
+    await db.delete(twoFactorSecrets).where(eq(twoFactorSecrets.userId, me.id)).run()
+    await db.update(user).set({ twoFactorEnabled: false, updatedAt: new Date() }).where(eq(user.id, me.id)).run()
+  } else {
+    await db.update(twoFactorSecrets)
+      .set({ backupCodes: JSON.stringify(storedHashes) })
+      .where(eq(twoFactorSecrets.userId, me.id))
+      .run()
+  }
 
   revalidatePath('/settings/security')
   return {}

@@ -58,7 +58,8 @@ export async function uploadAvatar(formData: FormData): Promise<{ error?: string
     return { error: 'Only JPG, PNG, or WebP files are accepted.' }
   }
 
-  const buf   = Buffer.from(await file.arrayBuffer())
+  const buf = Buffer.from(await file.arrayBuffer())
+  if (buf.length < 12) return { error: 'File content does not match an accepted image type.' }
   const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF
   const isPng  = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47
   const isWebp = buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
