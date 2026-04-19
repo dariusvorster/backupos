@@ -1,7 +1,7 @@
 'use server'
 
 import { getDb, backupRuns, storageAlerts } from '@backupos/db'
-import { eq, count }                         from 'drizzle-orm'
+import { eq, count, isNull }                 from 'drizzle-orm'
 
 export interface SystemStatus {
   activeRunCount: number
@@ -20,6 +20,7 @@ export async function getSystemStatus(): Promise<SystemStatus> {
   const [alertRow] = db
     .select({ n: count() })
     .from(storageAlerts)
+    .where(isNull(storageAlerts.resolvedAt))
     .all()
 
   return {

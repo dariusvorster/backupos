@@ -33,23 +33,22 @@ function setTitle(activeRuns: number, alerts: number) {
 export function FaviconManager() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  async function poll() {
-    try {
-      const { activeRunCount, alertCount } = await getSystemStatus()
-      if (alertCount > 0) {
-        setFavicon(FAVICONS.alert)
-      } else if (activeRunCount > 0) {
-        setFavicon(FAVICONS.running)
-      } else {
-        setFavicon(FAVICONS.idle)
-      }
-      setTitle(activeRunCount, alertCount)
-    } catch {
-      // silently ignore — favicon state is non-critical
-    }
-  }
-
   useEffect(() => {
+    async function poll() {
+      try {
+        const { activeRunCount, alertCount } = await getSystemStatus()
+        if (alertCount > 0) {
+          setFavicon(FAVICONS.alert)
+        } else if (activeRunCount > 0) {
+          setFavicon(FAVICONS.running)
+        } else {
+          setFavicon(FAVICONS.idle)
+        }
+        setTitle(activeRunCount, alertCount)
+      } catch {
+        // silently ignore — favicon state is non-critical
+      }
+    }
     poll()
     intervalRef.current = setInterval(poll, 30_000)
     return () => {
