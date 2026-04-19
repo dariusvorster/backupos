@@ -55,7 +55,7 @@ function linearRegression(points: { x: number; y: number }[]): { slope: number; 
 
   const residuals = points.map(p => p.y - (slope * p.x + intercept))
   const mse       = residuals.reduce((s, r) => s + r ** 2, 0) / Math.max(n - 2, 1)
-  const stdErr    = Math.sqrt(mse / ssXX) * Math.sqrt(ssXX + meanX ** 2 / n)
+  const stdErr    = ssXX === 0 ? 0 : Math.sqrt(mse / ssXX)
 
   return { slope, intercept, stdErr }
 }
