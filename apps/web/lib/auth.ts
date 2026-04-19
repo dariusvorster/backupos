@@ -1,0 +1,25 @@
+import { betterAuth }     from 'better-auth'
+import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { getDb, user, session, account, verification } from '@backupos/db'
+
+export const auth = betterAuth({
+  database: drizzleAdapter(getDb(), {
+    provider: 'sqlite',
+    schema: { user, session, account, verification },
+  }),
+  emailAndPassword: {
+    enabled:    true,
+    autoSignIn: true,
+  },
+  session: {
+    expiresIn: 60 * 60 * 24 * 30,
+    updateAge:  60 * 60 * 24,
+    cookieCache: {
+      enabled: true,
+      maxAge:  60 * 5,
+    },
+  },
+})
+
+export type Session = typeof auth.$Infer.Session
+export type User    = typeof auth.$Infer.Session.user
