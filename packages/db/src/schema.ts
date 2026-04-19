@@ -32,7 +32,9 @@ export const repositories = sqliteTable('repositories', {
   snapshotCount:   integer('snapshot_count'),
   lastCheckedAt:   integer('last_checked_at',   { mode: 'timestamp' }),
   lastCheckStatus: text('last_check_status'),   // 'ok' | 'errors' | 'unknown'
-  createdAt:       integer('created_at',        { mode: 'timestamp' }).notNull(),
+  createdAt:          integer('created_at',           { mode: 'timestamp' }).notNull(),
+  costPerGbMonth:     integer('cost_per_gb_month'),
+  monthlyBudgetCents: integer('monthly_budget_cents'),
 })
 
 // ── Backup jobs ───────────────────────────────────────────────────────────
