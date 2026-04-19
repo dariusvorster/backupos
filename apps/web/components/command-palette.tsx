@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useTransition, useCallback } from 'react'
+import { useState, useEffect, useRef, useTransition, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCommandPalette } from '@/components/command-palette-provider'
 import { search } from '@/app/actions/search'
@@ -110,21 +110,27 @@ export function CommandPalette() {
   }, [query])
 
   // Build flat list for keyboard nav
-  const filteredCommands = COMMANDS.filter(c =>
-    query.trim().length === 0 ||
-    c.label.toLowerCase().includes(query.toLowerCase()) ||
-    c.sublabel.toLowerCase().includes(query.toLowerCase())
-  )
+  const filteredCommands = useMemo(() =>
+    COMMANDS.filter(c =>
+      query.trim().length === 0 ||
+      c.label.toLowerCase().includes(query.toLowerCase()) ||
+      c.sublabel.toLowerCase().includes(query.toLowerCase())
+    ),
+  [query])
 
-  const flatItems: FlatItem[] = [
+  const flatItems = useMemo<FlatItem[]>(() => [
     ...filteredCommands.map(item => ({ kind: 'command' as const, item })),
     ...results.map(item         => ({ kind: 'result'  as const, item })),
     ...(query.trim().length === 0 ? recent.map(q => ({ kind: 'recent' as const, query: q })) : []),
-  ]
+  ], [filteredCommands, results, query, recent])
+
+  useEffect(() => {
+    setSelected(s => Math.min(s, Math.max(flatItems.length - 1, 0)))
+  }, [flatItems.length])
 
   const navigate = useCallback((item: FlatItem) => {
     if (item.kind === 'recent') { setQuery(item.query); return }
-    if (query.trim().length >= 2) saveRecent(query.trim())
+    if (item.kind === 'result' && query.trim().length >= 2) saveRecent(query.trim())
     closePalette()
     router.push(item.kind === 'command' ? item.item.url : item.item.url)
   }, [query, closePalette, router])
