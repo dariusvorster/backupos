@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { deleteProfile, addRule, deleteRule } from '@/app/actions/bandwidth'
 import { fmtLimit, build24hSparklineValues, UNLIMITED_KBPS, BandwidthRule } from '@/lib/bandwidth'
 
@@ -52,6 +52,7 @@ function RuleEditor({ profileId, rules }: { profileId: string; rules: Rule[] }) 
   const [startHour, setStartHour] = useState('0')
   const [endHour,   setEndHour]   = useState('8')
   const [limitKbps, setLimitKbps] = useState('')
+  const [, startTransition] = useTransition()
 
   async function handleAdd() {
     const fd = new FormData()
@@ -81,7 +82,7 @@ function RuleEditor({ profileId, rules }: { profileId: string; rules: Rule[] }) 
                 <td style={{ padding: '4px 8px', color: 'var(--fg)' }}>{fmtLimit(r.limitKbps)}</td>
                 <td style={{ padding: '4px 8px' }}>
                   <button
-                    onClick={() => deleteRule(r.id)}
+                    onClick={() => startTransition(() => { deleteRule(r.id) })}
                     style={{ fontSize: 11, color: 'var(--fg-dim)', background: 'none', border: 'none', cursor: 'pointer' }}
                   >
                     Remove
@@ -125,6 +126,7 @@ function RuleEditor({ profileId, rules }: { profileId: string; rules: Rule[] }) 
 
 export function BandwidthProfileManager({ profiles }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
 
   if (profiles.length === 0) {
     return (
@@ -176,7 +178,10 @@ export function BandwidthProfileManager({ profiles }: Props) {
               {p.rules.length} rule{p.rules.length !== 1 ? 's' : ''}
             </span>
             <button
-              onClick={e => { e.stopPropagation(); deleteProfile(p.id) }}
+              onClick={e => {
+                e.stopPropagation()
+                startTransition(() => { deleteProfile(p.id) })
+              }}
               style={{
                 fontSize: 12, color: 'var(--fg-dim)', background: 'none',
                 border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',

@@ -32,6 +32,10 @@ export async function createProfile(formData: FormData): Promise<void> {
 
 export async function deleteProfile(id: string): Promise<void> {
   const db = getDb()
+  await db.update(backupJobs)
+    .set({ bandwidthProfileId: null })
+    .where(eq(backupJobs.bandwidthProfileId, id))
+    .run()
   await db.delete(bandwidthRules).where(eq(bandwidthRules.profileId, id)).run()
   await db.delete(bandwidthProfiles).where(eq(bandwidthProfiles.id, id)).run()
   revalidatePath('/settings/bandwidth')
@@ -57,12 +61,14 @@ export async function addRule(profileId: string, formData: FormData): Promise<vo
   }).run()
 
   revalidatePath('/settings/bandwidth')
+  revalidatePath('/dashboard')
 }
 
 export async function deleteRule(id: string): Promise<void> {
   const db = getDb()
   await db.delete(bandwidthRules).where(eq(bandwidthRules.id, id)).run()
   revalidatePath('/settings/bandwidth')
+  revalidatePath('/dashboard')
 }
 
 export async function setJobProfile(jobId: string, formData: FormData): Promise<void> {
