@@ -6,6 +6,8 @@ import { Key } from 'lucide-react'
 const LINKED_ITEMS: Record<string, string> = {
   'Bandwidth limits': '/settings/bandwidth',
   'Infra OS services': '/settings/infra-os',
+  'Profile': '/settings/profile',
+  'Security': '/settings/security',
 }
 
 const chevron = (
