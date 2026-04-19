@@ -5,6 +5,8 @@ import { getDb, backupJobs, backupRuns, bandwidthProfiles, eq, desc } from '@bac
 import { Badge } from '@/components/ui/badge'
 import { setJobProfile } from '@/app/actions/bandwidth'
 import { fmtLimit } from '@/lib/bandwidth'
+import { PreflightButton } from '@/components/preflight-modal'
+import { togglePreflight } from '@/app/actions/preflight'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -58,6 +60,33 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         <Link href="/jobs" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Jobs</Link>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginTop: 8 }}>{job.name}</h1>
       </div>
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <PreflightButton jobId={job.id} jobName={job.name} />
+        <button
+          style={{
+            padding: '6px 16px', fontSize: 13, cursor: 'pointer',
+            borderRadius: 'var(--radius-sm)', border: 'none',
+            background: 'var(--accent)', color: '#fff',
+          }}
+        >
+          Run now
+        </button>
+      </div>
+
+      {job.lastPreflightStatus && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20, fontSize: 12, color: 'var(--fg-mute)' }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
+            backgroundColor:
+              job.lastPreflightStatus === 'ok'      ? 'var(--ok)'   :
+              job.lastPreflightStatus === 'warning' ? 'var(--warn)' : 'var(--err)',
+          }} />
+          Last pre-flight: <strong style={{ color: 'var(--fg)' }}>{job.lastPreflightStatus}</strong>
+          {job.lastPreflightAt && <span> · {job.lastPreflightAt.toLocaleDateString()}</span>}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
         <div style={fieldStyle}>
@@ -117,6 +146,43 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         )}
       </div>
+
+      {/* Auto-preflight toggle */}
+      {(() => {
+        const boundToggle = togglePreflight.bind(null, job.id)
+        return (
+          <div style={{
+            backgroundColor: 'var(--surf)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            padding: '14px 20px',
+            marginBottom: 24,
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>
+                Auto pre-flight before scheduled runs
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginTop: 2 }}>
+                Runs checks 15 minutes before each scheduled backup. Fires an alert if any check fails.
+              </div>
+            </div>
+            <form action={boundToggle}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  name="preflightEnabled"
+                  defaultChecked={job.preflightEnabled ?? true}
+                  onChange={e => (e.currentTarget.form as HTMLFormElement).requestSubmit()}
+                />
+                <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>
+                  {(job.preflightEnabled ?? true) ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
+            </form>
+          </div>
+        )
+      })()}
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
