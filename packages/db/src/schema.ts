@@ -38,6 +38,18 @@ export const repositories = sqliteTable('repositories', {
   escrowedKey:        text('escrowed_key'),
 })
 
+// ── Infra OS service registry ─────────────────────────────────────────────
+// Manually registered (or API-synced) services for coverage tracking
+
+export const infraOsServices = sqliteTable('infra_os_services', {
+  id:          text('id').primaryKey(),
+  name:        text('name').notNull(),
+  serviceType: text('service_type').notNull(), // 'database' | 'filesystem' | 'container'
+  host:        text('host'),
+  description: text('description'),
+  createdAt:   integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+
 // ── Backup jobs ───────────────────────────────────────────────────────────
 // A scheduled backup job — what to back up, where, and when
 
@@ -82,6 +94,7 @@ export const backupJobs = sqliteTable('backup_jobs', {
   preflightEnabled:    integer('preflight_enabled',    { mode: 'boolean' }).default(true),
   lastPreflightAt:     integer('last_preflight_at',    { mode: 'timestamp' }),
   lastPreflightStatus: text('last_preflight_status'),  // 'ok' | 'warning' | 'failed' | null
+  infraServiceId: text('infra_service_id').references(() => infraOsServices.id),
 })
 
 // ── Backup runs ───────────────────────────────────────────────────────────

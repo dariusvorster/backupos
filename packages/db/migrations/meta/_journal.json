@@ -57,6 +57,13 @@
       "when": 1776616670727,
       "tag": "0007_talented_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1776619047904,
+      "tag": "0008_tearful_pixie",
+      "breakpoints": true
     }
   ]
 }
