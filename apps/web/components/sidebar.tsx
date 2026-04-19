@@ -57,17 +57,17 @@ const NAV: NavGroup[] = [
 
 function Logo() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', height: 56, flexShrink: 0 }}>
-      <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', height: 56, flexShrink: 0 }}>
+      <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect width="48" height="48" rx="16" fill="#1A1206" />
-        <rect x="4"  y="4"  width="19" height="19" fill="#F5A623" />
-        <rect x="25" y="4"  width="19" height="19" fill="#854F0B" />
-        <rect x="4"  y="25" width="19" height="19" fill="#854F0B" />
-        <rect x="25" y="25" width="19" height="19" fill="#C77A14" />
-        <rect x="14" y="14" width="20" height="20" fill="#FEF5E0" />
+        <rect x="6"  y="6"  width="16" height="16" rx="2" fill="#F5A623" />
+        <rect x="26" y="6"  width="16" height="16" rx="2" fill="#854F0B" />
+        <rect x="6"  y="26" width="16" height="16" rx="2" fill="#854F0B" />
+        <rect x="26" y="26" width="16" height="16" rx="2" fill="#C77A14" />
+        <rect x="18" y="18" width="12" height="12" rx="2" fill="#FEF5E0" />
       </svg>
-      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)', letterSpacing: '-0.01em' }}>
-        BackupOS
+      <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: '-0.01em' }}>
+        <span style={{ color: 'var(--fg)' }}>Backup</span><span style={{ color: 'var(--accent)' }}>OS</span>
       </span>
     </div>
   )
