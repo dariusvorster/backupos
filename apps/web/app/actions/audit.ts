@@ -1,7 +1,7 @@
 'use server'
 
 import { getDb, auditLog }  from '@backupos/db'
-import { desc }             from 'drizzle-orm'
+import { desc, eq, and, like } from 'drizzle-orm'
 import { verifyAuditChain } from '@/lib/audit'
 
 export interface AuditFilters {
@@ -24,42 +24,52 @@ export interface AuditEntry {
 }
 
 export async function getAuditPage(filters: AuditFilters = {}, limit = 200): Promise<AuditEntry[]> {
-  const db   = getDb()
-  const rows = await db.select().from(auditLog)
-    .orderBy(desc(auditLog.createdAt)).limit(limit * 5).all()
+  const db         = getDb()
+  const conditions = []
+  if (filters.actor)        conditions.push(eq(auditLog.actor,        filters.actor))
+  if (filters.resourceType) conditions.push(eq(auditLog.resourceType, filters.resourceType))
+  if (filters.action)       conditions.push(eq(auditLog.action,       filters.action))
+
+  const query = conditions.length > 0
+    ? db.select().from(auditLog).where(and(...conditions)).orderBy(desc(auditLog.createdAt)).limit(limit * 2)
+    : db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit * 2)
+
+  const rows = await query.all()
 
   return rows
-    .filter(r => {
-      if (filters.actor        && r.actor        !== filters.actor)        return false
-      if (filters.resourceType && r.resourceType !== filters.resourceType) return false
-      if (filters.action       && r.action       !== filters.action)       return false
-      if (filters.search && !`${r.action} ${r.resourceName ?? ''} ${r.actor ?? ''}`
-          .toLowerCase().includes(filters.search.toLowerCase())) return false
-      return true
-    })
+    .filter(r => !filters.search || `${r.action} ${r.resourceName ?? ''} ${r.actor ?? ''}`
+        .toLowerCase().includes(filters.search.toLowerCase()))
     .slice(0, limit)
-    .map(r => ({ ...r, createdAt: r.createdAt! }))
+    .map(r => ({ ...r, createdAt: r.createdAt ?? new Date(0) }))
 }
 
 export async function getForensicTimeline(actor: string): Promise<AuditEntry[]> {
   const db   = getDb()
-  const rows = await db.select().from(auditLog).orderBy(auditLog.createdAt).all()
-  return rows
-    .filter(r => (r.actor ?? 'system').toLowerCase().includes(actor.toLowerCase()))
-    .map(r => ({ ...r, createdAt: r.createdAt! }))
+  const rows = await db.select().from(auditLog)
+    .where(like(auditLog.actor, `%${actor}%`))
+    .orderBy(auditLog.createdAt)
+    .all()
+  return rows.map(r => ({ ...r, createdAt: r.createdAt ?? new Date(0) }))
 }
 
 export async function checkAuditIntegrity(): Promise<{ ok: boolean; brokenAt?: string; checkedCount: number }> {
   return verifyAuditChain()
 }
 
+function csvCell(v: string): string {
+  const escaped = v.replace(/"/g, '""')
+  // Prefix formula starters to prevent spreadsheet injection
+  const safe = /^[=+\-@\t\r]/.test(escaped) ? `'${escaped}` : escaped
+  return `"${safe}"`
+}
+
 export async function exportAuditLog(filters: AuditFilters, format: 'csv' | 'jsonl'): Promise<string> {
   const rows = await getAuditPage(filters, 100_000)
   if (format === 'jsonl') return rows.map(r => JSON.stringify(r)).join('\n')
-  const header = 'id,action,resource_type,resource_name,actor,created_at'
+  const header = '"id","action","resource_type","resource_name","actor","created_at"'
   const body   = rows.map(r =>
-    [r.id, r.action, r.resourceType,
-     JSON.stringify(r.resourceName ?? ''), r.actor ?? '', r.createdAt.toISOString()].join(',')
+    [csvCell(r.id), csvCell(r.action), csvCell(r.resourceType),
+     csvCell(r.resourceName ?? ''), csvCell(r.actor ?? ''), csvCell(r.createdAt.toISOString())].join(',')
   )
   return [header, ...body].join('\n')
 }
