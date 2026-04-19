@@ -74,6 +74,11 @@ export const backupJobs = sqliteTable('backup_jobs', {
   nextRunAt:     integer('next_run_at',     { mode: 'timestamp' }),
   createdAt:     integer('created_at',      { mode: 'timestamp' }).notNull(),
   bandwidthProfileId: text('bandwidth_profile_id').references(() => bandwidthProfiles.id),
+
+  // Pre-flight checks
+  preflightEnabled:    integer('preflight_enabled',    { mode: 'boolean' }).default(true),
+  lastPreflightAt:     integer('last_preflight_at',    { mode: 'timestamp' }),
+  lastPreflightStatus: text('last_preflight_status'),  // 'ok' | 'warning' | 'failed' | null
 })
 
 // ── Backup runs ───────────────────────────────────────────────────────────
