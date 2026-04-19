@@ -1,5 +1,6 @@
 // apps/web/app/(dashboard)/layout.tsx
 import { Sidebar }                from '@/components/sidebar'
+import { getCurrentUser }         from '@/lib/user'
 import { Topbar }                 from '@/components/topbar'
 import { DrModeProvider }         from '@/components/dr-mode-provider'
 import { DrModeOverlay }          from '@/components/dr-mode-overlay'
@@ -28,11 +29,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const hasFailed24h = failedRuns.length > 0
 
+  const currentUser = await getCurrentUser()
+  const sidebarUser = currentUser
+    ? { name: currentUser.name, email: currentUser.email, image: currentUser.image ?? null }
+    : { name: 'Admin', email: 'admin@backupos.local', image: null }
+
   return (
     <CommandPaletteProvider>
       <DrModeProvider hasFailed24h={hasFailed24h}>
         <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: 'var(--bg)' }}>
-          <Sidebar />
+          <Sidebar user={sidebarUser} />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
             <Topbar />
             <main style={{

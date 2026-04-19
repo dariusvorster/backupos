@@ -5,11 +5,13 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Activity, PlayCircle, Clock, Camera,
   Server, Database, Radar, RotateCcw, ListRestart,
-  TriangleAlert, FileClock, Settings, Sun, LogOut, ShieldCheck,
+  TriangleAlert, FileClock, Settings, Sun, ShieldCheck,
 } from 'lucide-react'
+import { ProfilePopover } from './profile-popover'
 
 interface NavItem  { href: string; label: string; icon: React.ReactNode }
 interface NavGroup { label: string; items: NavItem[] }
+interface SidebarUser { name: string; email: string; image?: string | null }
 
 const NAV: NavGroup[] = [
   {
@@ -70,7 +72,7 @@ function Logo() {
   )
 }
 
-export function Sidebar() {
+export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname()
 
   return (
@@ -137,28 +139,11 @@ export function Sidebar() {
           >
             <Sun size={16} />
           </button>
-          <button
-            title="Log out"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 'var(--radius-sm)', color: 'var(--fg-mute)', background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            <LogOut size={16} />
-          </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: '50%',
-            backgroundColor: 'var(--accent-deep)',
-            color: 'var(--accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 12, fontWeight: 600, flexShrink: 0,
-          }}>
-            A
-          </div>
-          <span style={{ fontSize: 13, color: 'var(--fg)', fontWeight: 500 }}>Admin</span>
-        </div>
+        <ProfilePopover user={user} />
 
-        <div style={{ fontSize: 11, color: 'var(--fg-dim)' }}>
+        <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 4 }}>
           Solo · v0.1.0
         </div>
       </div>
