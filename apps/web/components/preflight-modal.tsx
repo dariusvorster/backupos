@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { CheckCircle, AlertTriangle, XCircle, Loader, ShieldCheck } from 'lucide-react'
 import { runPreflight } from '@/app/actions/preflight'
-import type { CheckResult, CheckStatus } from '@/lib/preflight'
+import { CHECKS_SKELETON, type CheckResult, type CheckStatus } from '@/lib/preflight'
 
 interface Props {
   jobId:   string
@@ -18,25 +18,24 @@ function StatusIcon({ status, spinning }: { status: CheckStatus | 'pending'; spi
   return <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--border)' }} />
 }
 
-const CHECKS_SKELETON = [
-  { id: 'agent',  label: 'Agent reachable' },
-  { id: 'source', label: 'Source configured' },
-  { id: 'repo',   label: 'Repository reachable' },
-  { id: 'quota',  label: 'Storage quota' },
-  { id: 'hooks',  label: 'App hook prerequisites' },
-]
-
 export function PreflightButton({ jobId, jobName }: Props) {
   const [open,    setOpen]    = useState(false)
   const [results, setResults] = useState<CheckResult[] | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
 
   function openModal() {
+    if (isPending) return
     setOpen(true)
     setResults(null)
+    setError(null)
     startTransition(async () => {
-      const r = await runPreflight(jobId)
-      setResults(r)
+      try {
+        const r = await runPreflight(jobId)
+        setResults(r)
+      } catch {
+        setError('Pre-flight check failed to run. Please try again.')
+      }
     })
   }
 
@@ -126,6 +125,12 @@ export function PreflightButton({ jobId, jobName }: Props) {
               })}
             </div>
 
+            {error && (
+              <div style={{ marginTop: 16, fontSize: 13, color: 'var(--err)', textAlign: 'center' }}>
+                {error}
+              </div>
+            )}
+
             {/* Summary */}
             {overall && (
               <div style={{
@@ -149,7 +154,7 @@ export function PreflightButton({ jobId, jobName }: Props) {
 
             {/* Footer */}
             <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              {!isPending && results && (
+              {!isPending && (results || error) && (
                 <button
                   onClick={openModal}
                   style={{

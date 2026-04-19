@@ -107,3 +107,11 @@ function fmtBytes(bytes: number): string {
   if (bytes >= 1_048_576)     return `${(bytes / 1_048_576).toFixed(0)} MB`
   return `${(bytes / 1024).toFixed(0)} KB`
 }
+
+export const CHECKS_SKELETON: { id: string; label: string }[] = [
+  { id: 'agent',  label: 'Agent reachable' },
+  { id: 'source', label: 'Source configured' },
+  { id: 'repo',   label: 'Repository reachable' },
+  { id: 'quota',  label: 'Storage quota' },
+  { id: 'hooks',  label: 'App hook prerequisites' },
+]
