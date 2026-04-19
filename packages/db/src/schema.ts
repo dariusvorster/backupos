@@ -120,6 +120,11 @@ export const snapshots = sqliteTable('snapshots', {
   hostname:     text('hostname'),
   paths:        text('paths'), // JSON array
   tags:         text('tags'),  // JSON array
+  pinned:        integer('pinned',         { mode: 'boolean' }).default(false),
+  retentionHold: integer('retention_hold', { mode: 'boolean' }).default(false),
+  holdReason:    text('hold_reason'),
+  holdExpiresAt: integer('hold_expires_at', { mode: 'timestamp' }),
+  customTags:    text('custom_tags'),
   sizeBytes:    integer('size_bytes'),
   createdAt:    integer('created_at', { mode: 'timestamp' }).notNull(),
 })
