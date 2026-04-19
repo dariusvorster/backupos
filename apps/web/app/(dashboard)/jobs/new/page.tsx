@@ -11,7 +11,16 @@ const SOURCE_TYPES = [
   { value: 'nas_share',        label: 'NAS share',         desc: 'SMB or NFS share' },
 ]
 
-export default async function NewJobPage() {
+export default async function NewJobPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ name?: string; sourceType?: string; infraServiceId?: string }>
+}) {
+  const params              = await searchParams
+  const prefillName         = params.name           ?? ''
+  const prefillSourceType   = params.sourceType     ?? ''
+  const prefillInfraService = params.infraServiceId ?? ''
+
   const db      = getDb()
   const [repos, agentList] = await Promise.all([
     db.select().from(repositories).all(),
@@ -25,6 +34,19 @@ export default async function NewJobPage() {
         Configure a new backup job — what to back up, where to store it, and when.
       </p>
 
+      {prefillInfraService && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          fontSize: 13, color: 'var(--fg-mute)',
+          backgroundColor: 'var(--surf2)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          padding: '10px 14px', marginBottom: 16,
+        }}>
+          <span>Pre-filled from Infra OS service registry. Adjust fields as needed.</span>
+        </div>
+      )}
+
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 24 }}>
         <form>
           <div style={{ marginBottom: 20 }}>
@@ -34,6 +56,7 @@ export default async function NewJobPage() {
             <input
               name="name"
               type="text"
+              defaultValue={prefillName}
               placeholder="nightly-postgres"
               style={{
                 width: '100%', padding: '8px 12px',
@@ -56,7 +79,7 @@ export default async function NewJobPage() {
                   backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-sm)', cursor: 'pointer',
                 }}>
-                  <input type="radio" name="sourceType" value={st.value} style={{ marginTop: 2 }} />
+                  <input type="radio" name="sourceType" value={st.value} defaultChecked={prefillSourceType === st.value} style={{ marginTop: 2 }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>{st.label}</div>
                     <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 2 }}>{st.desc}</div>
@@ -117,6 +140,10 @@ export default async function NewJobPage() {
               Standard cron expression. e.g. <code>0 2 * * *</code> = daily at 02:00
             </div>
           </div>
+
+          {prefillInfraService && (
+            <input type="hidden" name="infraServiceId" value={prefillInfraService} />
+          )}
 
           <Button type="submit" variant="primary" size="md">Create job</Button>
         </form>
