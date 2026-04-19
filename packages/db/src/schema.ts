@@ -35,6 +35,7 @@ export const repositories = sqliteTable('repositories', {
   createdAt:          integer('created_at',           { mode: 'timestamp' }).notNull(),
   costPerGbMonth:     integer('cost_per_gb_month'),
   monthlyBudgetCents: integer('monthly_budget_cents'),
+  escrowedKey:        text('escrowed_key'),
 })
 
 // ── Backup jobs ───────────────────────────────────────────────────────────
