@@ -43,8 +43,10 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
   }, 0) || null
 
   const historyPoints = recentSnaps
-    .filter(s => s.sizeBytes !== null && s.createdAt !== null)
-    .map(s => ({ date: s.createdAt as Date, sizeBytes: s.sizeBytes as number }))
+    .filter((s): s is { sizeBytes: number; createdAt: Date } =>
+      s.sizeBytes !== null && s.createdAt !== null
+    )
+    .map(s => ({ date: s.createdAt, sizeBytes: s.sizeBytes }))
 
   const forecast = computeForecast(
     historyPoints,
