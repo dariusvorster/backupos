@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core'
 
 // ── Agents ────────────────────────────────────────────────────────────────
 // An agent is the backupos-agent binary running on a source host
@@ -225,30 +225,35 @@ export const auditLog = sqliteTable('audit_log', {
   resourceId:   text('resource_id'),
   resourceName: text('resource_name'),
   actor:        text('actor').default('system'),
-  detail:       text('detail'),    // JSON
-  prevHash:     text('prev_hash'), // SHA-256 of previous entry's hash (null for first)
-  hash:         text('hash'),      // SHA-256 of this entry's canonical fields
+  detail:       text('detail'),
+  prevHash:     text('prev_hash'),
+  hash:         text('hash'),
   createdAt:    integer('created_at', { mode: 'timestamp' }).notNull(),
-})
+}, t => ({
+  createdAtIdx: index('audit_log_created_at_idx').on(t.createdAt),
+}))
 
 // ── Operational logs ──────────────────────────────────────────────────────
 // Structured logs from backup engine, agents, web app (§4.1, §4.2)
 
 export const operationalLogs = sqliteTable('logs', {
   id:         text('id').primaryKey(),
-  level:      text('level').notNull(),       // 'debug'|'info'|'warn'|'error'|'fatal'
-  component:  text('component').notNull(),   // 'web'|'agent'|'engine'|'hypervisor'|'hook'|'monitor'
+  level:      text('level').notNull(),
+  component:  text('component').notNull(),
   message:    text('message').notNull(),
-  payload:    text('payload'),               // JSON structured data
-  entityType: text('entity_type'),           // 'job'|'agent'|'repository'|'monitor'|'restore_run'
+  payload:    text('payload'),
+  entityType: text('entity_type'),
   entityId:   text('entity_id'),
   createdAt:  integer('created_at', { mode: 'timestamp' }).notNull(),
-})
+}, t => ({
+  entityIdx:    index('logs_entity_idx').on(t.entityType, t.entityId),
+  createdAtIdx: index('logs_created_at_idx').on(t.createdAt),
+}))
 
 // ── Logging config ─────────────────────────────────────────────────────────
 
 export const loggingConfig = sqliteTable('logging_config', {
-  id:                text('id').primaryKey().default('singleton'),
+  id:                text('id').primaryKey().default('singleton'), // always upsert with id='singleton'
   activityRetention: text('activity_retention').notNull().default('90d'),
   auditRetention:    text('audit_retention').notNull().default('365d'),
   opsRetention:      text('ops_retention').notNull().default('14d'),
