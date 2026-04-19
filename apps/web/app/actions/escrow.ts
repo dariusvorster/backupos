@@ -21,6 +21,10 @@ export async function setEscrow(repoId: string, formData: FormData): Promise<{ e
   return {}
 }
 
+export async function setEscrowAction(repoId: string, formData: FormData): Promise<void> {
+  await setEscrow(repoId, formData)
+}
+
 export async function clearEscrow(repoId: string): Promise<void> {
   const db = getDb()
   await db.update(repositories).set({ escrowedKey: null }).where(eq(repositories.id, repoId)).run()

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { StatCard } from '@/components/ui/stat-card'
 import { computeForecast, fmtCents, fmtGb, fmtGbPerMonth, BACKEND_PRESETS } from '@/lib/growth-forecast'
 import { saveCostConfig } from '@/app/actions/repository-cost'
-import { setEscrow, clearEscrow } from '@/app/actions/escrow'
+import { setEscrowAction, clearEscrow } from '@/app/actions/escrow'
 import { TrendingUp, AlertTriangle, Info, ShieldCheck, ShieldAlert } from 'lucide-react'
 
 function bytes(n: number | null | undefined): string {
@@ -57,7 +57,7 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
   )
 
   const boundSaveCostConfig = saveCostConfig.bind(null, repo.id)
-  const boundSetEscrow   = async (formData: FormData): Promise<void> => { await setEscrow(repo.id, formData) }
+  const boundSetEscrow   = setEscrowAction.bind(null, repo.id)
   const boundClearEscrow = clearEscrow.bind(null, repo.id)
   const hasEscrow        = repo.escrowedKey !== null && repo.escrowedKey !== undefined
   const preset = BACKEND_PRESETS[repo.backend as keyof typeof BACKEND_PRESETS]
