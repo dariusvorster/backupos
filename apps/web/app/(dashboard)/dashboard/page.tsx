@@ -1,13 +1,15 @@
 import type { ComponentProps } from 'react'
 import {
   getDb, backupJobs, backupRuns, agents, repositories, storageAlerts,
-  verificationTests, verificationRuns,
+  verificationTests, verificationRuns, bandwidthProfiles, bandwidthRules,
   desc, eq, gte, and, isNull,
 } from '@backupos/db'
 import { StatCard } from '@/components/ui/stat-card'
 import { Badge } from '@/components/ui/badge'
 import { HealthScoreCard } from '@/components/ui/health-score-card'
 import { computeHealthScore, buildSparkline } from '@/lib/health-score'
+import { build24hSparklineValues, fmtLimit, getActiveRule, UNLIMITED_KBPS } from '@/lib/bandwidth'
+import type { BandwidthRule } from '@/lib/bandwidth'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -119,6 +121,24 @@ export default async function DashboardPage() {
   })
   const sparkline = buildSparkline(runs30d)
 
+  const globalProfile = await db.select()
+    .from(bandwidthProfiles)
+    .where(eq(bandwidthProfiles.isGlobal, true))
+    .limit(1)
+    .then(r => r[0] ?? null)
+
+  const globalRules: BandwidthRule[] = globalProfile
+    ? await db.select()
+        .from(bandwidthRules)
+        .where(eq(bandwidthRules.profileId, globalProfile.id))
+        .all()
+    : []
+
+  const currentHour  = new Date().getHours()
+  const activeRule   = getActiveRule(globalRules, currentHour)
+  const currentLimit = activeRule?.limitKbps ?? null
+  const sparkValues  = build24hSparklineValues(globalRules)
+
   const th: React.CSSProperties = {
     padding: '10px 20px', textAlign: 'left', fontWeight: 500,
     fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -158,6 +178,53 @@ export default async function DashboardPage() {
             ? { text: 'below 80% target', direction: 'down' }
             : { text: 'on target', direction: 'up' }}
         />
+      </div>
+
+      {/* Bandwidth widget */}
+      <div style={{
+        backgroundColor: 'var(--surf)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        padding: '18px 20px',
+        marginBottom: 32,
+      }}>
+        <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Bandwidth (global)
+        </div>
+        {globalProfile ? (
+          <>
+            <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 2 }}>
+              {fmtLimit(currentLimit)}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginBottom: 12 }}>
+              {globalProfile.name} · now ({currentHour}:00)
+            </div>
+            {(() => {
+              const W = 168, H = 28, BAR_W = 6, GAP = 1
+              return (
+                <svg width={W} height={H}>
+                  {sparkValues.map((v, h) => {
+                    const barH = Math.max(3, Math.round((v / UNLIMITED_KBPS) * H))
+                    const x    = h * (BAR_W + GAP)
+                    const fill = v >= UNLIMITED_KBPS ? 'var(--ok)' : 'var(--warn)'
+                    return (
+                      <rect
+                        key={h} x={x} y={H - barH}
+                        width={BAR_W} height={barH}
+                        fill={fill} opacity={h === currentHour ? 1 : 0.55} rx={1}
+                      />
+                    )
+                  })}
+                </svg>
+              )
+            })()}
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: 'var(--fg-dim)' }}>
+            No global profile set.{' '}
+            <a href="/settings/bandwidth" style={{ color: 'var(--accent)' }}>Configure one.</a>
+          </div>
+        )}
       </div>
 
       {/* Recent runs table */}
