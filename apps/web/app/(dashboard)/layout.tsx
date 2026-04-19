@@ -6,6 +6,7 @@ import { DrModeProvider }         from '@/components/dr-mode-provider'
 import { DrModeOverlay }          from '@/components/dr-mode-overlay'
 import { CommandPaletteProvider } from '@/components/command-palette-provider'
 import { CommandPalette }         from '@/components/command-palette'
+import { FaviconManager }         from '@/components/favicon-manager'
 import {
   getDb, backupJobs, backupRuns,
   eq, and, gte,
@@ -36,6 +37,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <CommandPaletteProvider>
+      <FaviconManager />
       <DrModeProvider hasFailed24h={hasFailed24h}>
         <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: 'var(--bg)' }}>
           <Sidebar user={sidebarUser} />
