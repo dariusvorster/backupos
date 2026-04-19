@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDb, backupJobs, backupRuns, bandwidthProfiles, eq, desc } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
+import { getLogsPage } from '@/app/actions/logs'
 import { setJobProfile } from '@/app/actions/bandwidth'
 import { fmtLimit } from '@/lib/bandwidth'
 import { PreflightButton } from '@/components/preflight-modal'
@@ -42,7 +43,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     .limit(20)
     .all()
 
-  const profiles = await db.select().from(bandwidthProfiles).all()
+  const profiles    = await db.select().from(bandwidthProfiles).all()
+  const recentLogs  = await getLogsPage({ entityType: 'job', entityId: id }, 50)
   const boundSetJobProfile = setJobProfile.bind(null, job.id)
 
   const fieldStyle: React.CSSProperties = {
@@ -227,6 +229,35 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             </tbody>
           </table>
         )}
+      </div>
+
+      {/* Operational logs */}
+      <div style={{ marginTop: 32 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg)', marginBottom: 12 }}>Recent logs</h2>
+        <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+          {recentLogs.length === 0 ? (
+            <div style={{ padding: '20px 24px', fontSize: 13, color: 'var(--fg-dim)' }}>
+              No operational logs for this job yet.
+            </div>
+          ) : (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+              {recentLogs.map(entry => (
+                <div key={entry.id} style={{ display: 'flex', gap: 12, padding: '6px 16px', borderBottom: '1px solid var(--border)', alignItems: 'baseline' }}>
+                  <span style={{ color: 'var(--fg-dim)', flexShrink: 0, width: 152 }}>
+                    {new Date(entry.createdAt).toISOString().replace('T', ' ').slice(0, 19)}
+                  </span>
+                  <span style={{
+                    fontWeight: 600, width: 44, flexShrink: 0,
+                    color: ({ debug: 'var(--fg-dim)', info: 'var(--ok)', warn: 'var(--warn)', error: 'var(--err)', fatal: 'var(--err)' } as Record<string,string>)[entry.level] ?? 'var(--fg)',
+                  }}>
+                    {entry.level.toUpperCase().slice(0, 4)}
+                  </span>
+                  <span style={{ color: 'var(--fg)', flex: 1 }}>{entry.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
