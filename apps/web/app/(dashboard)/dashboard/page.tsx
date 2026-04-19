@@ -53,7 +53,7 @@ export default async function DashboardPage() {
   const since7d   = new Date(now -  7  * 24 * 60 * 60 * 1000)
   const since30d  = new Date(now - 30  * 24 * 60 * 60 * 1000)
 
-  const [jobs, recentRuns, allAgents, repos, successRuns24h, openAlerts, runs30d, passedVerifications7d] =
+  const [jobs, recentRuns, allAgents, repos, successRuns24h, openAlerts, runs30d, passedVerifications7d, allServices] =
     await Promise.all([
       db.select().from(backupJobs).all(),
       db.select({
@@ -93,6 +93,13 @@ export default async function DashboardPage() {
           gte(verificationRuns.startedAt, since7d),
         ))
         .all(),
+      db.select({
+        id:          infraOsServices.id,
+        name:        infraOsServices.name,
+        serviceType: infraOsServices.serviceType,
+        host:        infraOsServices.host,
+        description: infraOsServices.description,
+      }).from(infraOsServices).all(),
     ])
 
   const runs24h      = recentRuns.filter(r => r.startedAt && r.startedAt >= since24h)
@@ -113,13 +120,6 @@ export default async function DashboardPage() {
   const coveredInfraServiceIds = new Set(
     jobs.map(j => j.infraServiceId).filter((id): id is string => id !== null && id !== undefined)
   )
-  const allServices = await db.select({
-    id:          infraOsServices.id,
-    name:        infraOsServices.name,
-    serviceType: infraOsServices.serviceType,
-    host:        infraOsServices.host,
-    description: infraOsServices.description,
-  }).from(infraOsServices).all()
   const coveredInfraServices = allServices.filter(s => coveredInfraServiceIds.has(s.id)).length
 
   const healthScore = computeHealthScore({
