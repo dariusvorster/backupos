@@ -17,14 +17,15 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
   const [pwError, setPwError]           = useState('')
   const [pwSuccess, setPwSuccess]       = useState(false)
   const [disableError, setDisableError] = useState('')
-  const [isPending, startTransition]    = useTransition()
+  const [isPwPending, startPwTransition]      = useTransition()
+  const [isTotpPending, startTotpTransition]  = useTransition()
 
   function handlePasswordSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setPwError('')
     setPwSuccess(false)
     const fd = new FormData(e.currentTarget)
-    startTransition(async () => {
+    startPwTransition(async () => {
       const result = await changePassword(fd)
       if (result.error) { setPwError(result.error); return }
       setPwSuccess(true)
@@ -37,7 +38,7 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
     setDisableError('')
     const fd = new FormData()
     fd.set('code', disableCode)
-    startTransition(async () => {
+    startTotpTransition(async () => {
       const result = await disableTotp(fd)
       if (result.error) { setDisableError(result.error); return }
       setTfEnabled(false)
@@ -84,11 +85,11 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
             </div>
           ))}
           <div>
-            <button type="submit" disabled={isPending} style={{
+            <button type="submit" disabled={isPwPending} style={{
               padding: '8px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
               border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
             }}>
-              {isPending ? 'Saving\u2026' : 'Update password'}
+              {isPwPending ? 'Saving\u2026' : 'Update password'}
             </button>
           </div>
         </form>
@@ -131,11 +132,11 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
                 value={disableCode} onChange={e => setDisableCode(e.target.value.replace(/\D/g, ''))}
                 style={{ ...fieldStyle, width: 120, letterSpacing: '0.15em', fontSize: 16 }}
               />
-              <button type="submit" disabled={isPending || disableCode.length < 6} style={{
+              <button type="submit" disabled={isTotpPending || disableCode.length < 6} style={{
                 padding: '8px 14px', backgroundColor: 'var(--err)', color: '#fff',
                 border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}>
-                {isPending ? 'Disabling\u2026' : 'Disable TOTP'}
+                {isTotpPending ? 'Disabling\u2026' : 'Disable TOTP'}
               </button>
             </form>
           </div>

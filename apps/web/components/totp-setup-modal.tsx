@@ -133,7 +133,12 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
               <button
-                onClick={() => navigator.clipboard.writeText(backupCodes.join('\n'))}
+                onClick={() => {
+                  navigator.clipboard.writeText(backupCodes.join('\n')).catch(() => {
+                    // fallback: select the text manually
+                    window.prompt('Copy your backup codes:', backupCodes.join('\n'))
+                  })
+                }}
                 style={{ padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', fontSize: 12, cursor: 'pointer', color: 'var(--fg)' }}
               >
                 Copy all
