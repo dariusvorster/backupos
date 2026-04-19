@@ -226,7 +226,33 @@ export const auditLog = sqliteTable('audit_log', {
   resourceName: text('resource_name'),
   actor:        text('actor').default('system'),
   detail:       text('detail'),    // JSON
+  prevHash:     text('prev_hash'), // SHA-256 of previous entry's hash (null for first)
+  hash:         text('hash'),      // SHA-256 of this entry's canonical fields
   createdAt:    integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+
+// ── Operational logs ──────────────────────────────────────────────────────
+// Structured logs from backup engine, agents, web app (§4.1, §4.2)
+
+export const operationalLogs = sqliteTable('logs', {
+  id:         text('id').primaryKey(),
+  level:      text('level').notNull(),       // 'debug'|'info'|'warn'|'error'|'fatal'
+  component:  text('component').notNull(),   // 'web'|'agent'|'engine'|'hypervisor'|'hook'|'monitor'
+  message:    text('message').notNull(),
+  payload:    text('payload'),               // JSON structured data
+  entityType: text('entity_type'),           // 'job'|'agent'|'repository'|'monitor'|'restore_run'
+  entityId:   text('entity_id'),
+  createdAt:  integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+
+// ── Logging config ─────────────────────────────────────────────────────────
+
+export const loggingConfig = sqliteTable('logging_config', {
+  id:                text('id').primaryKey().default('singleton'),
+  activityRetention: text('activity_retention').notNull().default('90d'),
+  auditRetention:    text('audit_retention').notNull().default('365d'),
+  opsRetention:      text('ops_retention').notNull().default('14d'),
+  updatedAt:         integer('updated_at', { mode: 'timestamp' }),
 })
 
 // ── Hypervisor integrations ────────────────────────────────────────────────
