@@ -5,6 +5,7 @@ import { Key } from 'lucide-react'
 
 const LINKED_ITEMS: Record<string, string> = {
   'Bandwidth limits': '/settings/bandwidth',
+  'Infra OS services': '/settings/infra-os',
 }
 
 const chevron = (
@@ -35,7 +36,7 @@ export default async function SettingsPage() {
         { title: 'General', items: ['Instance name', 'Time zone', 'Language'] },
         { title: 'Notifications', items: ['Email SMTP', 'Webhook URL', 'Slack integration'] },
         { title: 'Security', items: ['Change password', 'API tokens', 'Session management'] },
-        { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows'] },
+        { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows', 'Infra OS services'] },
       ].map(section => (
         <div key={section.title} style={{
           backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
