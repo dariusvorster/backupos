@@ -1,69 +1,139 @@
-import type { ComponentProps } from 'react'
-import Link from 'next/link'
-import { notFound } from 'next/navigation'
-import { getDb, backupRuns, eq } from '@backupos/db'
-import { Badge } from '@/components/ui/badge'
-import { StatCard } from '@/components/ui/stat-card'
+import { notFound }        from 'next/navigation'
+import { getDb, backupRuns, backupJobs } from '@backupos/db'
+import { eq }              from 'drizzle-orm'
+import { LogViewer }       from '@/components/log-viewer'
+import { PhaseTimeline }   from '@/components/phase-timeline'
+import { CopyCommandButton } from '@/components/copy-command-button'
+import type { PhaseData }  from '@/app/actions/runs'
 
-type BadgeStatus = ComponentProps<typeof Badge>['status']
-
-function fmtDuration(s: number | null): string {
-  if (s == null) return '—'
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
+const STATUS_COLORS: Record<string, string> = {
+  running:   'var(--accent)',
+  success:   'var(--ok)',
+  failed:    'var(--err)',
+  cancelled: 'var(--fg-dim)',
 }
 
-function fmtBytes(b: number | null): string {
-  if (b == null) return '—'
-  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`
-  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`
-  return `${(b / 1024 ** 3).toFixed(2)} GB`
+function safeParsePhases(raw: string | null | undefined): PhaseData | null {
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
 }
 
 export default async function RunDetailPage({ params }: { params: Promise<{ id: string; runId: string }> }) {
-  const { id, runId } = await params
-  const db            = getDb()
-  const [run]         = await db.select().from(backupRuns).where(eq(backupRuns.id, runId)).limit(1)
+  const { id: jobId, runId } = await params
+  const db = getDb()
+
+  const [run] = await db.select().from(backupRuns).where(eq(backupRuns.id, runId)).limit(1)
   if (!run) notFound()
 
+  const job = await db
+    .select({ name: backupJobs.name })
+    .from(backupJobs)
+    .where(eq(backupJobs.id, jobId))
+    .get()
+
+  const phases  = safeParsePhases(run.phases)
+  const totalMs = run.completedAt && run.startedAt
+    ? run.completedAt.getTime() - run.startedAt.getTime()
+    : 0
+
+  const runDetail = {
+    id:           run.id,
+    status:       run.status,
+    startedAt:    run.startedAt ?? null,
+    completedAt:  run.completedAt ?? null,
+    log:          run.log ?? null,
+    phases,
+    errorMessage: run.errorMessage ?? null,
+    jobId,
+  }
+
+  const statusColor = STATUS_COLORS[run.status] ?? 'var(--fg-mute)'
+
   return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <Link href={`/jobs/${id}`} style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Job</Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>
-            Run {run.id.slice(0, 8)}
-          </h1>
-          <Badge status={run.status as BadgeStatus} />
+    <div style={{ maxWidth: 900 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <div>
+          <div style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 2 }}>
+            {job?.name ?? jobId}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--fg)', margin: 0 }}>
+              Run {run.id.slice(0, 8)}
+            </h1>
+            <span style={{
+              fontSize: 12, fontWeight: 500, padding: '2px 8px',
+              borderRadius: 'var(--radius-sm)',
+              backgroundColor: `color-mix(in srgb, transparent 85%, ${statusColor} 15%)`,
+              color: statusColor,
+              border: `1px solid color-mix(in srgb, transparent 70%, ${statusColor} 30%)`,
+            }}>
+              {run.status}
+            </span>
+          </div>
         </div>
+        <div style={{ flex: 1 }} />
+        <CopyCommandButton runId={run.id} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        <StatCard label="Duration"   value={fmtDuration(run.duration)} />
-        <StatCard label="Data added" value={fmtBytes(run.dataAdded)} />
-        <StatCard label="Total size" value={fmtBytes(run.totalSize)} />
-        <StatCard label="Files new"        value={run.filesNew        ?? '—'} />
-        <StatCard label="Files changed"    value={run.filesChanged    ?? '—'} />
-        <StatCard label="Files unmodified" value={run.filesUnmodified ?? '—'} />
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+        {([
+          { label: 'Duration',   value: run.duration    != null ? `${run.duration}s`                                    : '—' },
+          { label: 'Data added', value: run.dataAdded   != null ? `${(run.dataAdded   / 1_048_576).toFixed(1)} MB`      : '—' },
+          { label: 'Total size', value: run.totalSize   != null ? `${(run.totalSize   / 1_073_741_824).toFixed(2)} GB`  : '—' },
+          { label: 'Files new',  value: run.filesNew         != null ? String(run.filesNew)         : '—' },
+          { label: 'Changed',    value: run.filesChanged     != null ? String(run.filesChanged)     : '—' },
+          { label: 'Unmodified', value: run.filesUnmodified  != null ? String(run.filesUnmodified)  : '—' },
+        ] as { label: string; value: string }[]).map(({ label, value }) => (
+          <div key={label} style={{
+            backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+          }}>
+            <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg)' }}>{value}</div>
+          </div>
+        ))}
       </div>
 
+      {/* Error */}
       {run.errorMessage && (
         <div style={{
-          backgroundColor: 'var(--err-dim)', border: '1px solid var(--err)',
-          borderRadius: 'var(--radius)', padding: 16, marginBottom: 24,
-          fontSize: 13, color: 'var(--err)', fontFamily: 'var(--font-mono)',
+          backgroundColor: 'color-mix(in srgb, var(--surf) 80%, var(--err) 10%)',
+          border: '1px solid color-mix(in srgb, var(--border) 60%, var(--err) 40%)',
+          borderRadius: 'var(--radius-sm)', padding: '12px 16px', marginBottom: 24,
+          fontSize: 13, color: 'var(--err)',
         }}>
-          {run.errorMessage}
+          <strong>Error:</strong> {run.errorMessage}
         </div>
       )}
 
-      {run.snapshotId && (
+      {/* Phase timeline */}
+      {phases && totalMs > 0 && (run.status === 'success' || run.status === 'failed') && (
         <div style={{
           backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)', padding: 16,
-          fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)',
+          borderRadius: 'var(--radius)', padding: '16px 20px', marginBottom: 24,
         }}>
-          Snapshot ID: <span style={{ color: 'var(--fg)' }}>{run.snapshotId}</span>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 12 }}>Phase timeline</div>
+          <PhaseTimeline phases={phases} totalMs={totalMs} />
+        </div>
+      )}
+
+      {/* Log viewer */}
+      <div style={{
+        backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 24,
+      }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>
+          Run log
+        </div>
+        <LogViewer initialRun={runDetail} />
+      </div>
+
+      {/* Snapshot ID footer */}
+      {run.snapshotId && (
+        <div style={{ fontSize: 12, color: 'var(--fg-dim)' }}>
+          Snapshot: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg)' }}>{run.snapshotId}</code>
         </div>
       )}
     </div>
