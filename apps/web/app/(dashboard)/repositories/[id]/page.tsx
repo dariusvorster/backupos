@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { StatCard } from '@/components/ui/stat-card'
 import { computeForecast, fmtCents, fmtGb, fmtGbPerMonth, BACKEND_PRESETS } from '@/lib/growth-forecast'
 import { saveCostConfig } from '@/app/actions/repository-cost'
-import { setReplicas, setRepoGroup } from '@/app/actions/repositories'
+import { setReplicas, setRepoGroup, addReplica, removeReplicaAt } from '@/app/actions/repositories'
 import type { ReplicaEntry }          from '@/app/actions/repositories'
 import { setEscrowAction, clearEscrow } from '@/app/actions/escrow'
 import { TrendingUp, AlertTriangle, Info, ShieldCheck, ShieldAlert } from 'lucide-react'
@@ -138,11 +138,7 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
           const label   = ((formData.get('label')   as string) ?? '').trim()
           const backend = ((formData.get('backend') as string) ?? '').trim()
           if (!label || !backend) return
-          const current: ReplicaEntry[] = (() => {
-            try { return repo.replicas ? (JSON.parse(repo.replicas) as ReplicaEntry[]) : [] }
-            catch { return [] }
-          })()
-          await setReplicas(repo.id, [...current, { label, backend }])
+          await addReplica(repo.id, { label, backend })
         }
         return (
           <div style={{
@@ -165,11 +161,7 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
                 {replicas.map((r, i) => {
                   const boundRemove = async () => {
                     'use server'
-                    const current: ReplicaEntry[] = (() => {
-                      try { return repo.replicas ? (JSON.parse(repo.replicas) as ReplicaEntry[]) : [] }
-                      catch { return [] }
-                    })()
-                    await setReplicas(repo.id, current.filter((_, idx) => idx !== i))
+                    await removeReplicaAt(repo.id, i)
                   }
                   return (
                     <div key={i} style={{
