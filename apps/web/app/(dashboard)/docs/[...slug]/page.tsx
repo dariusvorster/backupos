@@ -2,7 +2,8 @@ import { readFileSync, existsSync } from 'fs'
 import { join, resolve }            from 'path'
 import { notFound }                 from 'next/navigation'
 import { MDXRemote }                from 'next-mdx-remote/rsc'
-import { DOCS_ROOT }                from '@backupos/docs-content'
+
+const DOCS_ROOT = resolve(process.cwd(), '../../packages/docs-content/content')
 
 export default async function DocsPage({
   params,
@@ -10,6 +11,7 @@ export default async function DocsPage({
   params: Promise<{ slug: string[] }>
 }) {
   const { slug }   = await params
+  if (slug.length > 2) notFound()
   const [section, page = 'index'] = slug
   if (!section) notFound()
   const filePath   = join(DOCS_ROOT, section, `${page}.mdx`)
