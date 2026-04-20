@@ -1,0 +1,44 @@
+---
+title: What is BackupOS
+description: A unified backup management platform for homelabs and small businesses.
+---
+
+# What is BackupOS
+
+BackupOS is a unified backup management platform for homelabs and small businesses. It wraps [Restic](https://restic.net) in a structured web UI with scheduled jobs, cross-platform agents, restore verification, cost forecasting, and disaster recovery tooling.
+
+## What it replaces
+
+| Without BackupOS | With BackupOS |
+|---|---|
+| Proxmox Backup Server alone | BackupOS + PBS as a storage backend |
+| Manual Restic cron scripts | Scheduled jobs with pre-flight checks |
+| Paid SaaS backup tools (Veeam, Acronis) | Self-hosted, data stays yours |
+| Scattered shell scripts per machine | One UI for every source and agent |
+
+## What it adds
+
+- **Verification** — scheduled restore tests that prove backups actually work
+- **Cost forecasting** — storage growth tracking and projected spend per repository
+- **DR Mode** — guided recovery interface with restore specs for whole-host incidents
+- **Cross-platform agents** — single binary for Linux and Windows
+- **Tamper-evident audit log** — SHA-256 hash-chained event log for compliance
+- **Operational logs** — structured per-job and per-agent log stream with filtering
+
+## Architecture at a glance
+
+```
+┌─────────────┐     ┌──────────────────────────────────┐
+│  BackupOS   │────▶│  Agents (Linux / Windows)        │
+│  Web UI     │     │  ├── Filesystem sources           │
+└─────────────┘     │  ├── Docker / database sources    │
+                    │  └── Proxmox VM / LXC sources     │
+                    └──────────────┬───────────────────┘
+                                   │
+                    ┌──────────────▼───────────────────┐
+                    │  Restic repositories              │
+                    │  (R2 · B2 · S3 · local NAS)      │
+                    └───────────────────────────────────┘
+```
+
+The web app runs as a Docker container on any Linux host. Agents run on each machine that has sources to back up. Repositories are standard Restic-compatible object-storage buckets — no proprietary format.

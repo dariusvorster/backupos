@@ -1,0 +1,65 @@
+---
+title: Architecture overview
+description: How the BackupOS components fit together.
+---
+
+# Architecture overview
+
+## Components
+
+### Web app
+
+The central control plane. Runs as a Docker container (image: `backupos/web`). Stores all configuration and state in a local SQLite database. Exposes the browser UI and a REST API consumed by agents.
+
+**Responsibilities:**
+- Job scheduling and orchestration
+- Agent enrolment and health monitoring
+- Snapshot browsing and tagging
+- Restore spec management and DR Mode
+- Audit and operational logging
+- Alert rules and notifications
+
+### Agents
+
+Lightweight processes that run on source machines. A single binary (`ios-agent`) supports both Linux and Windows, shared with the Infra OS product family for consistency.
+
+**Responsibilities:**
+- Execute backup jobs as instructed by the web app
+- Stream structured logs back to the web app
+- Report capabilities (available source types, disk space)
+- Run pre-flight checks on demand
+
+Agents communicate with the web app over HTTPS. No inbound ports are required on agent machines.
+
+### Repositories
+
+Standard Restic repositories stored in object storage or on local filesystems. BackupOS does not introduce a proprietary format — any Restic-compatible tool can read the data.
+
+**Supported backends:**
+- Cloudflare R2 (recommended for zero egress cost)
+- Backblaze B2
+- AWS S3 and S3-compatible (MinIO, Wasabi)
+- Local filesystem or NAS (NFS, SMB)
+
+### Hypervisor integration
+
+For Proxmox, BackupOS talks directly to the Proxmox API to trigger VM and LXC snapshots without requiring an in-guest agent. This covers the full VM even if the guest OS is inaccessible.
+
+## Data flow — a typical backup run
+
+```
+1. Scheduler triggers job at the configured cron time
+2. Web app sends run instruction to the assigned agent
+3. Agent runs pre-flight checks (disk space, source reachable, repo accessible)
+4. Agent executes: pre-hook → restic backup → post-hook
+5. Agent streams structured log lines to the web app in real time
+6. On completion, agent reports snapshot ID, bytes transferred, duration
+7. Web app stores run record, updates health score, fires alerts if configured
+8. (Optional) Scheduled verification test restores a file from the new snapshot
+```
+
+## Persistence
+
+The web app uses a single SQLite file (`backupos.db`) for all relational data. This makes backup of the control plane trivial — copy the file. For high-availability deployments, a read replica or periodic export to S3 is recommended.
+
+Restic repositories are the source of truth for backup data. The BackupOS database is an index and control plane — losing it does not lose your backups.

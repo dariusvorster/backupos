@@ -1,0 +1,48 @@
+---
+title: Why BackupOS
+description: The three problems BackupOS solves and how it compares to alternatives.
+---
+
+# Why BackupOS
+
+## The three problems
+
+### 1. Trust — does my backup actually work?
+
+Most backup tools report success based on the job completing without error. They don't prove the data is restorable. BackupOS schedules automated restore verification: it actually restores a snapshot to a sandbox environment and checks the result. Without this, a green checkbox is a guess.
+
+### 2. Cost — what does this storage cost me?
+
+Object storage is inexpensive but not free, and usage grows quietly. BackupOS tracks per-repository storage usage, forecasts 30/90/365-day growth trends, and alerts when usage approaches configurable thresholds. You see the bill before it arrives.
+
+### 3. Recovery — how do I actually restore when it matters?
+
+Restore procedures are almost always undocumented, or documented in a wiki nobody updated in two years. BackupOS Restore Specs are declarative YAML files that live alongside your job config. DR Mode presents them as a guided step-by-step checklist during an incident, when calm thinking is hardest.
+
+## Feature comparison
+
+| Feature | BackupOS | PBS | Raw Restic | Veeam |
+|---|---|---|---|---|
+| Web UI | ✅ | ✅ | ❌ | ✅ |
+| Linux sources | ✅ | ✅ | ✅ | ✅ |
+| Windows sources | ✅ | ❌ | ✅ | ✅ |
+| Database-aware backup | ✅ | ❌ | ❌ | ✅ |
+| Restore verification | ✅ | ❌ | ❌ | ✅ |
+| Cost forecasting | ✅ | ❌ | ❌ | ❌ |
+| DR Mode / restore specs | ✅ | ❌ | ❌ | partial |
+| Self-hosted | ✅ | ✅ | ✅ | ✅ |
+| Open source | ✅ | ✅ | ✅ | ❌ |
+| Price | Free | Free | Free | $$$ |
+
+## When to use BackupOS
+
+- You manage three or more machines that all need backups
+- You want proof that backups work, not just a green status badge
+- You need an audit trail for compliance or incident post-mortems
+- You want one UI for Linux and Windows sources
+
+## When not to use BackupOS
+
+- **Single machine, simple filesystem** — raw Restic + cron is simpler and equally effective
+- **Proxmox-only, VM backup only** — PBS alone handles this well and is already integrated
+- **Enterprise SAP / tape library** — you need Veeam or a purpose-built enterprise tool
