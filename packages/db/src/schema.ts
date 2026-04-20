@@ -17,6 +17,14 @@ export const agents = sqliteTable('agents', {
   lastSeenAt:   integer('last_seen_at',   { mode: 'timestamp' }),
   enrolledAt:   integer('enrolled_at',    { mode: 'timestamp' }).notNull(),
   publicKey:    text('public_key').notNull(), // Ed25519
+  updateChannel:     text('update_channel').default('stable'),   // 'stable' | 'beta' | 'pinned'
+  hypervisorDriver:  integer('hypervisor_driver',  { mode: 'boolean' }),
+  appHooksAvailable: integer('app_hooks_available', { mode: 'boolean' }),
+  cpuPct:            integer('cpu_pct'),
+  ramBytes:          integer('ram_bytes'),
+  diskReadBps:       integer('disk_read_bps'),
+  diskWriteBps:      integer('disk_write_bps'),
+  resourceHistory:   text('resource_history'),
 })
 
 // ── Repositories ──────────────────────────────────────────────────────────
