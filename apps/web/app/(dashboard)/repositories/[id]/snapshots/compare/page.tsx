@@ -256,7 +256,7 @@ export default async function SnapshotComparePage({
                       <td style={{ ...td, textAlign: 'right', color: 'var(--fg-mute)' }}>{bytes(f.sizeA)}</td>
                       <td style={{ ...td, textAlign: 'right', color: 'var(--fg-mute)' }}>{bytes(f.sizeB)}</td>
                       <td style={{ ...td, textAlign: 'right', color: f.sizeB > f.sizeA ? '#22c55e' : 'var(--err)' }}>
-                        {f.sizeB > f.sizeA ? '+' : ''}{bytes(f.sizeB - f.sizeA)}
+                        {f.sizeB > f.sizeA ? '+' : '-'}{bytes(Math.abs(f.sizeB - f.sizeA))}
                       </td>
                     </tr>
                   ))}
