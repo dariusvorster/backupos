@@ -9,6 +9,7 @@ import { computeForecast, fmtCents, fmtGb, fmtGbPerMonth, BACKEND_PRESETS } from
 import { saveCostConfig } from '@/app/actions/repository-cost'
 import { setEscrowAction, clearEscrow } from '@/app/actions/escrow'
 import { TrendingUp, AlertTriangle, Info, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { DedupBar, fmtBytes } from '../dedup-bar'
 
 function bytes(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -82,6 +83,29 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
         </Link>
         <Button variant="secondary" size="md">Run check</Button>
       </div>
+
+      {/* Storage efficiency */}
+      {repo.sizeBytes != null && (
+        <div style={{
+          backgroundColor: 'var(--surf)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)',
+          padding: '18px 20px',
+          marginBottom: 24,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 12 }}>
+            Storage efficiency
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+            <DedupBar stored={repo.sizeBytes} raw={repo.rawSizeBytes ?? null} />
+            <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>
+              {repo.rawSizeBytes
+                ? `${fmtBytes(repo.sizeBytes)} stored of ${fmtBytes(repo.rawSizeBytes)} original`
+                : `${fmtBytes(repo.sizeBytes)} stored (no dedup data yet)`}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Forecast card */}
       <div style={{
