@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'fs'
-import { join }                     from 'path'
+import { join, resolve }            from 'path'
 import { notFound }                 from 'next/navigation'
 import { MDXRemote }                from 'next-mdx-remote/rsc'
 import { DOCS_ROOT }                from '@backupos/docs-content'
@@ -13,10 +13,13 @@ export default async function DocsPage({
   const [section, page = 'index'] = slug
   if (!section) notFound()
   const filePath   = join(DOCS_ROOT, section, `${page}.mdx`)
+  const resolved   = resolve(filePath)
+  const root       = resolve(DOCS_ROOT)
 
-  if (!existsSync(filePath)) notFound()
+  if (!resolved.startsWith(root + '/')) notFound()
+  if (!existsSync(resolved)) notFound()
 
-  const source = readFileSync(filePath, 'utf8')
+  const source = readFileSync(resolved, 'utf8')
 
   return (
     <article style={{
