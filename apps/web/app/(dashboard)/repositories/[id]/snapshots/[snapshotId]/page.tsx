@@ -28,13 +28,21 @@ function buildDirTree(
   for (const f of files) {
     if (f.type !== 'file') continue
     const parts = f.path.split('/')
-    // accumulate size into every ancestor directory segment
-    for (let depth = 1; depth < parts.length; depth++) {
-      const dir = parts.slice(0, depth).join('/')
-      const existing = dirs.get(dir) ?? { totalSize: 0, fileCount: 0 }
-      existing.totalSize += f.size ?? 0
-      existing.fileCount += 1
-      dirs.set(dir, existing)
+    if (parts.length === 1) {
+      // root-level file with no directory component
+      const root = dirs.get('/') ?? { totalSize: 0, fileCount: 0 }
+      root.totalSize += f.size ?? 0
+      root.fileCount += 1
+      dirs.set('/', root)
+    } else {
+      // accumulate size into every ancestor directory segment
+      for (let depth = 1; depth < parts.length; depth++) {
+        const dir = parts.slice(0, depth).join('/')
+        const existing = dirs.get(dir) ?? { totalSize: 0, fileCount: 0 }
+        existing.totalSize += f.size ?? 0
+        existing.fileCount += 1
+        dirs.set(dir, existing)
+      }
     }
   }
   return Array.from(dirs.entries())
@@ -175,8 +183,8 @@ export default async function SnapshotFilesPage({
               </tr>
             </thead>
             <tbody>
-              {files.map((f, i) => (
-                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+              {files.map((f) => (
+                <tr key={f.path} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 20px', fontSize: 12, color: f.type === 'dir' ? 'var(--accent)' : 'var(--fg)', fontFamily: 'var(--font-mono)', maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {f.path}
                   </td>
