@@ -7,4 +7,4 @@ export interface NavPage    { title: string; slug: string }
 export interface NavSection { title: string; slug: string; pages: NavPage[] }
 export interface Nav        { sections: NavSection[] }
 
-export const nav: Nav = navData
+export const nav = navData satisfies Nav
