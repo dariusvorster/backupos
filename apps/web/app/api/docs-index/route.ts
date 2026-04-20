@@ -1,7 +1,7 @@
-import { readFileSync, existsSync } from 'fs'
-import { join, resolve }             from 'path'
-import { NextResponse }              from 'next/server'
-import { nav }                       from '@backupos/docs-content'
+import { readFile }    from 'fs/promises'
+import { join, resolve } from 'path'
+import { NextResponse }  from 'next/server'
+import { nav }           from '@backupos/docs-content'
 
 const DOCS_ROOT = resolve(process.cwd(), '../../packages/docs-content/content')
 
@@ -16,7 +16,7 @@ export interface DocEntry {
 
 function stripMdx(raw: string): string {
   return raw
-    .replace(/^---[\s\S]*?---\n/, '')
+    .replace(/^---[\s\S]*?---\r?\n/, '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/[#*`_|>~]/g, '')
@@ -24,25 +24,26 @@ function stripMdx(raw: string): string {
     .trim()
 }
 
-export function GET() {
+export async function GET() {
   const entries: DocEntry[] = []
 
   for (const section of nav.sections) {
     for (const page of section.pages) {
       const filePath = resolve(join(DOCS_ROOT, section.slug, `${page.slug}.mdx`))
-      if (!existsSync(filePath)) continue
-
-      const raw     = readFileSync(filePath, 'utf8')
-      const excerpt = stripMdx(raw).slice(0, 300)
-
-      entries.push({
-        id:      `${section.slug}/${page.slug}`,
-        title:   page.title,
-        section: section.title,
-        slug:    `${section.slug}/${page.slug}`,
-        href:    `/docs/${section.slug}/${page.slug}`,
-        excerpt,
-      })
+      try {
+        const raw     = await readFile(filePath, 'utf8')
+        const excerpt = stripMdx(raw).slice(0, 300)
+        entries.push({
+          id:      `${section.slug}/${page.slug}`,
+          title:   page.title,
+          section: section.title,
+          slug:    `${section.slug}/${page.slug}`,
+          href:    `/docs/${section.slug}/${page.slug}`,
+          excerpt,
+        })
+      } catch {
+        continue
+      }
     }
   }
 
