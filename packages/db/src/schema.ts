@@ -36,6 +36,9 @@ export const repositories = sqliteTable('repositories', {
   costPerGbMonth:     integer('cost_per_gb_month'),
   monthlyBudgetCents: integer('monthly_budget_cents'),
   escrowedKey:        text('escrowed_key'),
+  group:              text('group'),
+  rawSizeBytes:       integer('raw_size_bytes'),
+  replicas:           text('replicas'),
 })
 
 // ── Infra OS service registry ─────────────────────────────────────────────
