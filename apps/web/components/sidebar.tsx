@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Activity, PlayCircle, Clock, Camera,
   Server, Database, Radar, RotateCcw, ListRestart,
-  TriangleAlert, FileClock, Settings, Sun, ShieldCheck, FileTerminal,
+  TriangleAlert, FileClock, Settings, Sun, ShieldCheck, FileTerminal, BookOpen,
 } from 'lucide-react'
 import { ProfilePopover } from './profile-popover'
 
@@ -20,6 +20,7 @@ const NAV: NavGroup[] = [
       { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
       { href: '/activity',  label: 'Activity',  icon: <Activity size={16} /> },
       { href: '/logs',      label: 'Logs',      icon: <FileTerminal size={16} /> },
+      { href: '/docs',      label: 'Docs',      icon: <BookOpen size={16} /> },
     ],
   },
   {
