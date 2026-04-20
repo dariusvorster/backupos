@@ -1,0 +1,21 @@
+---
+title: Back up PostgreSQL
+description: Consistent PostgreSQL backup using pg_dump before the Restic snapshot.
+---
+
+# Back up PostgreSQL
+
+BackupOS uses a pre-hook to run `pg_dump` before the filesystem backup, ensuring consistency.
+
+## Steps
+
+1. **Jobs → New job → Source type: PostgreSQL**
+2. Enter connection string: `postgres://user:pass@localhost:5432/dbname`
+3. Dump path: `/tmp/backupos-pgdump` (BackupOS cleans this up after the run)
+4. Choose repository and schedule
+
+## What happens
+
+1. Pre-hook: `pg_dump` writes a compressed dump to the dump path
+2. Restic backs up the dump file
+3. Post-hook: dump file is deleted

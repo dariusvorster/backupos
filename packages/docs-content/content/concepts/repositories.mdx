@@ -1,0 +1,20 @@
+---
+title: Repositories
+description: Where backup data is stored — Restic-compatible object storage or local paths.
+---
+
+# Repositories
+
+A repository is a [Restic](https://restic.net)-compatible storage location. All data is encrypted client-side before leaving the agent — the storage backend never sees plaintext.
+
+## Supported backends
+
+Cloudflare R2, Backblaze B2, AWS S3, S3-compatible (MinIO, Wasabi, IDrive), and local filesystem paths.
+
+## Encryption
+
+Each repository has its own encryption password set when the repository is initialised. This password is never stored in the BackupOS database — only in memory during use and optionally in escrow.
+
+## Key escrow
+
+Enable escrow to let BackupOS store an encrypted copy of the repository password, recoverable with your master passphrase. Without escrow, losing the password means permanent data loss.

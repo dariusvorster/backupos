@@ -1,0 +1,16 @@
+---
+title: Export audit logs for compliance
+description: Download a tamper-evident audit log for compliance review.
+---
+
+# Export audit logs for compliance
+
+Go to **Audit log → Export CSV**. The download includes:
+
+- All configuration changes (job created/updated/deleted, repo added/removed)
+- Security events (login, TOTP enabled/disabled, API token created/revoked)
+- Snapshot lifecycle events (pinned, tagged, held, deleted)
+
+## Verify chain integrity
+
+The audit log uses SHA-256 hash chaining. Click **Verify integrity** to confirm no entries have been tampered with or deleted. The UI shows the number of entries checked and flags any broken link.

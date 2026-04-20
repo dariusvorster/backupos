@@ -1,0 +1,14 @@
+---
+title: Pin snapshots before a risky migration
+description: Protect key snapshots from retention pruning during migrations.
+---
+
+# Pin snapshots before a risky migration
+
+1. Go to **Snapshots**, find the snapshot taken just before the migration
+2. Click **⋯ → Pin snapshot**
+3. Perform your migration
+4. If everything is fine: **⋯ → Unpin snapshot**
+5. If you need to roll back: restore from the pinned snapshot
+
+Pinned snapshots are excluded from all forget/prune runs. They persist until you manually unpin them.

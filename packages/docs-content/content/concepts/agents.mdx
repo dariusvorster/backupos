@@ -1,0 +1,20 @@
+---
+title: Agents
+description: The processes that run on source machines and execute backup jobs.
+---
+
+# Agents
+
+The BackupOS agent (`ios-agent`) is a single binary that runs as a system service on Linux and Windows machines. It executes jobs on behalf of the web app, streams logs back in real time, and reports health status.
+
+## Capabilities
+
+An agent reports its available capabilities on enrolment: source types it can serve (filesystem, Docker, Proxmox, databases), available disk space, and OS/architecture.
+
+## Communication
+
+Agents connect outbound to the BackupOS web app over HTTPS. No inbound firewall rules required on agent machines.
+
+## Updates
+
+Agents check for updates and can be updated from the BackupOS UI without manual SSH. Self-update uses the same binary signing as the initial install.

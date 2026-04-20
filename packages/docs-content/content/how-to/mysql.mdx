@@ -1,0 +1,13 @@
+---
+title: Back up MySQL / MariaDB
+description: Consistent MySQL backup using mysqldump as a pre-hook.
+---
+
+# Back up MySQL / MariaDB
+
+1. **Jobs → New job → Source type: MySQL**
+2. Connection string: `mysql://user:pass@localhost:3306/dbname`
+3. Dump path: `/tmp/backupos-mysqldump`
+4. Choose repository and schedule
+
+BackupOS runs `mysqldump --single-transaction` before the Restic snapshot for InnoDB consistency.

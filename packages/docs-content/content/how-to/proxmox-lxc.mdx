@@ -1,0 +1,18 @@
+---
+title: Back up a Proxmox LXC
+description: Back up a Proxmox LXC container via the Proxmox API.
+---
+
+# Back up a Proxmox LXC
+
+Same integration as VM backup but targets LXC containers.
+
+## Steps
+
+1. **Jobs → New job → Source type: Proxmox LXC**
+2. Proxmox API URL, token (needs `VM.Backup` privilege)
+3. Select container by ID
+4. Choose repository and schedule
+5. **Run now** to verify
+
+The agent mounts the LXC rootfs, backs it up with Restic, and unmounts.

@@ -1,0 +1,14 @@
+---
+title: Back up SQLite safely
+description: Back up a SQLite database without corruption using WAL checkpoint.
+---
+
+# Back up SQLite safely
+
+SQLite files copied mid-write can be corrupt. BackupOS handles this by running a WAL checkpoint before snapshotting.
+
+1. **Jobs → New job → Source type: SQLite**
+2. Database path: e.g. `/app/data/app.db`
+3. Choose repository and schedule
+
+BackupOS opens the database, runs `PRAGMA wal_checkpoint(FULL)`, then copies the file.

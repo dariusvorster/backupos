@@ -1,0 +1,26 @@
+---
+title: Jobs
+description: The core scheduling unit in BackupOS — a source, a repository, a schedule, and optional hooks.
+---
+
+# Jobs
+
+A job combines a **source** (what to back up), a **repository** (where to store it), a **schedule** (when to run), and optional **hooks** (what to do before and after).
+
+## Lifecycle
+
+```
+idle → queued → running → success
+                        ↘ failed
+                        ↘ cancelled
+```
+
+A job is **idle** between scheduled runs. The scheduler **queues** it at the configured cron time. The assigned agent picks it up and moves it to **running**. On completion: **success**, **failed**, or **cancelled** (if manually stopped).
+
+## Job dependencies
+
+Jobs can depend on other jobs. Set a dependency to ensure Job B only runs after Job A succeeds. Useful for: back up the database, then back up the application data that references it.
+
+## Templates
+
+Recurring job patterns (e.g. "nightly PostgreSQL backup") can be saved as templates and reused when adding new jobs of the same type.

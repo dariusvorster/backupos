@@ -1,0 +1,19 @@
+---
+title: Monitors
+description: Read-only observation of third-party backup systems.
+---
+
+# Monitors
+
+A monitor lets BackupOS observe an existing backup system — PBS, Borg, raw Restic scripts — without managing it. You get unified visibility without migrating.
+
+## What monitors see
+
+- Last backup time (success/failure)
+- Snapshot count
+- Repository size
+- Alert if no recent backup is detected
+
+## Monitors vs managed repos
+
+Monitors are read-only. They cannot trigger backups, browse snapshots in detail, or run restore verification. If you want full management, add the repository directly and migrate your jobs to BackupOS.

@@ -1,0 +1,14 @@
+---
+title: Back up a Docker volume
+description: Back up a named Docker volume directly without pausing any container.
+---
+
+# Back up a Docker volume
+
+Use this when you want to back up volume data independently of the container lifecycle.
+
+1. **Jobs → New job → Source type: Docker volume**
+2. Volume name: e.g. `my-app_data`
+3. Choose repository and schedule
+
+No container pause — the volume is mounted directly and snapshotted. For app-consistent backups, use the **Docker container** source type instead.

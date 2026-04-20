@@ -1,0 +1,18 @@
+---
+title: Runs
+description: A single execution of a job, with phases, log stream, and timeline.
+---
+
+# Runs
+
+A run is one execution of a job. Each run has a unique ID and proceeds through these phases:
+
+| Phase | Description |
+|---|---|
+| Pre-flight | Checks: disk space, source reachable, repo accessible |
+| Pre-hook | Optional script or HTTP call before the backup |
+| Backup | Restic backup execution |
+| Post-hook | Optional script or HTTP call after the backup |
+| Verification | Optional: restore a file to confirm the snapshot is usable |
+
+The **Runs** page for a job shows the full history. Click a run to see the real-time log stream, phase timeline, bytes transferred, duration, and the Restic snapshot ID.

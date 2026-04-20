@@ -1,0 +1,22 @@
+---
+title: Snapshots
+description: Immutable, deduplicated, encrypted point-in-time copies of your source data.
+---
+
+# Snapshots
+
+A snapshot is an immutable point-in-time copy created by Restic at the end of a successful backup run. Restic's content-addressed storage means unchanged data is never uploaded twice — only the delta is stored.
+
+## Tags, pins, and holds
+
+- **Tag:** a string label (e.g. `pre-migration`, `v1.2.3`). Used for filtering and retention overrides.
+- **Pin:** protects a snapshot from forget/prune permanently.
+- **Hold:** temporary protection during migrations or risky changes. Set it, do the work, release it.
+
+## Retention policy
+
+Restic's `forget` command removes old snapshots according to a policy (keep last N, keep daily for 30 days, etc.). BackupOS applies the policy per-repository on a configurable schedule.
+
+## Diff view
+
+Compare two snapshots to see which files changed between runs.

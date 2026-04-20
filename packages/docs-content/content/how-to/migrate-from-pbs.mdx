@@ -1,0 +1,16 @@
+---
+title: Migrate from PBS to BackupOS
+description: Add BackupOS alongside existing Proxmox Backup Server jobs.
+---
+
+# Migrate from PBS to BackupOS
+
+BackupOS and PBS can run in parallel. The migration path:
+
+1. Add a new Restic repository (e.g. R2) in BackupOS
+2. Create BackupOS jobs for each PBS job you want to migrate
+3. Run both in parallel for 30 days to build a safety margin
+4. Once you're confident, disable the PBS jobs
+5. PBS remains available as a storage backend if desired (add it as a Monitor)
+
+You cannot copy PBS backup data directly into Restic — PBS uses a proprietary format. Start fresh with BackupOS jobs.

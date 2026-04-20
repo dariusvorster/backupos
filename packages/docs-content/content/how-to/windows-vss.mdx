@@ -1,0 +1,15 @@
+---
+title: Back up Windows with VSS
+description: Use Volume Shadow Copy for consistent Windows system backups.
+---
+
+# Back up Windows with VSS
+
+The Windows BackupOS agent uses VSS (Volume Shadow Copy Service) to create consistent snapshots of NTFS volumes, even while files are open.
+
+1. Enrol a Windows agent (requires Administrator rights at install time)
+2. **Jobs → New job → Source type: Windows system (VSS)**
+3. Volumes to include: e.g. `C:\`, `D:\`
+4. Choose repository and schedule
+
+VSS creates a point-in-time shadow copy. Restic backs up from the shadow, then VSS releases it.

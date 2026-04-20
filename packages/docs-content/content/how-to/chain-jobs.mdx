@@ -1,0 +1,12 @@
+---
+title: Chain jobs (run B after A succeeds)
+description: Set up job dependencies to ensure jobs run in order.
+---
+
+# Chain jobs
+
+Go to **Jobs → [Job B] → Settings → Dependencies**. Add **Job A** as a dependency.
+
+Job B will only start after Job A's most recent run succeeds. If Job A fails, Job B is skipped for that cycle and flagged as **Blocked**.
+
+Use case: back up the database first (Job A), then back up the application data that references the database (Job B).

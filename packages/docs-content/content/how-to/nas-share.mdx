@@ -1,0 +1,19 @@
+---
+title: Back up a NAS share
+description: Back up files from an NFS or SMB network share.
+---
+
+# Back up a NAS share
+
+Mount the NAS share on the agent machine and use a filesystem source.
+
+```bash
+# NFS example (add to /etc/fstab):
+192.168.1.10:/volume1/data  /mnt/nas  nfs  defaults  0  0
+mount /mnt/nas
+```
+
+Then in BackupOS:
+1. **Jobs → New job → Source type: Filesystem**
+2. Path: `/mnt/nas`
+3. Choose repository and schedule

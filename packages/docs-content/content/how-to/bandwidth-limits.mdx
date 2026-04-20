@@ -1,0 +1,16 @@
+---
+title: Set bandwidth limits during business hours
+description: Use bandwidth profiles to limit upload speed during peak hours.
+---
+
+# Set bandwidth limits during business hours
+
+1. Go to **Settings → Bandwidth profiles → New profile**
+2. Set a name (e.g. "Business hours")
+3. Add a rule: Mon–Fri 09:00–18:00 → limit 5 MB/s upload
+4. Add a rule: All other times → unlimited
+5. Save the profile
+
+6. Go to **Jobs → [job] → Bandwidth profile** and assign this profile
+
+The agent applies the limit to Restic's `--limit-upload` flag during the backup.

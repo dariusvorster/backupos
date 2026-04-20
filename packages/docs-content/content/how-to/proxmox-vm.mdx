@@ -1,0 +1,27 @@
+---
+title: Back up a Proxmox VM
+description: Use the Proxmox API integration to back up a VM without an in-guest agent.
+---
+
+# Back up a Proxmox VM
+
+BackupOS integrates directly with the Proxmox API to create consistent VM snapshots without requiring a BackupOS agent inside the guest.
+
+## Prerequisites
+
+- BackupOS agent enrolled on the Proxmox host (or any host with API access)
+- Proxmox API token with `VM.Backup` privilege
+- A configured repository
+
+## Steps
+
+1. Go to **Jobs → New job**
+2. Source type: **Proxmox VM**
+3. Enter Proxmox API URL, token ID, and token secret
+4. Select the VM by ID or name
+5. Choose repository and schedule
+6. Click **Create job**, then **Run now** to test
+
+## Verify
+
+After the run, check **Snapshots** — the snapshot tags will include `vm:<vmid>`. You can restore individual files or the full VM disk.

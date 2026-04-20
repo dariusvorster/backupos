@@ -1,0 +1,15 @@
+---
+title: Migrate from raw Restic scripts to BackupOS
+description: Move existing Restic repositories under BackupOS management.
+---
+
+# Migrate from raw Restic scripts to BackupOS
+
+Existing Restic repositories work directly with BackupOS — no data migration needed.
+
+1. Go to **Repositories → Add repository**
+2. Enter the existing repository credentials (same backend URL and encryption password)
+3. Click **Connect** (not **Initialise** — the repo already exists)
+4. BackupOS discovers existing snapshots and displays them in the Snapshots browser
+5. Create a new job pointing to this repository
+6. Disable your old cron script once you've verified BackupOS is running correctly

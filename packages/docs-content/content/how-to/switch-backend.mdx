@@ -1,0 +1,19 @@
+---
+title: Switch repository backends
+description: Migrate a Restic repository from one storage backend to another.
+---
+
+# Switch repository backends
+
+Restic repositories are portable — you can copy them between backends with `restic copy`.
+
+1. Add the new repository in BackupOS
+2. On an agent with access to both backends, run:
+
+```bash
+restic -r old-backend copy --repo2 new-backend
+```
+
+3. Verify the copy by checking snapshot count in both repos
+4. Update the job to point to the new repository
+5. Delete the old repository after confirming all data is on the new backend

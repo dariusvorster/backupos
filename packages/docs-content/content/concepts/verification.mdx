@@ -1,0 +1,23 @@
+---
+title: Verification
+description: Scheduled restore tests that prove backups are actually usable.
+---
+
+# Verification
+
+Verification is a scheduled test that restores data from a snapshot and checks the result. It's the only way to know a backup is restorable without doing it manually.
+
+## How it works
+
+1. BackupOS picks the most recent snapshot for the job
+2. An agent restores one or more files to a sandbox target path
+3. Optional validation hooks run (e.g. check a database can be opened)
+4. Result: **passed** or **failed**
+
+## Sandbox targets
+
+Verification restores to a temporary path on the agent — not to production. After the test, the temporary files are deleted.
+
+## Alert on failure
+
+If verification fails, BackupOS fires a critical alert. Your backup succeeded but the restore did not work — you need to investigate.

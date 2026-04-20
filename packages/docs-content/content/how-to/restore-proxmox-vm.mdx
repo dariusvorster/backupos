@@ -1,0 +1,14 @@
+---
+title: Restore a Proxmox VM
+description: Recover a VM from a BackupOS snapshot via the Proxmox API.
+---
+
+# Restore a Proxmox VM
+
+1. Find the snapshot in **Snapshots** (filter by tag `vm:<vmid>`)
+2. Click **Restore → Restore VM**
+3. Select target Proxmox host and VM ID (can be a new VM ID)
+4. Choose whether to overwrite the existing VM or create a new one
+5. Click **Start restore**
+
+The restore recreates the VM disk image from the Restic snapshot and registers it with Proxmox.

@@ -1,0 +1,14 @@
+---
+title: Set up restore verification
+description: Schedule automated restore tests to prove your backups work.
+---
+
+# Set up restore verification
+
+1. Go to **Jobs → [job name] → Verification**
+2. Enable **Scheduled verification**
+3. Set frequency: daily, weekly, or monthly
+4. Set sandbox path: a temporary directory on the agent (e.g. `/tmp/verify-JOBNAME`)
+5. (Optional) Add a validation hook script to check the restored data
+
+BackupOS will automatically restore a sample of files from the most recent snapshot and report **Passed** or **Failed**. A failure triggers a critical alert.

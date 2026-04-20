@@ -1,0 +1,29 @@
+---
+title: Health score
+description: A 0–100 score summarising the reliability of an agent or repository.
+---
+
+# Health score
+
+The health score is a 0–100 number (displayed as A–F) that summarises how healthy a backup setup is. It's computed per agent and per repository.
+
+## Factors
+
+| Factor | Weight | Description |
+|---|---|---|
+| Recent run success rate | 40% | Percentage of runs that succeeded in the last 30 days |
+| Snapshot freshness | 30% | How recently the last successful snapshot was taken |
+| Verification results | 20% | Pass rate of restore verification tests |
+| Pre-flight pass rate | 10% | Percentage of pre-flights that passed |
+
+## Letter grades
+
+| Score | Grade |
+|---|---|
+| 90–100 | A |
+| 80–89 | B |
+| 70–79 | C |
+| 60–69 | D |
+| 0–59 | F |
+
+A score below 70 triggers a warning badge. Below 50 triggers a critical alert if alert rules are configured.

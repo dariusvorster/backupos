@@ -1,0 +1,13 @@
+---
+title: Back up a Docker container
+description: App-consistent backup — pause, snapshot volumes, resume.
+---
+
+# Back up a Docker container
+
+1. **Jobs → New job → Source type: Docker container**
+2. Container name: e.g. `my-app`
+3. Volumes to include: select from the list detected by the agent
+4. Choose repository and schedule
+
+BackupOS pauses the container (`docker pause`), backs up its volumes, then resumes it. Pause time is typically under 5 seconds.

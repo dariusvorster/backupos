@@ -1,0 +1,15 @@
+---
+title: Restore a database
+description: Recover a database from a BackupOS snapshot.
+---
+
+# Restore a database
+
+For database sources (PostgreSQL, MySQL, SQLite), each snapshot includes a dump file. To restore:
+
+1. Find the snapshot in **Snapshots**
+2. Click **Restore → Restore database**
+3. Select target database connection string
+4. Click **Start restore**
+
+BackupOS downloads the dump file from the snapshot and runs the appropriate restore command (`psql`, `mysql`, or SQLite file copy).

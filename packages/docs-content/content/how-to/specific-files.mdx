@@ -1,0 +1,19 @@
+---
+title: Back up specific files only
+description: Use include/exclude patterns to back up a subset of a directory.
+---
+
+# Back up specific files only
+
+In the job wizard, filesystem sources support include and exclude patterns (Restic glob format).
+
+**Include pattern examples:**
+- `*.sql` — only SQL dump files
+- `/home/**/.ssh/` — all SSH directories under `/home`
+
+**Exclude pattern examples:**
+- `node_modules/`
+- `**/.cache/`
+- `*.log`
+
+Set these in **Job → Source → Advanced → Include/Exclude patterns**.

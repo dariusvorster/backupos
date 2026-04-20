@@ -1,0 +1,26 @@
+---
+title: Restore specs
+description: Declarative recovery procedures for whole-host or service-level disaster recovery.
+---
+
+# Restore specs
+
+A restore spec is a YAML file that describes how to recover a system or service, step by step. Specs are stored in BackupOS and presented as a guided checklist in DR Mode during an incident.
+
+## Why specs matter
+
+Restore procedures documented in wikis rot. Specs live next to the job config, are version-controlled, and are tested during verification runs.
+
+## Step types
+
+| Type | Description |
+|---|---|
+| restore_file | Restore a file or directory from a snapshot |
+| restore_database | Restore a database dump from a snapshot |
+| run_hook | Execute a script on an agent |
+| notify | Send a notification (webhook, email) |
+| manual | A human-in-the-loop step with instructions |
+
+## Failure modes
+
+Each step can be configured with `on_failure: abort | continue | notify_only`. Critical steps abort the spec; non-critical steps continue and flag the failure for review.

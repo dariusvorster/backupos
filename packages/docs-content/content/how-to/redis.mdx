@@ -1,0 +1,13 @@
+---
+title: Back up Redis
+description: Consistent Redis backup using BGSAVE before the Restic snapshot.
+---
+
+# Back up Redis
+
+1. **Jobs → New job → Source type: Redis**
+2. Redis connection: `redis://localhost:6379`
+3. RDB path: `/var/lib/redis/dump.rdb` (or wherever your Redis RDB file is)
+4. Choose repository and schedule
+
+BackupOS issues `BGSAVE` and waits for it to complete before snapshotting the RDB file.
