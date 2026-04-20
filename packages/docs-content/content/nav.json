@@ -1,0 +1,114 @@
+{
+  "sections": [
+    {
+      "title": "Introduction",
+      "slug": "introduction",
+      "pages": [
+        { "title": "What is BackupOS",       "slug": "what-is-backupos" },
+        { "title": "Why BackupOS",            "slug": "why-backupos" },
+        { "title": "Architecture overview",   "slug": "architecture-overview" },
+        { "title": "Terminology",             "slug": "terminology" }
+      ]
+    },
+    {
+      "title": "Getting started",
+      "slug": "getting-started",
+      "pages": [
+        { "title": "Install (self-hosted)",   "slug": "install-self-hosted" },
+        { "title": "Install (cloud)",         "slug": "install-cloud" },
+        { "title": "Enrol your first agent",  "slug": "enrol-agent" },
+        { "title": "Connect a repository",    "slug": "connect-repository" },
+        { "title": "Run your first backup",   "slug": "run-first-backup" },
+        { "title": "Run your first restore",  "slug": "run-first-restore" },
+        { "title": "What next",               "slug": "what-next" }
+      ]
+    },
+    {
+      "title": "Concepts",
+      "slug": "concepts",
+      "pages": [
+        { "title": "Jobs",           "slug": "jobs" },
+        { "title": "Runs",           "slug": "runs" },
+        { "title": "Sources",        "slug": "sources" },
+        { "title": "Repositories",   "slug": "repositories" },
+        { "title": "Snapshots",      "slug": "snapshots" },
+        { "title": "Agents",         "slug": "agents" },
+        { "title": "Restore specs",  "slug": "restore-specs" },
+        { "title": "Monitors",       "slug": "monitors" },
+        { "title": "Verification",   "slug": "verification" },
+        { "title": "Health score",   "slug": "health-score" }
+      ]
+    },
+    {
+      "title": "How-to guides",
+      "slug": "how-to",
+      "pages": [
+        { "title": "Back up a Proxmox VM",              "slug": "proxmox-vm" },
+        { "title": "Back up a Proxmox LXC",             "slug": "proxmox-lxc" },
+        { "title": "Back up PostgreSQL",                "slug": "postgresql" },
+        { "title": "Back up MySQL / MariaDB",           "slug": "mysql" },
+        { "title": "Back up Redis",                     "slug": "redis" },
+        { "title": "Back up SQLite safely",             "slug": "sqlite" },
+        { "title": "Back up a Docker container",        "slug": "docker-container" },
+        { "title": "Back up a Docker volume",           "slug": "docker-volume" },
+        { "title": "Back up Windows with VSS",          "slug": "windows-vss" },
+        { "title": "Back up a NAS share",               "slug": "nas-share" },
+        { "title": "Back up specific files only",       "slug": "specific-files" },
+        { "title": "Back up multiple hosts",            "slug": "multiple-hosts" },
+        { "title": "Chain jobs (B after A)",            "slug": "chain-jobs" },
+        { "title": "Restore a single file",             "slug": "restore-file" },
+        { "title": "Restore a database",                "slug": "restore-database" },
+        { "title": "Restore a Proxmox VM",              "slug": "restore-proxmox-vm" },
+        { "title": "Restore an entire host",            "slug": "restore-host" },
+        { "title": "Use DR Mode during an incident",    "slug": "dr-mode" },
+        { "title": "Set up restore verification",       "slug": "setup-verification" },
+        { "title": "Tighten retention to save costs",   "slug": "retention" },
+        { "title": "Switch repository backends",        "slug": "switch-backend" },
+        { "title": "Migrate from PBS",                  "slug": "migrate-from-pbs" },
+        { "title": "Migrate from raw Restic",           "slug": "migrate-from-restic" },
+        { "title": "Set bandwidth limits",              "slug": "bandwidth-limits" },
+        { "title": "Configure alerts",                  "slug": "configure-alerts" },
+        { "title": "Pin snapshots before migration",    "slug": "pin-snapshots" },
+        { "title": "Set up multi-backend replication",  "slug": "multi-backend" },
+        { "title": "Export audit logs",                 "slug": "export-audit-logs" },
+        { "title": "Rotate API tokens",                 "slug": "rotate-api-tokens" },
+        { "title": "Recover a lost repository password","slug": "recover-password" }
+      ]
+    },
+    {
+      "title": "Reference",
+      "slug": "reference",
+      "pages": [
+        { "title": "Overview", "slug": "index" }
+      ]
+    },
+    {
+      "title": "Operations",
+      "slug": "operations",
+      "pages": [
+        { "title": "Overview", "slug": "index" }
+      ]
+    },
+    {
+      "title": "Integrations",
+      "slug": "integrations",
+      "pages": [
+        { "title": "Overview", "slug": "index" }
+      ]
+    },
+    {
+      "title": "Security",
+      "slug": "security",
+      "pages": [
+        { "title": "Overview", "slug": "index" }
+      ]
+    },
+    {
+      "title": "Release notes",
+      "slug": "release-notes",
+      "pages": [
+        { "title": "Overview", "slug": "index" }
+      ]
+    }
+  ]
+}
