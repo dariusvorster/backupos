@@ -56,11 +56,9 @@ export function JobsTable({
   const [pending,  startTransition] = useTransition()
 
   const toggleAll = () => {
-    if (selected.size === jobs.length) {
-      setSelected(new Set())
-    } else {
-      setSelected(new Set(jobs.map(j => j.id)))
-    }
+    setSelected(prev =>
+      prev.size === jobs.length ? new Set() : new Set(jobs.map(j => j.id))
+    )
   }
 
   const toggleOne = (id: string) => {
