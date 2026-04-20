@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { StatCard } from '@/components/ui/stat-card'
 import { computeForecast, fmtCents, fmtGb, fmtGbPerMonth, BACKEND_PRESETS } from '@/lib/growth-forecast'
 import { saveCostConfig } from '@/app/actions/repository-cost'
+import { setReplicas, setRepoGroup } from '@/app/actions/repositories'
+import type { ReplicaEntry }          from '@/app/actions/repositories'
 import { setEscrowAction, clearEscrow } from '@/app/actions/escrow'
 import { TrendingUp, AlertTriangle, Info, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { DedupBar, fmtBytes } from '../dedup-bar'
@@ -22,6 +24,11 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
   const db     = getDb()
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1)
   if (!repo) notFound()
+
+  const replicas: ReplicaEntry[] = (() => {
+    try { return repo.replicas ? (JSON.parse(repo.replicas) as ReplicaEntry[]) : [] }
+    catch { return [] }
+  })()
 
   // Fetch last 90 snapshots for this repo (for growth chart)
   const recentSnaps = await db.select({ sizeBytes: snapshots.sizeBytes, createdAt: snapshots.createdAt })
@@ -83,6 +90,136 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
         </Link>
         <Button variant="secondary" size="md">Run check</Button>
       </div>
+
+      {/* Environment group */}
+      {(() => {
+        const boundSetGroup = async (formData: FormData) => {
+          'use server'
+          const g = (formData.get('group') as string ?? '').trim() || null
+          await setRepoGroup(repo.id, g)
+        }
+        return (
+          <div style={{
+            backgroundColor: 'var(--surf)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            padding: '14px 20px',
+            marginBottom: 24,
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>
+              Environment group
+            </div>
+            <form action={boundSetGroup} style={{ display: 'flex', gap: 8 }}>
+              <input
+                name="group"
+                defaultValue={repo.group ?? ''}
+                placeholder="prod / home / lab"
+                style={{
+                  padding: '5px 10px', fontSize: 13,
+                  backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none', width: 160,
+                }}
+              />
+              <button type="submit" style={{
+                padding: '5px 14px', fontSize: 13, cursor: 'pointer',
+                borderRadius: 'var(--radius-sm)', border: 'none',
+                background: 'var(--accent)', color: '#fff',
+              }}>Save</button>
+            </form>
+          </div>
+        )
+      })()}
+
+      {/* Replication targets */}
+      {(() => {
+        const boundAddReplica = async (formData: FormData) => {
+          'use server'
+          const label   = ((formData.get('label')   as string) ?? '').trim()
+          const backend = ((formData.get('backend') as string) ?? '').trim()
+          if (!label || !backend) return
+          const current: ReplicaEntry[] = (() => {
+            try { return repo.replicas ? (JSON.parse(repo.replicas) as ReplicaEntry[]) : [] }
+            catch { return [] }
+          })()
+          await setReplicas(repo.id, [...current, { label, backend }])
+        }
+        return (
+          <div style={{
+            backgroundColor: 'var(--surf)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            padding: '18px 20px',
+            marginBottom: 24,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 12 }}>
+              Replication targets
+            </div>
+
+            {replicas.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginBottom: 12 }}>
+                No replication targets configured.
+              </div>
+            ) : (
+              <div style={{ marginBottom: 12 }}>
+                {replicas.map((r, i) => {
+                  const boundRemove = async () => {
+                    'use server'
+                    const current: ReplicaEntry[] = (() => {
+                      try { return repo.replicas ? (JSON.parse(repo.replicas) as ReplicaEntry[]) : [] }
+                      catch { return [] }
+                    })()
+                    await setReplicas(repo.id, current.filter((_, idx) => idx !== i))
+                  }
+                  return (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '6px 0', borderBottom: '1px solid var(--border)',
+                    }}>
+                      <span style={{ fontSize: 13, color: 'var(--fg)', flex: 1 }}>{r.label}</span>
+                      <span style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>{r.backend}</span>
+                      <form action={boundRemove}>
+                        <button type="submit" style={{
+                          fontSize: 11, color: 'var(--err)', background: 'none',
+                          border: 'none', cursor: 'pointer', padding: '2px 6px',
+                        }}>Remove</button>
+                      </form>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            <form action={boundAddReplica} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                name="label"
+                placeholder="Label (e.g. R2 offsite)"
+                required
+                style={{
+                  flex: 1, padding: '5px 10px', fontSize: 13,
+                  backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none',
+                }}
+              />
+              <input
+                name="backend"
+                placeholder="Backend (e.g. rclone:r2)"
+                required
+                style={{
+                  flex: 1, padding: '5px 10px', fontSize: 13,
+                  backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none',
+                }}
+              />
+              <button type="submit" style={{
+                padding: '5px 14px', fontSize: 13, cursor: 'pointer',
+                borderRadius: 'var(--radius-sm)', border: 'none',
+                background: 'var(--accent)', color: '#fff',
+              }}>Add</button>
+            </form>
+          </div>
+        )
+      })()}
 
       {/* Storage efficiency */}
       {repo.sizeBytes != null && (
