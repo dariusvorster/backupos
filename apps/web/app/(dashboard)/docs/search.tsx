@@ -20,8 +20,8 @@ interface SearchResult {
   href:    string
 }
 
-let _miniSearch: MiniSearch<DocEntry> | null = null
-let _indexPromise: Promise<void> | null      = null
+let _miniSearch: MiniSearch | null  = null
+let _indexPromise: Promise<void> | null = null
 
 function ensureIndex(): Promise<void> {
   if (_indexPromise) return _indexPromise
@@ -42,9 +42,12 @@ export function DocsSearch() {
   const [query,   setQuery]   = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [open,    setOpen]    = useState(false)
+  const [loading, setLoading] = useState(true)
   const containerRef          = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { ensureIndex() }, [])
+  useEffect(() => {
+    ensureIndex().then(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
     if (!query.trim() || !_miniSearch) {
@@ -52,7 +55,12 @@ export function DocsSearch() {
       setOpen(false)
       return
     }
-    const hits = (_miniSearch.search(query) as unknown as SearchResult[]).slice(0, 8)
+    const hits: SearchResult[] = _miniSearch.search(query).slice(0, 8).map(r => ({
+      id:      r.id as string,
+      title:   r['title'] as string,
+      section: r['section'] as string,
+      href:    r['href'] as string,
+    }))
     setResults(hits)
     setOpen(hits.length > 0)
   }, [query])
@@ -71,7 +79,8 @@ export function DocsSearch() {
     <div ref={containerRef} style={{ position: 'relative', padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
       <input
         type="search"
-        placeholder="Search docs…"
+        placeholder={loading ? 'Loading index…' : 'Search docs…'}
+        disabled={loading}
         value={query}
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
         onFocus={() => { if (results.length > 0) setOpen(true) }}
@@ -79,7 +88,7 @@ export function DocsSearch() {
           width: '100%', padding: '5px 8px', fontSize: 12,
           border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
           backgroundColor: 'var(--surf2)', color: 'var(--fg)', outline: 'none',
-          boxSizing: 'border-box',
+          boxSizing: 'border-box', opacity: loading ? 0.5 : 1,
         }}
       />
       {open && results.length > 0 && (
