@@ -1,0 +1,54 @@
+---
+title: Connect a repository
+description: Add a Restic repository to BackupOS.
+---
+
+# Connect a repository
+
+A repository is where backup data is stored. BackupOS uses [Restic](https://restic.net) as its storage engine — all repositories are standard Restic repositories.
+
+## Recommended: Cloudflare R2
+
+Cloudflare R2 has zero egress fees, making it the cheapest option for most homelab setups. You pay only for storage (currently $0.015/GB/month).
+
+### 1. Create an R2 bucket
+
+1. Log into [dash.cloudflare.com](https://dash.cloudflare.com)
+2. Go to **R2 → Create bucket**
+3. Name it (e.g. `homelab-backups`), choose a region
+4. Go to **R2 → Manage R2 API tokens → Create API token**
+5. Scope: **Object Read & Write** on your bucket
+6. Note the **Access Key ID** and **Secret Access Key**
+
+### 2. Add the repository in BackupOS
+
+Go to **Repositories → Add repository**:
+
+| Field | Value |
+|---|---|
+| Name | anything (e.g. "R2 homelab") |
+| Backend | S3 / R2 |
+| Endpoint | `https://<account-id>.r2.cloudflarestorage.com` |
+| Bucket | your bucket name |
+| Access key ID | from step 1 |
+| Secret access key | from step 1 |
+| Encryption password | **choose a strong, unique password** |
+
+### 3. Enable escrow (strongly recommended)
+
+If you forget the encryption password, the backup data is permanently inaccessible. Enable escrow: BackupOS encrypts the password with your master passphrase and stores it. You can recover it later via **Settings → Recover repository password**.
+
+Click **Initialise repository**. BackupOS calls `restic init` and stores the connection details.
+
+## Other backends
+
+| Backend | Endpoint format |
+|---|---|
+| Backblaze B2 | `b2:<bucket-name>` |
+| AWS S3 | `s3:s3.amazonaws.com/<bucket>` |
+| MinIO (local) | `s3:http://minio:9000/<bucket>` |
+| Local path | `/mnt/nas/backups` |
+
+## Verify
+
+After adding: the repository card shows **Accessible** with green status. If it shows **Error**, check the credentials and endpoint URL.

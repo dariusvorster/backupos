@@ -1,0 +1,57 @@
+---
+title: Enrol your first agent
+description: Install the BackupOS agent on a Linux or Windows machine.
+---
+
+# Enrol your first agent
+
+The BackupOS agent is a single binary (`ios-agent`) that runs as a system service and executes backup jobs on behalf of the web app.
+
+## Linux
+
+### 1. Get the enrolment token
+
+In the BackupOS UI, go to **Agents → Enrol agent**. Copy the enrolment token shown.
+
+### 2. Run the one-line installer
+
+```bash
+curl -fsSL https://your-backupos-host:3000/install/agent | \
+  sudo sh -s -- --token <enrolment-token>
+```
+
+The installer:
+1. Downloads the `ios-agent` binary to `/usr/local/bin/ios-agent`
+2. Creates a systemd service `ios-agent.service`
+3. Starts the service and connects to the web app
+
+### 3. Verify in the UI
+
+Refresh the **Agents** page. Your new agent should appear within 30 seconds with status **Connected**.
+
+### 4. Check capabilities
+
+Click the agent row to see its detected capabilities:
+- Available source types (filesystem, Docker, Proxmox, etc.)
+- Free disk space on key mount points
+- OS and architecture
+
+## Windows
+
+### 1. Download the installer
+
+From the BackupOS UI: **Agents → Enrol agent → Windows**. Download `ios-agent-setup.exe`.
+
+### 2. Run the installer
+
+Double-click `ios-agent-setup.exe`. Enter the enrolment token when prompted. The installer registers a Windows Service named **BackupOS Agent**.
+
+### 3. Verify
+
+Check **Services** (services.msc) — `BackupOS Agent` should be Running. Then verify in the UI.
+
+## Troubleshooting
+
+**Agent appears but shows Disconnected:** Check that the agent machine can reach the BackupOS host on port 3000 (or your configured port).
+
+**curl: SSL certificate error:** If you're using a self-signed cert, add `--insecure` to the curl command. In production, use a valid certificate.

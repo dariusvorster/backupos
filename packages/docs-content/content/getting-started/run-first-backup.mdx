@@ -1,0 +1,48 @@
+---
+title: Run your first backup
+description: Create a backup job and run it manually for the first time.
+---
+
+# Run your first backup
+
+## 1. Open the new job wizard
+
+Go to **Jobs → New job**.
+
+## 2. Configure the job
+
+**Step 1 — Source:**
+- Agent: select the agent you enrolled
+- Source type: **Filesystem**
+- Path: `/home` (a safe first target — not too large, easy to verify)
+
+**Step 2 — Repository:**
+- Select the repository you connected
+
+**Step 3 — Schedule:**
+- Keep the default (daily at 02:00). You can change this later.
+- Enable **Auto pre-flight** — runs checks 15 minutes before each scheduled run
+
+**Step 4 — Review:**
+- Give the job a name (e.g. "Home directory — server-01")
+- Click **Create job**
+
+## 3. Run it manually
+
+On the job detail page, click **Run now**. The job moves to **Running** status.
+
+Watch the log stream update in real time on the **Jobs → [job name] → Runs → [run]** page. You'll see Restic output as it scans and uploads data.
+
+## 4. See the snapshot
+
+When the run completes (status: **Success**), go to **Snapshots**. Filter by your repository. You should see a new snapshot with today's date and your source path.
+
+## What "success" means
+
+A successful run means:
+- Restic completed without error
+- All source files were scanned
+- New/changed files were uploaded to the repository
+- The snapshot ID was recorded in BackupOS
+
+It does **not** mean the backup is restorable — that's what verification is for.

@@ -1,0 +1,82 @@
+---
+title: Install BackupOS (self-hosted)
+description: Run BackupOS on your own hardware using Docker Compose.
+---
+
+# Install BackupOS (self-hosted)
+
+## Prerequisites
+
+- Docker 24+ and Docker Compose v2
+- 2 GB RAM (4 GB recommended)
+- 10 GB disk for the application (backup data lives in your repositories, not here)
+- A Linux host (x86_64 or arm64)
+
+## 1. Create a project directory
+
+```bash
+mkdir backupos && cd backupos
+```
+
+## 2. Create docker-compose.yml
+
+```yaml
+services:
+  web:
+    image: backupos/web:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - backupos-data:/data
+    environment:
+      - DATABASE_URL=file:/data/backupos.db
+      - ENCRYPTION_KEY=change-this-to-a-random-64-char-hex-string
+      - NEXTAUTH_SECRET=change-this-to-a-random-32-char-string
+      - NEXTAUTH_URL=http://localhost:3000
+
+volumes:
+  backupos-data:
+```
+
+**Important:** Replace `ENCRYPTION_KEY` and `NEXTAUTH_SECRET` with random values:
+
+```bash
+openssl rand -hex 32   # NEXTAUTH_SECRET
+openssl rand -hex 32   # ENCRYPTION_KEY (use 64 hex chars = 32 bytes)
+```
+
+## 3. Start the container
+
+```bash
+docker compose up -d
+```
+
+## 4. Open the setup wizard
+
+Navigate to `http://localhost:3000`. On first boot you'll see the setup wizard:
+
+1. **Create admin account** — enter your email and a strong password
+2. **Instance name** — a friendly name shown in the UI (e.g. "Homelab")
+3. **Enable TOTP** — strongly recommended; scan the QR code with your authenticator app
+
+## Verify
+
+```bash
+docker compose ps
+# Should show: web   running
+```
+
+Check the logs if the container is unhealthy:
+
+```bash
+docker compose logs -f web
+```
+
+## Troubleshooting
+
+**Port 3000 already in use:** Change the left side of the port mapping to any free port, e.g. `"8080:3000"`.
+
+**ENCRYPTION_KEY error on startup:** The key must be exactly 64 hex characters (32 bytes). Use `openssl rand -hex 32` to generate one.
+
+**Database permission error:** The `/data` volume must be writable. On some hosts you may need to `chown -R 1000:1000 backupos-data`.

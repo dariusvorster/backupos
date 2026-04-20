@@ -1,0 +1,36 @@
+---
+title: Install BackupOS (cloud)
+description: Use the managed BackupOS cloud service at backupos.app.
+---
+
+# Install BackupOS (cloud)
+
+The managed cloud service at `backupos.app` handles hosting, upgrades, and backups of the control plane. You bring your agents and repositories.
+
+## 1. Sign up
+
+Go to [backupos.app](https://backupos.app) and create an account.
+
+## Plan differences
+
+| | Solo | Teams |
+|---|---|---|
+| Agents | Up to 5 | Unlimited |
+| Users | 1 | Up to 20 |
+| Audit log retention | 90 days | 7 years |
+| SSO | ❌ | ✅ |
+| Price | Free | $12/month |
+
+## 2. Connect your first agent
+
+Cloud-hosted BackupOS uses a relay connection so agents don't need inbound firewall rules. When you add an agent, you get a one-line install command:
+
+```bash
+curl -fsSL https://backupos.app/install | sh -s -- --token <your-enrolment-token>
+```
+
+The agent connects outbound to the relay. No port forwarding required.
+
+## 3. Data residency
+
+Backup data never passes through BackupOS servers. Agents write directly to your configured repository (R2, B2, S3). BackupOS only sees metadata: job status, snapshot IDs, byte counts.

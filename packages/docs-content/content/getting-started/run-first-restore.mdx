@@ -1,0 +1,51 @@
+---
+title: Run your first restore
+description: Restore a single file from a snapshot to verify your backup works.
+---
+
+# Run your first restore
+
+Do this every time you onboard a new source. Knowing a backup exists is not the same as knowing it's usable.
+
+## 1. Find the snapshot
+
+Go to **Snapshots**. Click the snapshot created by your first backup run.
+
+## 2. Start a file restore
+
+Click **Restore → Restore file**. The restore wizard opens.
+
+**Step 1 — Select file:**
+- Browse the snapshot's file tree
+- Pick any file you recognise (e.g. `/home/yourname/.bashrc`)
+
+**Step 2 — Destination:**
+- Target path: `/tmp/restore-test` (a safe temporary directory)
+- Agent: the agent that has access to the destination
+
+**Step 3 — Confirm:**
+- Review the details and click **Start restore**
+
+## 3. Verify the restored file
+
+The restore runs as a job. When it completes:
+
+```bash
+# On the target machine
+cat /tmp/restore-test/.bashrc
+# Should show your actual .bashrc content
+```
+
+If the file is there and correct: your backup is confirmed restorable.
+
+## 4. Clean up
+
+```bash
+rm -rf /tmp/restore-test
+```
+
+## Why this matters
+
+> "Untested backups are not backups. They are hopes."
+
+Run a restore test at least once per source when you set it up. Then set up **Verification** to automate this — BackupOS can schedule restore tests on a cadence and alert you if they fail.

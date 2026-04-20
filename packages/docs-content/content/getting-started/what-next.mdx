@@ -1,0 +1,46 @@
+---
+title: What next
+description: Where to go after your first backup and restore.
+---
+
+# What next
+
+You've installed BackupOS, enrolled an agent, connected a repository, and confirmed a backup is restorable. Here are the natural next steps:
+
+## Set up verification
+
+Automated restore tests prove your backups work without manual effort. Go to **Jobs → [job] → Verification** to schedule periodic restore tests.
+
+→ [Set up restore verification](/docs/how-to/setup-verification)
+
+## Add more sources
+
+Back up databases, Docker volumes, other machines. Each source gets its own job.
+
+→ [Back up PostgreSQL](/docs/how-to/postgresql)
+→ [Back up a Docker container](/docs/how-to/docker-container)
+→ [Back up a Proxmox VM](/docs/how-to/proxmox-vm)
+
+## Configure alerts
+
+Get notified when a job fails, a snapshot is overdue, or storage costs exceed a threshold.
+
+→ [Configure alerts](/docs/how-to/configure-alerts)
+
+## Enable escrow for your repositories
+
+If you haven't already, enable key escrow so you can recover encryption passwords if they're lost.
+
+→ [Recover a lost repository password](/docs/how-to/recover-password)
+
+## Understand the health score
+
+The health score summarises the reliability of each agent and repository. Aim for A.
+
+→ [Health score](/docs/concepts/health-score)
+
+## Explore DR Mode
+
+Create restore specs for your most critical services so you're ready for a real incident.
+
+→ [Use DR Mode during an incident](/docs/how-to/dr-mode)
