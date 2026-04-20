@@ -1,5 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
 import { nav } from '@backupos/docs-content'
 import { DocsNav } from '../components/docs-nav'
 
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
   description: 'Documentation for BackupOS — unified backup management.',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>

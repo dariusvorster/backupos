@@ -12,7 +12,7 @@ export default function HomePage() {
         Unified backup management for homelabs and small businesses.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        {nav.sections.map(section => (
+        {nav.sections.filter(section => section.pages.length > 0).map(section => (
           <Link
             key={section.slug}
             href={`/${section.slug}/${section.pages[0].slug}`}

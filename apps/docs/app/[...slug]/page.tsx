@@ -7,16 +7,21 @@ import type { Metadata } from 'next'
 
 const DOCS_ROOT = resolve(process.cwd(), '../../packages/docs-content/content')
 
+function readDocSource(filePath: string): string | null {
+  try { return readFileSync(filePath, 'utf8') } catch { return null }
+}
+
 function extractFrontmatterField(source: string, field: string): string | undefined {
-  const match = source.match(new RegExp(`^---[\\s\\S]*?${field}:\\s*(.+?)[\\r\\n]`, 'm'))
-  return match?.[1]?.replace(/^['"]|['"]$/g, '').trim()
+  const fmMatch = source.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (!fmMatch) return undefined
+  const fm = fmMatch[1]
+  const lineMatch = fm.match(new RegExp(`^${field}:\\s*(.+?)\\s*$`, 'm'))
+  return lineMatch?.[1]?.replace(/^['"]|['"]$/g, '').trim()
 }
 
 export async function generateStaticParams() {
   return nav.sections.flatMap(section =>
-    section.pages.map(page => ({
-      slug: [section.slug, page.slug],
-    }))
+    section.pages.map(page => ({ slug: [section.slug, page.slug] }))
   )
 }
 
@@ -29,14 +34,11 @@ export async function generateMetadata({
   if (slug.length !== 2) return {}
   const [section, page] = slug
   const filePath = resolve(join(DOCS_ROOT, section, `${page}.mdx`))
-  try {
-    const source      = readFileSync(filePath, 'utf8')
-    const title       = extractFrontmatterField(source, 'title')
-    const description = extractFrontmatterField(source, 'description')
-    return { ...(title ? { title } : {}), ...(description ? { description } : {}) }
-  } catch {
-    return {}
-  }
+  const source = readDocSource(filePath)
+  if (!source) return {}
+  const title       = extractFrontmatterField(source, 'title')
+  const description = extractFrontmatterField(source, 'description')
+  return { ...(title ? { title } : {}), ...(description ? { description } : {}) }
 }
 
 export default async function DocsPage({
@@ -53,12 +55,8 @@ export default async function DocsPage({
 
   if (!filePath.startsWith(root + '/')) notFound()
 
-  let source: string
-  try {
-    source = readFileSync(filePath, 'utf8')
-  } catch {
-    notFound()
-  }
+  const source = readDocSource(filePath)
+  if (!source) notFound()
 
-  return <MDXRemote source={source!} />
+  return <MDXRemote source={source} />
 }
