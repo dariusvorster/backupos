@@ -5,8 +5,69 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
+import { getLogsPage } from '@/app/actions/logs'
+import { setAgentUpdateChannel } from '@/app/actions/agents'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
+
+interface ResourceSample { ts: number; cpuPct: number; ramBytes: number }
+
+function parseHistory(raw: string | null): ResourceSample[] {
+  if (!raw) return []
+  try { return JSON.parse(raw) as ResourceSample[] } catch { return [] }
+}
+
+function fmtBytes(b: number | null): string {
+  if (b == null) return '—'
+  if (b < 1024 ** 2) return `${(b / 1024).toFixed(0)} KB`
+  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`
+  return `${(b / 1024 ** 3).toFixed(2)} GB`
+}
+
+function Sparkline({ samples, field, color }: {
+  samples: ResourceSample[]
+  field: 'cpuPct' | 'ramBytes'
+  color: string
+}) {
+  if (samples.length === 0) {
+    return <span style={{ fontSize: 12, color: 'var(--fg-dim)' }}>No data</span>
+  }
+  const values = samples.map(s => s[field])
+  const max    = Math.max(...values, 1)
+  const bars   = samples.slice(-48)
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 32 }}>
+      {bars.map((s, i) => {
+        const h = Math.max(2, Math.round((s[field] / max) * 32))
+        return (
+          <div
+            key={i}
+            title={field === 'cpuPct' ? `${s[field]}%` : fmtBytes(s[field])}
+            style={{
+              width: 4, height: h, borderRadius: 1,
+              backgroundColor: color, flexShrink: 0,
+            }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function CapabilityBadge({ label, available, na }: { label: string; available: boolean | null; na?: boolean }) {
+  const color = na ? 'var(--fg-dim)' : available ? 'var(--ok)' : 'var(--fg-dim)'
+  const bg    = na ? 'var(--surf2)' : available ? 'color-mix(in srgb, var(--surf2) 60%, var(--ok) 10%)' : 'var(--surf2)'
+  return (
+    <span style={{
+      fontSize: 11, padding: '3px 8px', borderRadius: 12,
+      border: '1px solid var(--border)', backgroundColor: bg, color,
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: color, display: 'inline-block' }} />
+      {label}
+    </span>
+  )
+}
 
 export default async function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id }  = await params
@@ -14,7 +75,20 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   const [agent] = await db.select().from(agents).where(eq(agents.id, id)).limit(1)
   if (!agent) notFound()
 
-  const jobs = await db.select().from(backupJobs).where(eq(backupJobs.agentId, id)).all()
+  const jobs      = await db.select().from(backupJobs).where(eq(backupJobs.agentId, id)).all()
+  const agentLogs = await getLogsPage({ entityType: 'agent', entityId: id }, 50)
+  const history   = parseHistory(agent.resourceHistory ?? null)
+
+  async function handleSetChannel(formData: FormData) {
+    'use server'
+    const channel = formData.get('channel') as 'stable' | 'beta' | 'pinned'
+    await setAgentUpdateChannel(id, channel)
+  }
+
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)', padding: '16px 20px', marginBottom: 20,
+  }
 
   return (
     <div>
@@ -26,7 +100,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
         <StatCard label="Platform"  value={`${agent.platform ?? '—'} / ${agent.arch ?? '—'}`} />
         <StatCard label="Hostname"  value={agent.hostname ?? '—'} />
         <StatCard label="IP"        value={agent.ip ?? '—'} />
@@ -35,7 +109,97 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         <StatCard label="Last seen" value={agent.lastSeenAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'} />
       </div>
 
-      <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+      {/* Capabilities */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 12 }}>Capabilities</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <CapabilityBadge
+            label="VSS"
+            available={agent.vssAvailable ?? false}
+            na={agent.platform !== 'windows'}
+          />
+          <CapabilityBadge
+            label="Hypervisor driver"
+            available={agent.hypervisorDriver ?? false}
+          />
+          <CapabilityBadge
+            label="App hooks"
+            available={agent.appHooksAvailable ?? false}
+          />
+        </div>
+      </div>
+
+      {/* Resource usage */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 16 }}>Resource usage</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <span style={{ fontSize: 11, color: 'var(--fg-dim)' }}>CPU</span>
+              <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg)' }}>
+                {agent.cpuPct != null ? `${agent.cpuPct}%` : '—'}
+              </span>
+            </div>
+            <Sparkline samples={history} field="cpuPct" color="var(--accent)" />
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <span style={{ fontSize: 11, color: 'var(--fg-dim)' }}>RAM</span>
+              <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg)' }}>
+                {fmtBytes(agent.ramBytes ?? null)}
+              </span>
+            </div>
+            <Sparkline samples={history} field="ramBytes" color="#22c55e" />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 24, marginTop: 16 }}>
+          <div>
+            <span style={{ fontSize: 11, color: 'var(--fg-dim)' }}>Disk read </span>
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg-mute)' }}>
+              {agent.diskReadBps != null ? `${fmtBytes(agent.diskReadBps)}/s` : '—'}
+            </span>
+          </div>
+          <div>
+            <span style={{ fontSize: 11, color: 'var(--fg-dim)' }}>Disk write </span>
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg-mute)' }}>
+              {agent.diskWriteBps != null ? `${fmtBytes(agent.diskWriteBps)}/s` : '—'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Update channel */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>Auto-update channel</div>
+        <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginBottom: 12 }}>
+          Controls which release track this agent follows for automatic updates.
+        </div>
+        <form action={handleSetChannel} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            name="channel"
+            defaultValue={agent.updateChannel ?? 'stable'}
+            style={{
+              padding: '6px 10px', fontSize: 13,
+              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--fg)',
+            }}
+          >
+            <option value="stable">Stable</option>
+            <option value="beta">Beta</option>
+            <option value="pinned">Pinned (no auto-update)</option>
+          </select>
+          <button type="submit" style={{
+            padding: '6px 14px', fontSize: 13, cursor: 'pointer',
+            borderRadius: 'var(--radius-sm)', border: 'none',
+            background: 'var(--accent)', color: '#fff',
+          }}>
+            Save
+          </button>
+        </form>
+      </div>
+
+      {/* Jobs */}
+      <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 20 }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
           Backup jobs on this agent ({jobs.length})
         </div>
@@ -50,6 +214,33 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
               <span style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>{job.schedule}</span>
             </div>
           ))
+        )}
+      </div>
+
+      {/* Agent logs */}
+      <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
+          Agent logs
+        </div>
+        {agentLogs.length === 0 ? (
+          <div style={{ padding: '20px 24px', fontSize: 13, color: 'var(--fg-dim)' }}>No operational logs for this agent yet.</div>
+        ) : (
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+            {agentLogs.map(entry => (
+              <div key={entry.id} style={{ display: 'flex', gap: 12, padding: '6px 16px', borderBottom: '1px solid var(--border)', alignItems: 'baseline' }}>
+                <span style={{ color: 'var(--fg-dim)', flexShrink: 0, width: 152 }}>
+                  {new Date(entry.createdAt).toISOString().replace('T', ' ').slice(0, 19)}
+                </span>
+                <span style={{
+                  fontWeight: 600, width: 44, flexShrink: 0,
+                  color: ({ debug: 'var(--fg-dim)', info: 'var(--ok)', warn: 'var(--warn)', error: 'var(--err)', fatal: 'var(--err)' } as Record<string, string>)[entry.level] ?? 'var(--fg)',
+                }}>
+                  {entry.level.toUpperCase().slice(0, 4)}
+                </span>
+                <span style={{ color: 'var(--fg)', flex: 1 }}>{entry.message}</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
