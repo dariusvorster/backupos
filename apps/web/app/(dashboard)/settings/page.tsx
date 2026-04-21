@@ -4,6 +4,7 @@ import { EscrowRecoverySection } from '@/components/escrow-recovery-section'
 import { Key } from 'lucide-react'
 
 const LINKED_ITEMS: Record<string, string> = {
+  'Alert channels': '/settings/alerts',
   'Bandwidth limits': '/settings/bandwidth',
   'Infra OS services': '/settings/infra-os',
   'Logging': '/settings/logging',
@@ -37,7 +38,7 @@ export default async function SettingsPage() {
 
       {[
         { title: 'General', items: ['Instance name', 'Time zone', 'Language'] },
-        { title: 'Notifications', items: ['Email SMTP', 'Webhook URL', 'Slack integration'] },
+        { title: 'Notifications', items: ['Email SMTP', 'Webhook URL', 'Slack integration', 'Alert channels'] },
         { title: 'Security', items: ['Change password', 'API tokens', 'Session management'] },
         { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows', 'Infra OS services'] },
         { title: 'Logging', items: ['Logging'] },
