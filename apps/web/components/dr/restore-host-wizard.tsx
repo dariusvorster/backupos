@@ -11,25 +11,19 @@ interface Props {
 }
 
 export function RestoreHostWizard({ jobs, onDone }: Props) {
-  const [step, setStep]             = useState(0)
-  const [jobId, setJobId]           = useState('')
-  const [targetHost, setTargetHost] = useState('')
-  const [dryRunOk, setDryRunOk]     = useState(false)
-  const [confirmed, setConfirmed]   = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [done, setDone]             = useState(false)
-  const [error, setError]           = useState<string | null>(null)
+  const [step, setStep]               = useState(0)
+  const [jobId, setJobId]             = useState('')
+  const [targetHost, setTargetHost]   = useState('')
+  const [dryRunOk, setDryRunOk]       = useState(false)
+  const [confirmed, setConfirmed]     = useState(false)
+  const [submitting, setSubmitting]   = useState(false)
+  const [done, setDone]               = useState(false)
 
   async function execute() {
     setSubmitting(true)
-    setError(null)
-    try {
-      await logDrAction({ action: 'restore_host', jobId, target: targetHost, dryRun: false })
-      setDone(true)
-    } catch {
-      setError('Something went wrong. Please try again.')
-      setSubmitting(false)
-    }
+    await logDrAction({ action: 'restore_host', jobId, target: targetHost, dryRun: false })
+    setSubmitting(false)
+    setDone(true)
   }
 
   function printRunbook() {
@@ -78,8 +72,10 @@ export function RestoreHostWizard({ jobs, onDone }: Props) {
     const url  = URL.createObjectURL(blob)
     const win  = window.open(url)
     if (win) {
-      win.onload = () => win.print()
-      win.addEventListener('afterprint', () => URL.revokeObjectURL(url))
+      win.onload = () => {
+        win.print()
+        URL.revokeObjectURL(url)
+      }
     }
   }
 
@@ -149,7 +145,7 @@ export function RestoreHostWizard({ jobs, onDone }: Props) {
           <input
             type="text"
             value={targetHost}
-            onChange={e => { setTargetHost(e.target.value); setDryRunOk(false); setConfirmed(false) }}
+            onChange={e => setTargetHost(e.target.value)}
             placeholder="e.g. 192.168.1.50 or staging-host"
             style={inputStyle}
           />
@@ -212,11 +208,8 @@ export function RestoreHostWizard({ jobs, onDone }: Props) {
               This action will be recorded in the audit log with DR mode flag.
             </span>
           </div>
-          {error && (
-            <div style={{ fontSize: 12, color: 'var(--err)', marginBottom: 12 }}>{error}</div>
-          )}
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => { setConfirmed(false); setStep(2) }} style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg)' }}>Back</button>
+            <button onClick={() => setStep(2)} style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg)' }}>Back</button>
             <button
               onClick={execute}
               disabled={submitting || !confirmed}
