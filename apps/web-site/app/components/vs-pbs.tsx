@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react'
+
 const rows: { label: string; plain: string; bos: string }[] = [
   { label: 'Backup scheduling',  plain: 'Manual cron',         bos: 'UI scheduler + CRON builder'    },
   { label: 'Failure alerts',     plain: 'None',                bos: 'Email + webhook notifications'  },
@@ -9,13 +11,13 @@ const rows: { label: string; plain: string; bos: string }[] = [
 ]
 
 export function VsPbs() {
-  const th: React.CSSProperties = {
+  const th: CSSProperties = {
     padding: '10px 20px', fontSize: 12, fontWeight: 600,
     textTransform: 'uppercase', letterSpacing: '0.06em',
     color: 'var(--fg-dim)', textAlign: 'left',
     borderBottom: '1px solid var(--border)',
   }
-  const td: React.CSSProperties = { padding: '13px 20px', fontSize: 14 }
+  const td: CSSProperties = { padding: '13px 20px', fontSize: 14 }
 
   return (
     <section style={{ padding: '80px 0' }}>
