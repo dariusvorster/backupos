@@ -113,7 +113,7 @@ export default async function AgentsPage() {
               {/* Capability badges */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <CapBadge label="VSS" ok={agent.vssAvailable ?? false} na={agent.platform !== 'windows'} />
-                <CapBadge label="Hypervisor" ok={agent.hypervisorDriver ?? false} />
+                <CapBadge label="Hypervisor" ok={!!agent.hypervisorDriver} />
                 <CapBadge label="App hooks" ok={agent.appHooksAvailable ?? false} />
               </div>
             </a>
