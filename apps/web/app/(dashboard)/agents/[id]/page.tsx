@@ -10,6 +10,9 @@ import { setAgentUpdateChannel } from '@/app/actions/agents'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
+const VALID_CHANNELS = ['stable', 'beta', 'pinned'] as const
+type UpdateChannel = typeof VALID_CHANNELS[number]
+
 interface ResourceSample { ts: number; cpuPct: number; ramBytes: number }
 
 function parseHistory(raw: string | null): ResourceSample[] {
@@ -81,8 +84,9 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
 
   async function handleSetChannel(formData: FormData) {
     'use server'
-    const channel = formData.get('channel') as 'stable' | 'beta' | 'pinned'
-    await setAgentUpdateChannel(id, channel)
+    const raw = formData.get('channel')
+    if (typeof raw !== 'string' || !(VALID_CHANNELS as readonly string[]).includes(raw)) return
+    await setAgentUpdateChannel(id, raw as UpdateChannel)
   }
 
   const cardStyle: React.CSSProperties = {
