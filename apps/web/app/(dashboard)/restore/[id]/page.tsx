@@ -14,11 +14,18 @@ function validationBadge(s: string | null): BadgeStatus {
   return 'idle'
 }
 
+function extractVars(yaml: string): string[] {
+  const matches = yaml.match(/\$\{[A-Z_]+\}/g) ?? []
+  return [...new Set(matches)].sort()
+}
+
 export default async function RestoreSpecPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const db     = getDb()
   const [spec] = await db.select().from(restoreSpecs).where(eq(restoreSpecs.id, id)).limit(1)
   if (!spec) notFound()
+
+  const vars = extractVars(spec.yamlContent)
 
   return (
     <div>
@@ -39,6 +46,31 @@ export default async function RestoreSpecPage({ params }: { params: Promise<{ id
         <Badge status={validationBadge(spec.validationStatus)} label={spec.validationStatus ?? 'untested'} />
         {spec.description && <span style={{ fontSize: 13, color: 'var(--fg-mute)' }}>{spec.description}</span>}
       </div>
+
+      {vars.length > 0 && (
+        <div style={{
+          backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', padding: '14px 20px', marginBottom: 16,
+          display: 'flex', gap: 12, alignItems: 'flex-start',
+        }}>
+          <div style={{ fontSize: 12, color: 'var(--fg-dim)', flexShrink: 0, paddingTop: 2 }}>Variables</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {vars.map(v => (
+              <span
+                key={v}
+                style={{
+                  display: 'inline-block', padding: '2px 8px', fontSize: 11,
+                  fontFamily: 'var(--font-mono)', borderRadius: 4,
+                  backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+                  color: 'var(--accent)',
+                }}
+              >
+                {v}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{
         backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
