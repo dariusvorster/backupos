@@ -12,6 +12,19 @@ function fmtDate(d: Date | null): string {
   return d.toISOString().slice(0, 16).replace('T', ' ')
 }
 
+function CapBadge({ label, ok, na }: { label: string; ok: boolean | null; na?: boolean }) {
+  const color = na ? 'var(--fg-dim)' : ok ? 'var(--ok)' : 'var(--fg-dim)'
+  return (
+    <span style={{
+      fontSize: 10, padding: '2px 6px', borderRadius: 10,
+      border: '1px solid var(--border)', color,
+      backgroundColor: ok && !na ? 'color-mix(in srgb, var(--surf2) 60%, var(--ok) 10%)' : 'var(--surf2)',
+    }}>
+      {label}
+    </span>
+  )
+}
+
 export default async function AgentsPage() {
   const db        = getDb()
   const agentList = await db.select().from(agents).all()
@@ -51,10 +64,15 @@ export default async function AgentsPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {agentList.map(agent => (
-            <div key={agent.id} style={{
-              backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)', padding: 20,
-            }}>
+            <a
+              key={agent.id}
+              href={`/agents/${agent.id}`}
+              style={{
+                backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)', padding: 20, textDecoration: 'none',
+                display: 'block',
+              }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)' }}>{agent.name}</div>
@@ -65,17 +83,11 @@ export default async function AgentsPage() {
                 <Badge status={(agent.status ?? 'disconnected') as BadgeStatus} />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 2 }}>Platform</div>
                   <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
                     {agent.platform ?? '—'}{agent.arch ? ` / ${agent.arch}` : ''}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 2 }}>VSS</div>
-                  <div style={{ fontSize: 12, color: agent.vssAvailable ? 'var(--ok)' : 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                    {agent.vssAvailable ? 'available' : agent.platform === 'windows' ? 'unavailable' : 'N/A'}
                   </div>
                 </div>
                 <div>
@@ -85,13 +97,26 @@ export default async function AgentsPage() {
                   </div>
                 </div>
                 <div>
+                  <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 2 }}>Channel</div>
+                  <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
+                    {agent.updateChannel ?? 'stable'}
+                  </div>
+                </div>
+                <div>
                   <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 2 }}>Last seen</div>
                   <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
                     {fmtDate(agent.lastSeenAt)}
                   </div>
                 </div>
               </div>
-            </div>
+
+              {/* Capability badges */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <CapBadge label="VSS" ok={agent.vssAvailable ?? false} na={agent.platform !== 'windows'} />
+                <CapBadge label="Hypervisor" ok={agent.hypervisorDriver ?? false} />
+                <CapBadge label="App hooks" ok={agent.appHooksAvailable ?? false} />
+              </div>
+            </a>
           ))}
         </div>
       )}
