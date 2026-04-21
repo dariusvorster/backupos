@@ -194,6 +194,7 @@ export const backupMonitors = sqliteTable('backup_monitors', {
   id:           text('id').primaryKey(),
   name:         text('name').notNull(),
   type:         text('type').notNull(),   // 'proxmox_pbs'|'borg'|'duplicati'|'veeam'|'restic_repo'
+  group:        text('group'),
   config:       text('config').notNull(), // JSON, encrypted — connection details
   lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
   status:       text('status').default('unknown'), // 'healthy'|'warning'|'error'|'unknown'
