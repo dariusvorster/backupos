@@ -50,6 +50,35 @@ export default async function MonitorDetailPage({ params }: { params: Promise<{ 
         </div>
       )}
 
+      {monitor.type === 'proxmox_pbs' && (
+        <div style={{
+          backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', padding: '18px 20px', marginBottom: 24,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>
+              Promote to managed repository
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>
+              Import this PBS datastore as a native Restic repository so BackupOS can schedule and verify backups directly.
+            </div>
+          </div>
+          <button
+            disabled
+            title="Coming soon"
+            style={{
+              padding: '7px 16px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+              background: 'var(--surf2)', color: 'var(--fg-dim)', cursor: 'not-allowed',
+              opacity: 0.6,
+            }}
+          >
+            Promote →
+          </button>
+        </div>
+      )}
+
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
           Sync history
