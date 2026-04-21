@@ -226,6 +226,7 @@ export const alertRules = sqliteTable('alert_rules', {
   config:     text('config').notNull(), // JSON — thresholds, channels
   enabled:    integer('enabled', { mode: 'boolean' }).default(true),
   lastFiredAt: integer('last_fired_at', { mode: 'timestamp' }),
+  channelId:   text('channel_id'),
 })
 
 // ── Audit log ─────────────────────────────────────────────────────────────
@@ -346,6 +347,35 @@ export const storageAlerts = sqliteTable('storage_alerts', {
   detail:     text('detail'),
   firedAt:    integer('fired_at',    { mode: 'timestamp' }).notNull(),
   resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+})
+
+// ── Alert instances ───────────────────────────────────────────────────────
+// Fired alert instances, supports grouping and snoozing
+
+export const alerts = sqliteTable('alerts', {
+  id:           text('id').primaryKey(),
+  ruleId:       text('rule_id'),
+  parentId:     text('parent_id'),
+  childCount:   integer('child_count').default(0),
+  type:         text('type').notNull(),
+  severity:     text('severity'),
+  message:      text('message').notNull(),
+  status:       text('status').notNull().default('open'),
+  snoozedUntil: integer('snoozed_until', { mode: 'timestamp' }),
+  firedAt:      integer('fired_at',    { mode: 'timestamp' }).notNull(),
+  resolvedAt:   integer('resolved_at', { mode: 'timestamp' }),
+})
+
+// ── Alert channels ────────────────────────────────────────────────────────
+// Webhook destinations for alert delivery
+
+export const alertChannels = sqliteTable('alert_channels', {
+  id:        text('id').primaryKey(),
+  name:      text('name').notNull(),
+  type:      text('type').notNull(),
+  config:    text('config').notNull(),
+  enabled:   integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 })
 
 // ── Verification tests ─────────────────────────────────────────────────────
