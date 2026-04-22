@@ -545,3 +545,16 @@ export const backupDefaults = sqliteTable('backup_defaults', {
   scheduleEnd:   integer('schedule_end').default(23),
   updatedAt:     integer('updated_at', { mode: 'timestamp' }),
 })
+
+// ─── User Invites ───────────────────────────────────────────────────────────
+
+export const invite = sqliteTable('invite', {
+  id:        text('id').primaryKey(),
+  email:     text('email').notNull(),
+  name:      text('name'),
+  token:     text('token').notNull().unique(),
+  createdBy: text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  expiresAt: integer('expires_at').notNull(),
+  usedAt:    integer('used_at'),
+  createdAt: integer('created_at').notNull(),
+})
