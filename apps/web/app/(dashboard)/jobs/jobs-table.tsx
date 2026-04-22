@@ -4,6 +4,7 @@ import { useState, useTransition }     from 'react'
 import Link                            from 'next/link'
 import type { ComponentProps }         from 'react'
 import { Badge }                       from '@/components/ui/badge'
+import { PageHeader }                  from '@/components/ui/page-header'
 import { pauseJobs, resumeJobs, deleteJobs } from '@/app/actions/jobs'
 import type { RunDot }                 from './page'
 
@@ -93,19 +94,21 @@ export function JobsTable({
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', margin: 0 }}>Jobs</h1>
-        <Link
-          href="/jobs/new"
-          style={{
-            padding: '7px 16px', fontSize: 13, fontWeight: 500,
-            borderRadius: 'var(--radius-sm)', background: 'var(--accent)',
-            color: '#fff', textDecoration: 'none',
-          }}
-        >
-          New job
-        </Link>
-      </div>
+      <PageHeader
+        title="Jobs"
+        action={
+          <Link
+            href="/jobs/new"
+            style={{
+              padding: '7px 16px', fontSize: 13, fontWeight: 500,
+              borderRadius: 'var(--radius-sm)', background: 'var(--accent)',
+              color: 'var(--accent-fg)', textDecoration: 'none',
+            }}
+          >
+            New job
+          </Link>
+        }
+      />
 
       {jobs.length === 0 ? (
         <div style={{
