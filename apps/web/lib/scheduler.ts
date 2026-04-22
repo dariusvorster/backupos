@@ -117,7 +117,11 @@ async function runJob(db: Db, job: Job): Promise<void> {
         })()
 
     if (retentionPolicy) {
-      await engine.forget({ ...retentionPolicy, keepTags: tags })
+      const forgetResult = await engine.forget({ ...retentionPolicy, keepTags: tags })
+      await db.update(backupRuns).set({
+        snapshotsRemoved: forgetResult.removed,
+        snapshotsKept:    forgetResult.kept,
+      }).where(eq(backupRuns.id, runId))
     }
 
     await db.update(backupJobs).set({
