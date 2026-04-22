@@ -12,7 +12,7 @@ const BASE_URL = process.env['NEXT_PUBLIC_BASE_URL'] ?? 'http://localhost:3000'
 // If SMTP configured, also emails the invite (silently ignores failures).
 export async function createInvite(
   formData: FormData,
-): Promise<{ link?: string; error?: string }> {
+): Promise<{ id?: string; link?: string; error?: string }> {
   const currentUser = await getCurrentUser()
   if (!currentUser) return { error: 'Not authenticated' }
 
@@ -41,7 +41,7 @@ export async function createInvite(
 
   await sendInviteEmail({ to: email, inviterName: currentUser.name, link }).catch(() => {})
 
-  return { link }
+  return { id, link }
 }
 
 // Deletes a pending (unused) invite.

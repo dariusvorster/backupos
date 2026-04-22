@@ -57,7 +57,7 @@ export function UsersClient({ users, invites: initialInvites, baseUrl, smtpConfi
     const email = fd.get('email') as string
     const name  = fd.get('name')  as string | null
     setInvites(prev => [...prev, {
-      id:        crypto.randomUUID(),
+      id:        result.id!,
       email,
       name,
       token,
