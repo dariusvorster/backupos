@@ -51,8 +51,9 @@ export function WizardCard({ title, children }: { title: string; children: React
   return (
     <div style={{
       backgroundColor: 'var(--surf)',
-      border: '1px solid color-mix(in srgb, var(--border) 60%, #cc0000 40%)',
+      border: '1px solid var(--border)',
       borderRadius: 'var(--radius)',
+      boxShadow: 'var(--shadow-sm)',
       padding: 28,
     }}>
       <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--fg)', marginBottom: 20 }}>
@@ -271,8 +272,8 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
       {step === 3 && (
         <WizardCard title="Ready to restore">
           <div style={{
-            backgroundColor: 'color-mix(in srgb, var(--surf2) 80%, #cc0000 5%)',
-            border: '1px solid color-mix(in srgb, var(--border) 60%, #cc0000 40%)',
+            backgroundColor: 'var(--err-dim)',
+            border: '1px solid color-mix(in srgb, var(--err) 25%, transparent)',
             borderRadius: 'var(--radius-sm)', padding: '14px 16px', marginBottom: 20,
           }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)', marginBottom: 4 }}>Restore summary</div>

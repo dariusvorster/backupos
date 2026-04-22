@@ -132,8 +132,8 @@ export function RestoreHostWizard({ jobs, onDone }: Props) {
         <WizardCard title="Where should we restore to?">
           <div style={{
             display: 'flex', alignItems: 'flex-start', gap: 8,
-            backgroundColor: 'color-mix(in srgb, var(--surf2) 80%, #cc0000 8%)',
-            border: '1px solid color-mix(in srgb, var(--border) 50%, #cc0000 50%)',
+            backgroundColor: 'var(--err-dim)',
+            border: '1px solid color-mix(in srgb, var(--err) 30%, transparent)',
             borderRadius: 'var(--radius-sm)', padding: '10px 12px', marginBottom: 16,
           }}>
             <AlertTriangle size={14} color="var(--err)" style={{ flexShrink: 0, marginTop: 1 }} />
@@ -187,8 +187,8 @@ export function RestoreHostWizard({ jobs, onDone }: Props) {
       {step === 3 && (
         <WizardCard title="Final confirmation — this cannot be undone">
           <div style={{
-            backgroundColor: 'color-mix(in srgb, var(--surf2) 80%, #cc0000 5%)',
-            border: '1px solid color-mix(in srgb, var(--border) 60%, #cc0000 40%)',
+            backgroundColor: 'var(--err-dim)',
+            border: '1px solid color-mix(in srgb, var(--err) 25%, transparent)',
             borderRadius: 'var(--radius-sm)', padding: '14px 16px', marginBottom: 16,
           }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)', marginBottom: 4 }}>Restore summary</div>

@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
+    "dev": "turbo dev --filter=!@backupos/agent-linux --filter=!@backupos/agent-windows",
     "lint": "turbo lint",
     "test": "turbo test",
     "typecheck": "turbo typecheck"

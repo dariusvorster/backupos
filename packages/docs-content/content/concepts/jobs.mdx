@@ -17,6 +17,14 @@ idle → queued → running → success
 
 A job is **idle** between scheduled runs. The scheduler **queues** it at the configured cron time. The assigned agent picks it up and moves it to **running**. On completion: **success**, **failed**, or **cancelled** (if manually stopped).
 
+## Run phases
+
+Each run moves through five ordered phases:
+
+<JobPhases />
+
+<Tip>Enable verification on at least your most critical jobs. A job that completes backup but fails verification is a sign your repository is degraded before you lose data.</Tip>
+
 ## Job dependencies
 
 Jobs can depend on other jobs. Set a dependency to ensure Job B only runs after Job A succeeds. Useful for: back up the database, then back up the application data that references it.

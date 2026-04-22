@@ -50,8 +50,9 @@ const NAV: NavGroup[] = [
   {
     label: 'Admin',
     items: [
-      { href: '/alerts', label: 'Alerts',    icon: <TriangleAlert size={15} /> },
-      { href: '/audit',  label: 'Audit log', icon: <FileClock size={15} /> },
+      { href: '/alerts',   label: 'Alerts',    icon: <TriangleAlert size={15} /> },
+      { href: '/audit',    label: 'Audit log', icon: <FileClock size={15} /> },
+      { href: '/settings', label: 'Settings',  icon: <Settings size={15} /> },
     ],
   },
 ]
@@ -90,6 +91,7 @@ function Logo() {
 
 export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname()
+  const allHrefs = NAV.flatMap(g => g.items.map(i => i.href))
 
   return (
     <aside style={{
@@ -113,7 +115,11 @@ export function Sidebar({ user }: { user: SidebarUser }) {
             </div>
             {group.items.map(item => {
               const active = pathname === item.href
-                || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                || (
+                  item.href !== '/dashboard'
+                  && pathname.startsWith(item.href + '/')
+                  && !allHrefs.some(h => h !== item.href && pathname.startsWith(h) && h.startsWith(item.href + '/'))
+                )
               return (
                 <Link
                   key={item.href}
@@ -144,19 +150,6 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         padding: '10px 10px 12px',
         borderTop: '1px solid var(--border2)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-          <Link
-            href="/settings"
-            title="Settings"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 30, height: 30, borderRadius: 'var(--radius-sm)',
-              color: 'var(--fg-faint)', textDecoration: 'none',
-            }}
-          >
-            <Settings size={15} />
-          </Link>
-        </div>
         <ProfilePopover user={user} />
         <div style={{ fontSize: 10, color: 'var(--fg-faint)', marginTop: 4 }}>
           Solo · v0.1.0

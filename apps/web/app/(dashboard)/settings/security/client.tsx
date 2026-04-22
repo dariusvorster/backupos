@@ -58,6 +58,7 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
 
   return (
     <div style={{ maxWidth: 640 }}>
+      <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Security</h1>
 
       {/* Password section */}

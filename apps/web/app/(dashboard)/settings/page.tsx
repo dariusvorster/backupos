@@ -4,12 +4,20 @@ import { EscrowRecoverySection } from '@/components/escrow-recovery-section'
 import { Key } from 'lucide-react'
 
 const LINKED_ITEMS: Record<string, string> = {
-  'Alert channels': '/settings/alerts',
-  'Bandwidth limits': '/settings/bandwidth',
-  'Infra OS services': '/settings/infra-os',
-  'Logging': '/settings/logging',
-  'Profile': '/settings/profile',
-  'Security': '/settings/security',
+  'General':            '/settings/general',
+  'Email SMTP':         '/settings/smtp',
+  'Webhook URL':        '/settings/webhook',
+  'Slack integration':  '/settings/slack',
+  'Alert channels':     '/settings/alerts',
+  'Change password':    '/settings/security',
+  'API tokens':         '/settings/api-tokens',
+  'Session management': '/settings/sessions',
+  'Retention policy':   '/settings/retention',
+  'Schedule windows':   '/settings/schedule-windows',
+  'Bandwidth limits':   '/settings/bandwidth',
+  'Infra OS services':  '/settings/infra-os',
+  'Logging':            '/settings/logging',
+  'Profile':            '/settings/profile',
 }
 
 const chevron = (
@@ -37,7 +45,7 @@ export default async function SettingsPage() {
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Settings</h1>
 
       {[
-        { title: 'General', items: ['Instance name', 'Time zone', 'Language'] },
+        { title: 'General', items: ['General'] },
         { title: 'Notifications', items: ['Email SMTP', 'Webhook URL', 'Slack integration', 'Alert channels'] },
         { title: 'Security', items: ['Change password', 'API tokens', 'Session management'] },
         { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows', 'Infra OS services'] },
@@ -54,16 +62,18 @@ export default async function SettingsPage() {
             const href = LINKED_ITEMS[item]
             if (href) {
               return (
-                <Link key={item} href={href} style={{ ...itemStyle, textDecoration: 'none' }}>
+                <Link key={item} href={href} style={{ ...itemStyle, textDecoration: 'none', cursor: 'pointer' }}>
                   {item}
                   {chevron}
                 </Link>
               )
             }
             return (
-              <div key={item} style={itemStyle}>
+              <div key={item} style={{ ...itemStyle, opacity: 0.4, cursor: 'not-allowed' }}>
                 {item}
-                {chevron}
+                <span style={{ fontSize: 10, color: 'var(--fg-faint)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  soon
+                </span>
               </div>
             )
           })}

@@ -49,39 +49,55 @@ export function DrModeOverlay({ jobs }: DrModeOverlayProps) {
       position: 'fixed',
       inset: 0,
       zIndex: 100,
-      backgroundColor: 'color-mix(in srgb, #0a0505 95%, #cc0000 5%)',
+      backgroundColor: 'var(--bg)',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
     }}>
+      {/* Red urgency strip */}
+      <div style={{ height: 3, backgroundColor: 'var(--err)', flexShrink: 0 }} />
+
       {/* DR topbar */}
       <div style={{
-        height: 56,
-        borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, #cc0000 60%)',
+        height: 52,
+        backgroundColor: 'var(--surf)',
+        borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center',
-        padding: '0 24px', gap: 12, flexShrink: 0,
+        padding: '0 24px', gap: 10, flexShrink: 0,
       }}>
-        <ShieldAlert size={18} color="var(--err)" />
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--err)', flex: 1 }}>
-          DR Mode — Guided Recovery
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          backgroundColor: 'var(--err-dim)',
+          border: '1px solid color-mix(in srgb, var(--err) 30%, transparent)',
+          borderRadius: 'var(--radius-sm)',
+          padding: '4px 10px',
+        }}>
+          <ShieldAlert size={14} color="var(--err)" />
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--err)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            DR Mode
+          </span>
+        </div>
+        <span style={{ fontSize: 14, color: 'var(--fg-dim)', flex: 1 }}>
+          Guided Recovery
         </span>
         {wizard !== null && (
           <button
             onClick={() => setWizard(null)}
             style={{
-              fontSize: 13, color: 'var(--fg-mute)',
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '4px 8px', borderRadius: 'var(--radius-sm)',
+              fontSize: 13, color: 'var(--fg-dim)',
+              background: 'none', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer', padding: '4px 12px', height: 30,
             }}
           >
-            ← Back to recovery options
+            ← Recovery options
           </button>
         )}
         <button
           onClick={toggle}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 13, color: 'var(--fg-mute)',
+            fontSize: 13, color: 'var(--fg-dim)',
             background: 'none',
             border: '1px solid var(--border)',
             borderRadius: 'var(--radius-sm)',
@@ -95,21 +111,30 @@ export function DrModeOverlay({ jobs }: DrModeOverlayProps) {
 
       {/* Content */}
       <div style={{
-        flex: 1, overflowY: 'auto', padding: 40,
+        flex: 1, overflowY: 'auto', padding: '40px 24px',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
       }}>
         {wizard === null && (
           <>
             <div style={{
-              marginBottom: 8, fontSize: 12, color: 'var(--err)',
-              textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 500,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              backgroundColor: 'var(--err-dim)',
+              border: '1px solid color-mix(in srgb, var(--err) 25%, transparent)',
+              borderRadius: 20,
+              padding: '4px 14px', marginBottom: 20,
+              fontSize: 11, fontWeight: 600, color: 'var(--err)',
+              textTransform: 'uppercase', letterSpacing: '0.08em',
             }}>
+              <ShieldAlert size={12} />
               What do you need to recover?
             </div>
-            <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 40, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--fg)', marginBottom: 8, textAlign: 'center', letterSpacing: '-0.02em' }}>
               Choose a recovery path
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, width: '100%', maxWidth: 860 }}>
+            <div style={{ fontSize: 14, color: 'var(--fg-dim)', marginBottom: 40, textAlign: 'center' }}>
+              All actions are recorded in the audit log with a DR mode flag.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, width: '100%', maxWidth: 860 }}>
               {CARDS.map(card => {
                 const Icon = card.icon
                 return (
@@ -117,28 +142,36 @@ export function DrModeOverlay({ jobs }: DrModeOverlayProps) {
                     key={card.type}
                     onClick={() => setWizard(card.type)}
                     style={{
-                      backgroundColor: 'color-mix(in srgb, var(--surf) 80%, #cc0000 5%)',
-                      border: '1px solid color-mix(in srgb, var(--border) 60%, #cc0000 40%)',
+                      backgroundColor: 'var(--surf)',
+                      border: '1px solid var(--border)',
                       borderRadius: 'var(--radius)',
                       padding: 28, cursor: 'pointer', textAlign: 'left',
-                      transition: 'border-color 0.15s, background-color 0.15s',
+                      boxShadow: 'var(--shadow-sm)',
+                      transition: 'border-color 0.15s, box-shadow 0.15s',
                     }}
                     onMouseEnter={e => {
                       const t = e.currentTarget
                       t.style.borderColor = 'var(--err)'
-                      t.style.backgroundColor = 'color-mix(in srgb, var(--surf) 70%, #cc0000 10%)'
+                      t.style.boxShadow = '0 0 0 3px var(--err-dim)'
                     }}
                     onMouseLeave={e => {
                       const t = e.currentTarget
-                      t.style.borderColor = 'color-mix(in srgb, var(--border) 60%, #cc0000 40%)'
-                      t.style.backgroundColor = 'color-mix(in srgb, var(--surf) 80%, #cc0000 5%)'
+                      t.style.borderColor = 'var(--border)'
+                      t.style.boxShadow = 'var(--shadow-sm)'
                     }}
                   >
-                    <Icon size={28} color="var(--err)" style={{ marginBottom: 16 }} />
-                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg)', marginBottom: 8 }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 'var(--radius-sm)',
+                      backgroundColor: 'var(--err-dim)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      marginBottom: 16,
+                    }}>
+                      <Icon size={20} color="var(--err)" />
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg)', marginBottom: 8 }}>
                       {card.title}
                     </div>
-                    <div style={{ fontSize: 13, color: 'var(--fg-mute)', lineHeight: 1.5 }}>
+                    <div style={{ fontSize: 13, color: 'var(--fg-dim)', lineHeight: 1.6 }}>
                       {card.desc}
                     </div>
                   </button>

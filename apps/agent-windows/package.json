@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build:x64": "bun build src/index.ts --compile --outfile dist/backupos-agent-windows-x64.exe --target bun-windows-x64",
+    "build:x64":   "bun build src/index.ts --compile --outfile dist/backupos-agent-windows-x64.exe   --target bun-windows-x64",
+    "build:arm64": "bun build src/index.ts --compile --outfile dist/backupos-agent-windows-arm64.exe --target bun-windows-x64-baseline",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

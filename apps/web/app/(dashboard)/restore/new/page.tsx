@@ -1,3 +1,9 @@
+'use client'
+
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { validateSpec, createSpec } from '@/app/actions/restore'
+
 const EXAMPLE_YAML = `name: my-service-full
 description: Full restore of my-service
 version: "1.0"
@@ -33,53 +39,118 @@ steps:
     retry_count: 5
     on_failure: notify_only`
 
-import { Button } from '@/components/ui/button'
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '8px 12px', boxSizing: 'border-box',
+  backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14, outline: 'none',
+}
 
 export default function NewRestoreSpecPage() {
+  const router = useRouter()
+  const [name, setName] = useState('')
+  const [yaml, setYaml] = useState(EXAMPLE_YAML)
+  const [validation, setValidation] = useState<{ ok: boolean; message: string } | null>(null)
+  const [error, setError] = useState('')
+  const [isValidating, startValidating] = useTransition()
+  const [isSaving, startSaving] = useTransition()
+
+  function handleValidate() {
+    setValidation(null)
+    startValidating(async () => {
+      const result = await validateSpec(yaml)
+      if (result.ok) {
+        setValidation({ ok: true, message: 'YAML is valid — all steps parsed successfully.' })
+      } else {
+        setValidation({ ok: false, message: result.error })
+      }
+    })
+  }
+
+  function handleSave() {
+    setError('')
+    startSaving(async () => {
+      const result = await createSpec(name, yaml)
+      if (result && 'error' in result) setError(result.error)
+      // on success createSpec calls redirect() — nothing else needed
+    })
+  }
+
   return (
     <div style={{ maxWidth: 700 }}>
+      <a href="/restore" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 20 }}>← Restore</a>
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 8 }}>New restore spec</h1>
       <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 24 }}>
-        Define your restore procedure as YAML. This file lives in your repo and can be tested on demand.
+        Define your restore procedure as YAML. Validate before saving to catch errors early.
       </p>
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 24 }}>
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
-            Name
-          </label>
+          <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>Name</label>
           <input
             type="text"
             placeholder="my-service-full"
-            style={{
-              width: '100%', padding: '8px 12px',
-              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14,
-              outline: 'none', boxSizing: 'border-box',
-            }}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            style={inputStyle}
           />
         </div>
 
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
-            YAML spec
-          </label>
+          <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>YAML spec</label>
           <textarea
-            defaultValue={EXAMPLE_YAML}
+            value={yaml}
+            onChange={e => { setYaml(e.target.value); setValidation(null) }}
             rows={28}
             style={{
-              width: '100%', padding: '12px',
-              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 12,
-              fontFamily: 'var(--font-mono)', lineHeight: 1.6, outline: 'none',
-              resize: 'vertical', boxSizing: 'border-box',
+              ...inputStyle,
+              fontSize: 12, fontFamily: 'var(--font-mono)',
+              lineHeight: 1.6, resize: 'vertical',
             }}
           />
         </div>
 
+        {validation && (
+          <div style={{
+            padding: '10px 14px', marginBottom: 16, borderRadius: 'var(--radius-sm)', fontSize: 13,
+            backgroundColor: validation.ok ? 'var(--ok-dim)' : 'var(--err-dim)',
+            border: `1px solid ${validation.ok ? 'color-mix(in srgb, var(--ok) 30%, transparent)' : 'color-mix(in srgb, var(--err) 30%, transparent)'}`,
+            color: validation.ok ? 'var(--ok)' : 'var(--err)',
+          }}>
+            {validation.message}
+          </div>
+        )}
+
+        {error && (
+          <div style={{ padding: '10px 14px', marginBottom: 16, borderRadius: 'var(--radius-sm)', fontSize: 13, backgroundColor: 'var(--err-dim)', color: 'var(--err)' }}>
+            {error}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 12 }}>
-          <Button variant="secondary" size="md">Validate</Button>
-          <Button variant="primary" size="md">Save spec</Button>
+          <button
+            onClick={handleValidate}
+            disabled={isValidating}
+            style={{
+              padding: '8px 18px', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+              background: 'var(--surf2)', color: 'var(--fg)',
+              opacity: isValidating ? 0.6 : 1,
+            }}
+          >
+            {isValidating ? 'Validating…' : 'Validate'}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving || !name.trim()}
+            style={{
+              padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: isSaving || !name.trim() ? 'not-allowed' : 'pointer',
+              borderRadius: 'var(--radius-sm)', border: 'none',
+              background: 'var(--accent)', color: 'var(--accent-fg)',
+              opacity: isSaving || !name.trim() ? 0.6 : 1,
+            }}
+          >
+            {isSaving ? 'Saving…' : 'Save spec'}
+          </button>
         </div>
       </div>
     </div>

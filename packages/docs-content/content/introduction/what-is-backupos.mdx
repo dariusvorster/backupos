@@ -7,6 +7,8 @@ description: A unified backup management platform for homelabs and small busines
 
 BackupOS is a unified backup management platform for homelabs and small businesses. It wraps [Restic](https://restic.net) in a structured web UI with scheduled jobs, cross-platform agents, restore verification, cost forecasting, and disaster recovery tooling.
 
+<Note>BackupOS is fully self-hosted — your backup data never leaves your infrastructure. It stores metadata in a local SQLite database and keeps credentials encrypted at rest.</Note>
+
 ## What it replaces
 
 | Without BackupOS | With BackupOS |
@@ -24,6 +26,8 @@ BackupOS is a unified backup management platform for homelabs and small business
 - **Cross-platform agents** — single binary for Linux and Windows
 - **Tamper-evident audit log** — SHA-256 hash-chained event log for compliance
 - **Operational logs** — structured per-job and per-agent log stream with filtering
+
+<Tip>If you're migrating from Proxmox Backup Server, see the [PBS migration guide](/docs/how-to/migrate-from-pbs). BackupOS can use your existing PBS repository as a storage backend without re-uploading data.</Tip>
 
 ## Architecture at a glance
 

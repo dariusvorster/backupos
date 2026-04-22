@@ -3,11 +3,26 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { Avatar } from './avatar'
+import {
+  IconUser, IconLock, IconSettings, IconLogOut,
+} from '@/app/(dashboard)/docs/icons'
 
 interface ProfileUser {
   name:   string
   email:  string
   image?: string | null
+}
+
+function MenuIcon({ Icon }: { Icon: React.ComponentType<{ size?: number }> }) {
+  return (
+    <span style={{
+      width: 22, height: 22, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: 'var(--fg-mute)',
+    }}>
+      <Icon size={14} />
+    </span>
+  )
 }
 
 export function ProfilePopover({ user }: { user: ProfileUser }) {
@@ -24,9 +39,9 @@ export function ProfilePopover({ user }: { user: ProfileUser }) {
   }, [open])
 
   const MENU = [
-    { href: '/settings/profile',  icon: '👤', label: 'Profile' },
-    { href: '/settings/security', icon: '🔐', label: 'Security' },
-    { href: '/settings',          icon: '⚙️',  label: 'Settings' },
+    { href: '/settings/profile',  Icon: IconUser,     label: 'Profile' },
+    { href: '/settings/security', Icon: IconLock,     label: 'Security' },
+    { href: '/settings',          Icon: IconSettings, label: 'Settings' },
   ]
 
   return (
@@ -83,7 +98,7 @@ export function ProfilePopover({ user }: { user: ProfileUser }) {
               onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--surf2)')}
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
             >
-              <span style={{ fontSize: 14, lineHeight: 1 }}>{item.icon}</span>
+              <MenuIcon Icon={item.Icon} />
               {item.label}
               <span style={{ marginLeft: 'auto', color: 'var(--fg-dim)', fontSize: 12 }}>→</span>
             </Link>
@@ -104,7 +119,7 @@ export function ProfilePopover({ user }: { user: ProfileUser }) {
               onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--surf2)'; e.currentTarget.style.color = 'var(--err)' }}
               onMouseLeave={e => { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = 'var(--fg)' }}
             >
-              <span style={{ fontSize: 14 }}>↩️</span>
+              <MenuIcon Icon={IconLogOut} />
               Sign out
             </button>
           </form>

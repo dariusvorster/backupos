@@ -4,6 +4,7 @@ import { snapshots, backupJobs } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { RunCheckButton } from './run-check-button'
 import { StatCard } from '@/components/ui/stat-card'
 import { computeForecast, fmtCents, fmtGb, fmtGbPerMonth, BACKEND_PRESETS } from '@/lib/growth-forecast'
 import { saveCostConfig } from '@/app/actions/repository-cost'
@@ -88,7 +89,7 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
         <Link href={`/repositories/${id}/snapshots`} style={{ textDecoration: 'none' }}>
           <Button variant="secondary" size="md">Browse snapshots</Button>
         </Link>
-        <Button variant="secondary" size="md">Run check</Button>
+        <RunCheckButton repoId={id} />
       </div>
 
       {/* Environment group */}

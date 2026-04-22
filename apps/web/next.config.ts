@@ -4,6 +4,7 @@ const NATIVE_EXTERNALS = ['better-sqlite3', 'bindings', 'file-uri-to-path']
 
 const config: NextConfig = {
   reactStrictMode: true,
+  transpilePackages: ['@backupos/docs-content'],
   serverExternalPackages: ['better-sqlite3', 'bindings', 'file-uri-to-path'],
   webpack(webpackConfig, { isServer }) {
     if (isServer) {

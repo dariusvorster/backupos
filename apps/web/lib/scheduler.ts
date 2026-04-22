@@ -1,6 +1,6 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, eq, and, lt } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq, and, lt } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
 
@@ -92,6 +92,33 @@ async function runJob(db: Db, job: Job): Promise<void> {
       totalSize:       result.totalSize,
       duration:        result.duration,
     }).where(eq(backupRuns.id, runId))
+
+    const jobHasRetention = job.keepLast || job.keepDaily || job.keepWeekly || job.keepMonthly || job.keepYearly
+    const retentionPolicy = jobHasRetention
+      ? {
+          keepLast:    job.keepLast    ?? undefined,
+          keepDaily:   job.keepDaily   ?? undefined,
+          keepWeekly:  job.keepWeekly  ?? undefined,
+          keepMonthly: job.keepMonthly ?? undefined,
+          keepYearly:  job.keepYearly  ?? undefined,
+        }
+      : await (async () => {
+          const [defaults] = await db.select().from(backupDefaults).limit(1).all()
+          if (!defaults) return null
+          const hasAny = defaults.keepLast || defaults.keepDaily || defaults.keepWeekly || defaults.keepMonthly || defaults.keepYearly
+          if (!hasAny) return null
+          return {
+            keepLast:    defaults.keepLast    ?? undefined,
+            keepDaily:   defaults.keepDaily   ?? undefined,
+            keepWeekly:  defaults.keepWeekly  ?? undefined,
+            keepMonthly: defaults.keepMonthly ?? undefined,
+            keepYearly:  defaults.keepYearly  ?? undefined,
+          }
+        })()
+
+    if (retentionPolicy) {
+      await engine.forget({ ...retentionPolicy, keepTags: tags })
+    }
 
     await db.update(backupJobs).set({
       lastRunAt:     new Date(),

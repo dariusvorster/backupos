@@ -1,0 +1,27 @@
+# Dependencies (installed inside Docker)
+node_modules
+**/node_modules
+
+# Build outputs (built inside Docker)
+**/.next
+**/dist
+**/.turbo
+
+# Git
+.git
+.gitignore
+
+# Apps not included in the container image
+apps/web-site
+apps/docs
+apps/agent-linux
+apps/agent-windows
+
+# Dev/design files
+*.md
+*.png
+*.svg
+*.html
+*.zip
+docs
+website

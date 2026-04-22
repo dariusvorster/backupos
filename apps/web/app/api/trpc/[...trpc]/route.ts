@@ -3,11 +3,13 @@ import { appRouter } from '@backupos/api'
 import { getDb } from '@backupos/db'
 import type { Context } from '@backupos/api'
 import { dispatch } from '../../../../lib/ws-state'
+import { auth } from '@/lib/auth'
 
-function createContext(): Context {
+async function createContext({ req }: { req: Request }): Promise<Context> {
+  const session = await auth.api.getSession({ headers: req.headers })
   return {
     db:       getDb(),
-    user:     { id: 'local', email: 'admin@localhost', name: 'Admin' },
+    user:     session?.user ?? null,
     dispatch,
   }
 }

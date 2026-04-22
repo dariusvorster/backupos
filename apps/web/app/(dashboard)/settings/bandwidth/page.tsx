@@ -14,6 +14,7 @@ export default async function BandwidthSettingsPage() {
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: 800 }}>
+      <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <div style={{ marginBottom: 28 }}>
         <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>
           Bandwidth profiles

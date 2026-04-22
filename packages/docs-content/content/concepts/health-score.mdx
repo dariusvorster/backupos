@@ -9,21 +9,10 @@ The health score is a 0–100 number (displayed as A–F) that summarises how he
 
 ## Factors
 
-| Factor | Weight | Description |
-|---|---|---|
-| Recent run success rate | 40% | Percentage of runs that succeeded in the last 30 days |
-| Snapshot freshness | 30% | How recently the last successful snapshot was taken |
-| Verification results | 20% | Pass rate of restore verification tests |
-| Pre-flight pass rate | 10% | Percentage of pre-flights that passed |
+<HealthFactors />
 
 ## Letter grades
 
-| Score | Grade |
-|---|---|
-| 90–100 | A |
-| 80–89 | B |
-| 70–79 | C |
-| 60–69 | D |
-| 0–59 | F |
+<HealthGrades />
 
 A score below 70 triggers a warning badge. Below 50 triggers a critical alert if alert rules are configured.

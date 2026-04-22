@@ -7,12 +7,8 @@ description: Configure forget policies to automatically remove old snapshots.
 
 Go to **Repositories → [repository] → Retention policy**. Configure the Restic forget policy:
 
-| Setting | Example | Effect |
-|---|---|---|
-| Keep last N | 7 | Always keep the 7 most recent snapshots |
-| Keep daily for | 30 days | Keep one snapshot per day for 30 days |
-| Keep weekly for | 8 weeks | Keep one per week for 8 weeks |
-| Keep monthly for | 12 months | Keep one per month for 12 months |
-| Keep yearly | 3 | Keep one per year for 3 years |
+<RetentionPolicy />
 
-BackupOS applies the policy on a schedule (default: daily). Pruning actually reclaims storage — without prune, forget only removes the index entry.
+<Warning>Pruning actually reclaims storage — without prune, forget only removes the index entry. Enable **Run prune after forget** in the retention settings to ensure storage is freed.</Warning>
+
+<Tip>Start conservative and tighten later. It's safer to keep more snapshots initially and reduce once you've confirmed restore works end-to-end.</Tip>

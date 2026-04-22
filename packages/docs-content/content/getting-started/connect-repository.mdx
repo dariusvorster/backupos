@@ -13,41 +13,29 @@ Cloudflare R2 has zero egress fees, making it the cheapest option for most homel
 
 ### 1. Create an R2 bucket
 
-1. Log into [dash.cloudflare.com](https://dash.cloudflare.com)
-2. Go to **R2 → Create bucket**
-3. Name it (e.g. `homelab-backups`), choose a region
-4. Go to **R2 → Manage R2 API tokens → Create API token**
-5. Scope: **Object Read & Write** on your bucket
-6. Note the **Access Key ID** and **Secret Access Key**
+1. Log into the Cloudflare dashboard
+2. Go to **R2 → Create bucket**, name it (e.g. `homelab-backups`), choose a region
+3. Go to **R2 → Manage R2 API tokens → Create API token**
+4. Scope: **Object Read & Write** on your bucket
+5. Note the **Access Key ID** and **Secret Access Key**
 
 ### 2. Add the repository in BackupOS
 
-Go to **Repositories → Add repository**:
+Go to **Repositories → Add repository** and fill in these fields:
 
-| Field | Value |
-|---|---|
-| Name | anything (e.g. "R2 homelab") |
-| Backend | S3 / R2 |
-| Endpoint | `https://<account-id>.r2.cloudflarestorage.com` |
-| Bucket | your bucket name |
-| Access key ID | from step 1 |
-| Secret access key | from step 1 |
-| Encryption password | **choose a strong, unique password** |
+<RepoFields />
+
+<Warning>Store the encryption password somewhere safe before clicking Initialise. If it is lost, the backup data is permanently inaccessible — Restic has no password recovery.</Warning>
 
 ### 3. Enable escrow (strongly recommended)
 
-If you forget the encryption password, the backup data is permanently inaccessible. Enable escrow: BackupOS encrypts the password with your master passphrase and stores it. You can recover it later via **Settings → Recover repository password**.
+BackupOS can encrypt the password with your master passphrase and store it. You can recover it later via **Settings → Recover repository password**.
 
 Click **Initialise repository**. BackupOS calls `restic init` and stores the connection details.
 
 ## Other backends
 
-| Backend | Endpoint format |
-|---|---|
-| Backblaze B2 | `b2:<bucket-name>` |
-| AWS S3 | `s3:s3.amazonaws.com/<bucket>` |
-| MinIO (local) | `s3:http://minio:9000/<bucket>` |
-| Local path | `/mnt/nas/backups` |
+<OtherBackends />
 
 ## Verify
 

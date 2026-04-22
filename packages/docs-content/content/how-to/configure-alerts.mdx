@@ -5,17 +5,14 @@ description: Set up notifications for backup failures, storage thresholds, and m
 
 # Configure alerts
 
-Go to **Settings → Alerts → New alert rule**. Choose:
+Go to **Settings → Alerts → New alert rule**. Choose a trigger:
 
-| Trigger | Example |
-|---|---|
-| Job failed | Any job in FAILED status |
-| No recent backup | No snapshot in the last 25 hours |
-| Storage threshold | Repository > 80% of budget |
-| Verification failed | A restore test returned FAILED |
-| Agent disconnected | Agent offline > 1 hour |
+<AlertTriggers />
 
-**Notification channels:**
-- Email (configure SMTP in Settings → Notifications)
-- Webhook (POST JSON payload to any URL)
-- Slack / Discord (webhook URL)
+<Tip>Start with "Job failed" and "No recent backup" — these two catch 90% of real incidents. Add storage threshold alerts once you know your typical growth rate.</Tip>
+
+## Notification channels
+
+- **Email** — configure SMTP in Settings → Notifications
+- **Webhook** — POST JSON payload to any URL
+- **Slack / Discord** — paste your webhook URL

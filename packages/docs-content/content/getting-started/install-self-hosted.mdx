@@ -39,7 +39,9 @@ volumes:
   backupos-data:
 ```
 
-**Important:** Replace `ENCRYPTION_KEY` and `NEXTAUTH_SECRET` with random values:
+<Warning>Replace `ENCRYPTION_KEY` and `NEXTAUTH_SECRET` with randomly generated values before starting. Leaving the defaults means anyone who reads the compose file can decrypt your stored credentials.</Warning>
+
+Generate secure values with:
 
 ```bash
 openssl rand -hex 32   # NEXTAUTH_SECRET
@@ -59,6 +61,8 @@ Navigate to `http://localhost:3000`. On first boot you'll see the setup wizard:
 1. **Create admin account** — enter your email and a strong password
 2. **Instance name** — a friendly name shown in the UI (e.g. "Homelab")
 3. **Enable TOTP** — strongly recommended; scan the QR code with your authenticator app
+
+<Tip>Put BackupOS behind a reverse proxy (Nginx, Caddy, Traefik) with TLS before exposing it beyond localhost. The app itself does not terminate TLS.</Tip>
 
 ## Verify
 

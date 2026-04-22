@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react'
 import { getDb, hypervisorIntegrations, hypervisorTargets } from '@backupos/db'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -32,7 +33,9 @@ export default async function HypervisorsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>Hypervisors</h1>
-        <Button variant="primary" size="md">Add hypervisor</Button>
+        <Link href="/hypervisors/new" style={{ textDecoration: 'none' }}>
+          <Button variant="primary" size="md">Add hypervisor</Button>
+        </Link>
       </div>
 
       {integrations.length === 0 ? (

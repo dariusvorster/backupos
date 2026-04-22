@@ -4,8 +4,8 @@ import { eq, desc } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { StatCard } from '@/components/ui/stat-card'
+import { SyncButton } from './sync-button'
 import { EmptyState } from '@/components/ui/empty-state'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
@@ -38,7 +38,7 @@ export default async function MonitorDetailPage({ params }: { params: Promise<{ 
         <Link href="/monitors" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Monitors</Link>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>{monitor.name}</h1>
-          <Button variant="primary" size="md">Sync now</Button>
+          <SyncButton monitorId={id} />
         </div>
       </div>
 

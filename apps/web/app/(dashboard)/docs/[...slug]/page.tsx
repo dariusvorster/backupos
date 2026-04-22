@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from 'fs'
 import { join, resolve }            from 'path'
 import { notFound }                 from 'next/navigation'
 import { MDXRemote }                from 'next-mdx-remote/rsc'
+import { getMdxComponents }         from '../mdx-components'
 
 const DOCS_ROOT = resolve(process.cwd(), '../../packages/docs-content/content')
 
@@ -24,11 +25,8 @@ export default async function DocsPage({
   const source = readFileSync(resolved, 'utf8')
 
   return (
-    <article style={{
-      maxWidth: 720, color: 'var(--fg)', lineHeight: 1.75,
-      fontSize: 14,
-    }}>
-      <MDXRemote source={source} />
+    <article style={{ maxWidth: 740, color: 'var(--fg)' }}>
+      <MDXRemote source={source} components={getMdxComponents()} />
     </article>
   )
 }

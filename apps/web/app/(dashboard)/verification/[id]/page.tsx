@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDb, verificationTests, verificationRuns, backupJobs, eq, desc } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { RunVerificationButton } from './run-verification-button'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -105,7 +105,7 @@ export default async function VerificationDetailPage({ params }: { params: Promi
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>{test.name}</h1>
           <div style={{ display: 'flex', gap: 10 }}>
-            <Button variant="primary" size="md">Run now</Button>
+            <RunVerificationButton testId={id} />
           </div>
         </div>
         <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>

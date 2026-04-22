@@ -23,6 +23,7 @@ export default async function LoggingSettingsPage() {
 
   return (
     <div style={{ maxWidth: 560 }}>
+      <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Logging</h1>
 
       <form action={handleSave}>

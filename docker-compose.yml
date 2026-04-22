@@ -14,14 +14,14 @@ services:
       - DATABASE_URL=file:/app/data/backupos.db
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
-      - RESTIC_BINARY_PATH=/usr/local/bin/restic
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
 
 volumes:
   backupos_data:

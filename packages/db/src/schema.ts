@@ -496,3 +496,52 @@ export const twoFactorSecrets = sqliteTable('two_factor', {
   userId:      text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
   createdAt:   integer('created_at', { mode: 'timestamp' }).notNull(),
 })
+
+// ── Instance settings ─────────────────────────────────────────────────────
+export const instanceSettings = sqliteTable('instance_settings', {
+  id:           text('id').primaryKey().default('singleton'),
+  instanceName: text('instance_name').notNull().default('BackupOS'),
+  timezone:     text('timezone').notNull().default('UTC'),
+  language:     text('language').notNull().default('en'),
+  dateFormat:   text('date_format').notNull().default('YYYY-MM-DD'),
+  updatedAt:    integer('updated_at', { mode: 'timestamp' }),
+})
+
+// ── SMTP config ───────────────────────────────────────────────────────────
+export const smtpConfig = sqliteTable('smtp_config', {
+  id:        text('id').primaryKey().default('singleton'),
+  host:      text('host'),
+  port:      integer('port').default(587),
+  username:  text('username'),
+  password:  text('password'),
+  fromName:  text('from_name').notNull().default('BackupOS'),
+  fromEmail: text('from_email'),
+  tls:       integer('tls',     { mode: 'boolean' }).default(true),
+  enabled:   integer('enabled', { mode: 'boolean' }).default(false),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }),
+})
+
+// ── API tokens ────────────────────────────────────────────────────────────
+export const apiTokens = sqliteTable('api_tokens', {
+  id:          text('id').primaryKey(),
+  userId:      text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  name:        text('name').notNull(),
+  tokenHash:   text('token_hash').notNull(),
+  tokenPrefix: text('token_prefix').notNull(),
+  lastUsedAt:  integer('last_used_at', { mode: 'timestamp' }),
+  expiresAt:   integer('expires_at',   { mode: 'timestamp' }),
+  createdAt:   integer('created_at',   { mode: 'timestamp' }).notNull(),
+})
+
+// ── Backup defaults ───────────────────────────────────────────────────────
+export const backupDefaults = sqliteTable('backup_defaults', {
+  id:            text('id').primaryKey().default('singleton'),
+  keepLast:      integer('keep_last').default(10),
+  keepDaily:     integer('keep_daily').default(7),
+  keepWeekly:    integer('keep_weekly').default(4),
+  keepMonthly:   integer('keep_monthly').default(12),
+  keepYearly:    integer('keep_yearly').default(0),
+  scheduleStart: integer('schedule_start').default(0),
+  scheduleEnd:   integer('schedule_end').default(23),
+  updatedAt:     integer('updated_at', { mode: 'timestamp' }),
+})

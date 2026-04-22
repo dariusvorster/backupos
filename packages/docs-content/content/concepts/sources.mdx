@@ -5,19 +5,8 @@ description: What BackupOS can back up — filesystem paths, databases, Docker, 
 
 # Sources
 
-A source defines what gets backed up in a job. BackupOS supports:
+A source defines what gets backed up in a job. BackupOS supports ten source types, all configured in the job wizard.
 
-| Source type | Notes |
-|---|---|
-| Filesystem | Any path accessible to the agent |
-| Docker volume | Named Docker volumes |
-| Docker container | App-consistent: pauses container, backs up volume, resumes |
-| PostgreSQL | pg_dump before backup, hook-based |
-| MySQL / MariaDB | mysqldump before backup |
-| Redis | BGSAVE before backup |
-| SQLite | File-copy with WAL checkpoint |
-| Proxmox VM | Via Proxmox API, no in-guest agent needed |
-| Proxmox LXC | Via Proxmox API |
-| Windows system (VSS) | Volume Shadow Copy for consistent Windows backups |
+<SourceTypes />
 
-Each source type has optional parameters (include/exclude paths, credentials for databases, etc.) configured in the job wizard.
+<Note>Each source type has optional parameters — include/exclude paths, database credentials, Proxmox API tokens — configured per-job. Credentials are encrypted at rest using the instance encryption key.</Note>
