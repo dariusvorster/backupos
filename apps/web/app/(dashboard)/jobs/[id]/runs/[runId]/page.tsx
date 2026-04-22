@@ -85,6 +85,10 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
           { label: 'Files new',  value: run.filesNew         != null ? String(run.filesNew)         : '—' },
           { label: 'Changed',    value: run.filesChanged     != null ? String(run.filesChanged)     : '—' },
           { label: 'Unmodified', value: run.filesUnmodified  != null ? String(run.filesUnmodified)  : '—' },
+          ...(run.snapshotsRemoved != null || run.snapshotsKept != null ? [{
+            label: 'Retention',
+            value: `${run.snapshotsRemoved ?? 0} removed · ${run.snapshotsKept ?? 0} kept`,
+          }] : []),
         ] as { label: string; value: string }[]).map(({ label, value }) => (
           <div key={label} style={{
             backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
