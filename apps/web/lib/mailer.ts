@@ -6,6 +6,10 @@ interface InviteEmailOpts {
   link:        string
 }
 
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 export async function sendInviteEmail(opts: InviteEmailOpts): Promise<void> {
   const host = process.env['SMTP_HOST']
   if (!host) return // SMTP not configured — skip silently
@@ -22,11 +26,12 @@ export async function sendInviteEmail(opts: InviteEmailOpts): Promise<void> {
 
   const from = process.env['SMTP_FROM'] ?? `BackupOS <noreply@backupos.dev>`
 
-  await transporter.sendMail({
-    from,
-    to:      opts.to,
-    subject: `${opts.inviterName} invited you to BackupOS`,
-    html: `
+  try {
+    await transporter.sendMail({
+      from,
+      to:      opts.to,
+      subject: `${opts.inviterName} invited you to BackupOS`,
+      html: `
 <!DOCTYPE html>
 <html>
 <body style="margin:0;padding:0;background:#0E0E0E;font-family:system-ui,sans-serif">
@@ -45,9 +50,9 @@ export async function sendInviteEmail(opts: InviteEmailOpts): Promise<void> {
       </div>
       <h1 style="color:#F5F5F5;font-size:20px;font-weight:700;margin:0 0 8px">You've been invited</h1>
       <p style="color:#A3A3A3;font-size:14px;margin:0 0 28px">
-        <strong style="color:#F5F5F5">${opts.inviterName}</strong> invited you to join BackupOS.
+        <strong style="color:#F5F5F5">${escHtml(opts.inviterName)}</strong> invited you to join BackupOS.
       </p>
-      <a href="${opts.link}"
+      <a href="${escHtml(opts.link)}"
          style="display:inline-block;padding:10px 24px;background:#F5A623;color:#000;font-size:14px;font-weight:600;border-radius:6px;text-decoration:none">
         Accept invitation
       </a>
@@ -58,5 +63,8 @@ export async function sendInviteEmail(opts: InviteEmailOpts): Promise<void> {
   </div>
 </body>
 </html>`,
-  })
+    })
+  } catch (err) {
+    throw new Error(`Failed to send invite email: ${err instanceof Error ? err.message : String(err)}`)
+  }
 }
