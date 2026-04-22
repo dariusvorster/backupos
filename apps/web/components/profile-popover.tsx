@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Avatar } from './avatar'
+import { authClient } from '@/lib/auth-client'
 import {
   IconUser, IconLock, IconSettings, IconLogOut,
 } from '@/app/(dashboard)/docs/icons'
@@ -28,6 +30,7 @@ function MenuIcon({ Icon }: { Icon: React.ComponentType<{ size?: number }> }) {
 export function ProfilePopover({ user }: { user: ProfileUser }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const router = useRouter()
 
   useEffect(() => {
     if (!open) return
@@ -37,6 +40,11 @@ export function ProfilePopover({ user }: { user: ProfileUser }) {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
+
+  async function handleSignOut() {
+    await authClient.signOut()
+    router.push('/login')
+  }
 
   const MENU = [
     { href: '/settings/profile',  Icon: IconUser,     label: 'Profile' },
@@ -106,23 +114,22 @@ export function ProfilePopover({ user }: { user: ProfileUser }) {
 
           <div style={{ borderTop: '1px solid var(--border)' }} />
 
-          <form action="/api/auth/sign-out" method="POST">
-            <button
-              type="submit"
-              style={{
-                width: '100%', textAlign: 'left',
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '0 16px', height: 36, fontSize: 13,
-                color: 'var(--fg)', background: 'none', border: 'none', cursor: 'pointer',
-                borderBottomLeftRadius: 'var(--radius)', borderBottomRightRadius: 'var(--radius)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--surf2)'; e.currentTarget.style.color = 'var(--err)' }}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = 'var(--fg)' }}
-            >
-              <MenuIcon Icon={IconLogOut} />
-              Sign out
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            style={{
+              width: '100%', textAlign: 'left',
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '0 16px', height: 36, fontSize: 13,
+              color: 'var(--fg)', background: 'none', border: 'none', cursor: 'pointer',
+              borderBottomLeftRadius: 'var(--radius)', borderBottomRightRadius: 'var(--radius)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--surf2)'; e.currentTarget.style.color = 'var(--err)' }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = 'var(--fg)' }}
+          >
+            <MenuIcon Icon={IconLogOut} />
+            Sign out
+          </button>
         </div>
       )}
     </div>
