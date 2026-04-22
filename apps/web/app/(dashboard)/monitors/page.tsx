@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react'
 import Link from 'next/link'
 import { Radar } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
 import { getDb, backupMonitors } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,21 +39,15 @@ export default async function MonitorsPage({
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', margin: 0 }}>Monitors</h1>
-          <Link
-            href="/monitors/timeline"
-            style={{ fontSize: 12, color: 'var(--fg-mute)', textDecoration: 'none' }}
-          >
-            View timeline →
-          </Link>
-        </div>
-        <Button variant="primary" size="md">
-          <Radar size={14} />
-          Add monitor
-        </Button>
-      </div>
+      <PageHeader
+        title="Monitors"
+        action={
+          <Button variant="primary" size="md">
+            <Radar size={14} />
+            Add monitor
+          </Button>
+        }
+      />
 
       <GroupFilter groups={groups} />
 

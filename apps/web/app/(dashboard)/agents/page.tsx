@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react'
 import { Server } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
 import { getDb, agents } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,13 +32,15 @@ export default async function AgentsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>Agents</h1>
-        <Button variant="primary" size="md">
-          <Server size={14} />
-          Enrol agent
-        </Button>
-      </div>
+      <PageHeader
+        title="Agents"
+        action={
+          <Button variant="primary" size="md">
+            <Server size={14} />
+            Enrol agent
+          </Button>
+        }
+      />
 
       {agentList.length === 0 ? (
         <div style={{

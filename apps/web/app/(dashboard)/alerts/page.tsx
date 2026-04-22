@@ -1,5 +1,6 @@
 import { getDb, alerts, isNull, desc } from '@backupos/db'
 import { EmptyState } from '@/components/ui/empty-state'
+import { PageHeader } from '@/components/ui/page-header'
 import { snoozeAlert } from '@/app/actions/alerts'
 
 const SNOOZE_OPTIONS = [
@@ -45,7 +46,7 @@ export default async function AlertsPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Alerts</h1>
+      <PageHeader title="Alerts" />
 
       {topLevel.length === 0 ? (
         <EmptyState

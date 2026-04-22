@@ -1,5 +1,6 @@
 import Link                from 'next/link'
 import { Database }        from 'lucide-react'
+import { PageHeader }      from '@/components/ui/page-header'
 import { getDb, repositories } from '@backupos/db'
 import { GroupFilter }     from './group-filter'
 import { DedupBar, fmtBytes } from './dedup-bar'
@@ -41,19 +42,21 @@ export default async function RepositoriesPage({
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', margin: 0 }}>Repositories</h1>
-        <Link
-          href="/repositories/new"
-          style={{
-            padding: '7px 16px', fontSize: 13, fontWeight: 500,
-            borderRadius: 'var(--radius-sm)', background: 'var(--accent)',
-            color: '#fff', textDecoration: 'none',
-          }}
-        >
-          Add repository
-        </Link>
-      </div>
+      <PageHeader
+        title="Repositories"
+        action={
+          <Link
+            href="/repositories/new"
+            style={{
+              padding: '7px 16px', fontSize: 13, fontWeight: 500,
+              borderRadius: 'var(--radius-sm)', background: 'var(--accent)',
+              color: 'var(--accent-fg)', textDecoration: 'none',
+            }}
+          >
+            Add repository
+          </Link>
+        }
+      />
 
       <GroupFilter groups={groups} />
 

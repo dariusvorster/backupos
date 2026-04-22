@@ -1,9 +1,10 @@
 import { EmptyState } from '@/components/ui/empty-state'
+import { PageHeader } from '@/components/ui/page-header'
 
 export default function ActivityPage() {
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Activity</h1>
+      <PageHeader title="Activity" />
       <EmptyState
         type="page"
         headline="No activity in the last 30 days"

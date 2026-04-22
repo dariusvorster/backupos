@@ -1,4 +1,5 @@
 import { getDb, snapshots, repositories, backupJobs } from '@backupos/db'
+import { PageHeader } from '@/components/ui/page-header'
 import { eq } from 'drizzle-orm'
 import { SnapshotActions } from '@/components/snapshot-actions'
 import { Pin, Lock } from 'lucide-react'
@@ -74,7 +75,7 @@ export default async function SnapshotsPage({ searchParams }: PageProps) {
     <div style={{ padding: '32px 40px' }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>Snapshots</div>
+        <PageHeader title="Snapshots" />
         {(pinnedCount > 0 || heldCount > 0) && (
           <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>
             {pinnedCount > 0 && <span>{pinnedCount} pinned</span>}
