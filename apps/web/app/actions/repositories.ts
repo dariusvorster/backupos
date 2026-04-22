@@ -2,7 +2,7 @@
 
 import { revalidatePath }           from 'next/cache'
 import { redirect }                 from 'next/navigation'
-import { getDb, repositories, eq }  from '@backupos/db'
+import { getDb, repositories, backupJobs, backupDefaults, eq, and } from '@backupos/db'
 import { ResticEngine }             from '@backupos/engine'
 
 export async function createRepository(formData: FormData): Promise<{ error: string } | never> {
@@ -149,6 +149,89 @@ export async function runCheck(repoId: string): Promise<{ ok: boolean; error?: s
 
     revalidatePath(`/repositories/${repoId}`)
     return { ok: status === 'ok' }
+  } catch (err) {
+    return { ok: false, error: String(err) }
+  }
+}
+
+export async function pruneRepository(repoId: string): Promise<{
+  ok: boolean
+  removed?: number
+  kept?: number
+  jobsProcessed?: number
+  error?: string
+}> {
+  const db     = getDb()
+  const [repo] = await db.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
+  if (!repo) return { ok: false, error: 'Repository not found' }
+
+  try {
+    const jobs = await db
+      .select()
+      .from(backupJobs)
+      .where(and(eq(backupJobs.repositoryId, repoId), eq(backupJobs.enabled, true)))
+      .all()
+
+    const [defaults] = await db.select().from(backupDefaults).limit(1).all()
+
+    type Policy = {
+      keepLast?: number; keepDaily?: number; keepWeekly?: number
+      keepMonthly?: number; keepYearly?: number
+    }
+    const jobPolicies: Array<{ policy: Policy; tags: string[] }> = []
+
+    for (const job of jobs) {
+      const jobHasRetention = job.keepLast || job.keepDaily || job.keepWeekly || job.keepMonthly || job.keepYearly
+      let policy: Policy | null = null
+
+      if (jobHasRetention) {
+        policy = {
+          keepLast:    job.keepLast    ?? undefined,
+          keepDaily:   job.keepDaily   ?? undefined,
+          keepWeekly:  job.keepWeekly  ?? undefined,
+          keepMonthly: job.keepMonthly ?? undefined,
+          keepYearly:  job.keepYearly  ?? undefined,
+        }
+      } else if (defaults) {
+        const defHasAny = defaults.keepLast || defaults.keepDaily || defaults.keepWeekly || defaults.keepMonthly || defaults.keepYearly
+        if (defHasAny) {
+          policy = {
+            keepLast:    defaults.keepLast    ?? undefined,
+            keepDaily:   defaults.keepDaily   ?? undefined,
+            keepWeekly:  defaults.keepWeekly  ?? undefined,
+            keepMonthly: defaults.keepMonthly ?? undefined,
+            keepYearly:  defaults.keepYearly  ?? undefined,
+          }
+        }
+      }
+
+      if (policy) {
+        const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
+        jobPolicies.push({ policy, tags })
+      }
+    }
+
+    const cfg = JSON.parse(repo.config) as Record<string, string>
+    const engine = new ResticEngine({
+      repositoryUrl: cfg['repositoryUrl'] ?? repoId,
+      password:      repo.resticPassword,
+      envVars:       cfg,
+      binaryPath:    process.env['RESTIC_BINARY_PATH'],
+    })
+
+    if (jobPolicies.length === 0) {
+      await engine.prune()
+      return { ok: true, removed: 0, kept: 0, jobsProcessed: 0 }
+    }
+
+    let totalRemoved = 0
+    let totalKept    = 0
+    for (const { policy, tags } of jobPolicies) {
+      const result = await engine.forget({ ...policy, keepTags: tags })
+      totalRemoved += result.removed
+      totalKept    += result.kept
+    }
+    return { ok: true, removed: totalRemoved, kept: totalKept, jobsProcessed: jobPolicies.length }
   } catch (err) {
     return { ok: false, error: String(err) }
   }
