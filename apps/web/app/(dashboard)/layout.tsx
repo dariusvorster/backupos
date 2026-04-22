@@ -1,4 +1,5 @@
 // apps/web/app/(dashboard)/layout.tsx
+import { redirect }               from 'next/navigation'
 import { Sidebar }                from '@/components/sidebar'
 import { getCurrentUser }         from '@/lib/user'
 import { Topbar }                 from '@/components/topbar'
@@ -31,9 +32,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const hasFailed24h = failedRuns.length > 0
 
   const currentUser = await getCurrentUser()
-  const sidebarUser = currentUser
-    ? { name: currentUser.name, email: currentUser.email, image: currentUser.image ?? null }
-    : { name: 'Admin', email: 'admin@backupos.local', image: null }
+  if (!currentUser) redirect('/login')
+
+  const sidebarUser = {
+    name:  currentUser.name,
+    email: currentUser.email,
+    image: currentUser.image ?? null,
+  }
 
   return (
     <CommandPaletteProvider>
