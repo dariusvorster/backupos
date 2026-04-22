@@ -6,6 +6,8 @@ import {
 } from '@backupos/db'
 import { StatCard } from '@/components/ui/stat-card'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardHeader, CardTitle, CardLink, CardBody } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
 import { HealthScoreCard } from '@/components/ui/health-score-card'
 import { computeHealthScore, buildSparkline } from '@/lib/health-score'
 import { build24hSparklineValues, fmtLimit, getActiveRule, UNLIMITED_KBPS } from '@/lib/bandwidth'
@@ -162,17 +164,11 @@ export default async function DashboardPage() {
     container:  'docker_volume',
   }
 
-  const th: React.CSSProperties = {
-    padding: '10px 20px', textAlign: 'left', fontWeight: 500,
-    fontSize: 11, color: 'var(--fg-dim)', textTransform: 'uppercase', letterSpacing: '0.06em',
-  }
-  const thR: React.CSSProperties = { ...th, textAlign: 'right' }
-
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Dashboard</h1>
+      <PageHeader title="Dashboard" />
 
-      {/* Health score hero */}
+      {/* Health score */}
       <HealthScoreCard
         score={healthScore.score}
         grade={healthScore.grade}
@@ -181,8 +177,14 @@ export default async function DashboardPage() {
         sparkline={sparkline}
       />
 
-      {/* KPI grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 32 }}>
+      {/* Stat row */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: 12,
+        marginBottom: 16,
+        marginTop: 16,
+      }}>
         <StatCard label="Backup jobs"  value={jobs.length} />
         <StatCard label="Repositories" value={repos.length} />
         <StatCard label="Agents"       value={allAgents.length} footer={`${agentsOnline} online`} />
@@ -203,84 +205,28 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Bandwidth widget */}
-      <div style={{
-        backgroundColor: 'var(--surf)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)',
-        padding: '18px 20px',
-        marginBottom: 32,
-      }}>
-        <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontWeight: 500, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Bandwidth (global)
-        </div>
-        {globalProfile ? (
-          <>
-            <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 2 }}>
-              {fmtLimit(currentLimit)}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginBottom: 12 }}>
-              {globalProfile.name} · now ({currentHour}:00)
-            </div>
-            {(() => {
-              const W = 168, H = 28, BAR_W = 6, GAP = 1
-              return (
-                <svg width={W} height={H}>
-                  {sparkValues.map((v, h) => {
-                    const barH = Math.max(3, Math.round((v / UNLIMITED_KBPS) * H))
-                    const x    = h * (BAR_W + GAP)
-                    const fill = v >= UNLIMITED_KBPS ? 'var(--ok)' : 'var(--warn)'
-                    return (
-                      <rect
-                        key={h} x={x} y={H - barH}
-                        width={BAR_W} height={barH}
-                        fill={fill} opacity={h === currentHour ? 1 : 0.55} rx={1}
-                      />
-                    )
-                  })}
-                </svg>
-              )
-            })()}
-          </>
-        ) : (
-          <div style={{ fontSize: 13, color: 'var(--fg-dim)' }}>
-            No global profile set.{' '}
-            <a href="/settings/bandwidth" style={{ color: 'var(--accent)' }}>Configure one.</a>
-          </div>
-        )}
-      </div>
-
-      {/* Services without backups */}
+      {/* Services without backups warning */}
       {uncoveredServices.length > 0 && (
-        <div style={{
-          backgroundColor: 'var(--surf)',
-          border: '1px solid color-mix(in srgb, var(--border) 60%, var(--warn) 40%)',
-          borderRadius: 'var(--radius)',
-          marginBottom: 32,
-        }}>
-          <div style={{
-            padding: '16px 20px', borderBottom: '1px solid var(--border2)',
-            display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>Services without backups</span>
+        <Card style={{ marginBottom: 16, borderColor: 'color-mix(in srgb, var(--border) 60%, var(--warn) 40%)' }}>
+          <CardHeader>
+            <CardTitle>Services without backups</CardTitle>
             <span style={{
-              fontSize: 12, fontWeight: 500, color: 'var(--warn)',
+              fontSize: 11, fontWeight: 600, color: 'var(--warn)',
               padding: '2px 8px', borderRadius: 'var(--radius-sm)',
-              backgroundColor: 'color-mix(in srgb, transparent 85%, var(--warn) 15%)',
-              border: '1px solid color-mix(in srgb, transparent 70%, var(--warn) 30%)',
+              backgroundColor: 'var(--warn-dim)',
             }}>
               {uncoveredServices.length} unprotected
             </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          </CardHeader>
+          <CardBody style={{ padding: 0 }}>
             {uncoveredServices.map((svc, i) => {
               const sourceType = SOURCE_TYPE_MAP[svc.serviceType] ?? 'filesystem'
               const href = `/jobs/new?name=${encodeURIComponent(svc.name)}&sourceType=${encodeURIComponent(sourceType)}&infraServiceId=${encodeURIComponent(svc.id)}`
               return (
                 <div key={svc.id} style={{
                   display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 20px',
-                  borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                  padding: '12px 16px',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--border2)',
                 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>{svc.name}</div>
@@ -288,104 +234,155 @@ export default async function DashboardPage() {
                       {svc.serviceType}{svc.host ? ` · ${svc.host}` : ''}{svc.description ? ` · ${svc.description}` : ''}
                     </div>
                   </div>
-                  <a
-                    href={href}
-                    style={{
-                      fontSize: 12, padding: '4px 12px',
-                      borderRadius: 'var(--radius-sm)', border: 'none',
-                      background: 'var(--accent)', color: '#fff', textDecoration: 'none',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <a href={href} style={{
+                    fontSize: 12, padding: '4px 12px',
+                    borderRadius: 'var(--radius-sm)', border: 'none',
+                    background: 'var(--accent)', color: 'var(--accent-fg)',
+                    textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}>
                     Create job →
                   </a>
                 </div>
               )
             })}
-          </div>
-        </div>
+          </CardBody>
+        </Card>
       )}
 
-      {/* Recent runs table */}
-      <div style={{
-        backgroundColor: 'var(--surf)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)',
-        marginBottom: 24,
-      }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
-          Recent runs
-        </div>
-        {recentRuns.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-            No backup runs yet. Enrol an agent to get started.
-          </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={th}>Status</th>
-                <th style={th}>Job</th>
-                <th style={thR}>Duration</th>
-                <th style={thR}>Size added</th>
-                <th style={thR}>Age</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentRuns.map(run => (
-                <tr key={run.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '12px 20px' }}>
-                    <Badge status={toBadge(run.status)} />
-                  </td>
-                  <td style={{ padding: '12px 20px', fontSize: 13, color: 'var(--fg)' }}>
-                    {run.jobName ?? run.jobId ?? '—'}
-                  </td>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                    {fmtDuration(run.duration)}
-                  </td>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                    {fmtBytes(run.dataAdded)}
-                  </td>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                    {fmtAge(run.startedAt)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {/* Two-column card grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 12, marginBottom: 16 }}>
 
-      {/* Agents card */}
-      <div style={{
-        backgroundColor: 'var(--surf)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)',
-      }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
-          Agents
-        </div>
-        {allAgents.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-mute)', fontSize: 13 }}>
-            No agents enrolled — install an agent to start backing up
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 1, padding: 16 }}>
-            {allAgents.map(agent => (
-              <div key={agent.id} style={{
-                backgroundColor: 'var(--surf2)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '12px 14px',
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)', marginBottom: 4 }}>{agent.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--fg-dim)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
-                  {agent.hostname ?? agent.ip ?? '—'}
-                </div>
-                <Badge status={toBadge(agent.status ?? 'disconnected')} />
+        {/* Recent runs card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent runs</CardTitle>
+            <CardLink href="/activity">View all →</CardLink>
+          </CardHeader>
+          {recentRuns.length === 0 ? (
+            <CardBody>
+              <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--fg-faint)', fontSize: 13 }}>
+                No backup runs yet.
               </div>
-            ))}
-          </div>
-        )}
+            </CardBody>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Status', 'Job', 'Duration', 'Size', 'Age'].map((h, i) => (
+                    <th key={h} style={{
+                      padding: '8px 16px', textAlign: i > 1 ? 'right' : 'left',
+                      fontSize: 10, fontWeight: 600, color: 'var(--fg-faint)',
+                      textTransform: 'uppercase', letterSpacing: '0.06em',
+                      backgroundColor: 'var(--surf2)',
+                      borderBottom: '1px solid var(--border2)',
+                    }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recentRuns.map(run => (
+                  <tr key={run.id} style={{ borderTop: '1px solid var(--border2)' }}>
+                    <td style={{ padding: '10px 16px' }}>
+                      <Badge status={toBadge(run.status)} />
+                    </td>
+                    <td style={{ padding: '10px 16px', fontSize: 13, color: 'var(--fg)', fontWeight: 500 }}>
+                      {run.jobName ?? run.jobId ?? '—'}
+                    </td>
+                    <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--fg-dim)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                      {fmtDuration(run.duration)}
+                    </td>
+                    <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--fg-dim)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                      {fmtBytes(run.dataAdded)}
+                    </td>
+                    <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--fg-dim)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                      {fmtAge(run.startedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        {/* Right column: Agents + Bandwidth stacked */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* Agents card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Agents</CardTitle>
+              <CardLink href="/agents">Manage →</CardLink>
+            </CardHeader>
+            {allAgents.length === 0 ? (
+              <CardBody>
+                <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--fg-faint)', fontSize: 13 }}>
+                  No agents enrolled
+                </div>
+              </CardBody>
+            ) : (
+              <CardBody style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {allAgents.map(agent => (
+                  <div key={agent.id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: 8,
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>{agent.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--fg-faint)', fontFamily: 'var(--font-mono)' }}>
+                        {agent.hostname ?? agent.ip ?? '—'}
+                      </div>
+                    </div>
+                    <Badge status={toBadge(agent.status ?? 'disconnected')} />
+                  </div>
+                ))}
+              </CardBody>
+            )}
+          </Card>
+
+          {/* Bandwidth card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Bandwidth (global)</CardTitle>
+              <CardLink href="/settings/bandwidth">Configure →</CardLink>
+            </CardHeader>
+            <CardBody>
+              {globalProfile ? (
+                <>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--fg)', marginBottom: 2, letterSpacing: '-0.02em' }}>
+                    {fmtLimit(currentLimit)}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 10 }}>
+                    {globalProfile.name} · now ({currentHour}:00)
+                  </div>
+                  {(() => {
+                    const W = 168, H = 28, BAR_W = 6, GAP = 1
+                    return (
+                      <svg width={W} height={H}>
+                        {sparkValues.map((v, h) => {
+                          const barH = Math.max(3, Math.round((v / UNLIMITED_KBPS) * H))
+                          const x    = h * (BAR_W + GAP)
+                          const fill = v >= UNLIMITED_KBPS ? 'var(--ok)' : 'var(--warn)'
+                          return (
+                            <rect key={h} x={x} y={H - barH} width={BAR_W} height={barH}
+                              fill={fill} opacity={h === currentHour ? 1 : 0.45} rx={1} />
+                          )
+                        })}
+                      </svg>
+                    )
+                  })()}
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--fg-dim)' }}>
+                  No global profile.{' '}
+                  <a href="/settings/bandwidth" style={{ color: 'var(--accent)' }}>Configure one.</a>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+        </div>
       </div>
     </div>
   )
