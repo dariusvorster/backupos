@@ -9,6 +9,7 @@ const LINKED_ITEMS: Record<string, string> = {
   'Webhook URL':        '/settings/webhook',
   'Slack integration':  '/settings/slack',
   'Alert channels':     '/settings/alerts',
+  'Users':              '/settings/users',
   'Change password':    '/settings/security',
   'API tokens':         '/settings/api-tokens',
   'Session management': '/settings/sessions',
@@ -47,7 +48,7 @@ export default async function SettingsPage() {
       {[
         { title: 'General', items: ['General'] },
         { title: 'Notifications', items: ['Email SMTP', 'Webhook URL', 'Slack integration', 'Alert channels'] },
-        { title: 'Security', items: ['Change password', 'API tokens', 'Session management'] },
+        { title: 'Security', items: ['Users', 'Change password', 'API tokens', 'Session management'] },
         { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows', 'Infra OS services'] },
         { title: 'Logging', items: ['Logging'] },
       ].map(section => (
