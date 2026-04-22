@@ -138,6 +138,10 @@ export const backupRuns = sqliteTable('backup_runs', {
 
   log:    text('log'),
   phases: text('phases'),
+
+  // Retention (set after forget runs; null means no retention policy was configured)
+  snapshotsRemoved: integer('snapshots_removed'),
+  snapshotsKept:    integer('snapshots_kept'),
 })
 
 // ── Snapshots ─────────────────────────────────────────────────────────────
