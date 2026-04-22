@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Activity, PlayCircle, Clock, Camera,
   Server, Database, Radar, RotateCcw, ListRestart,
-  TriangleAlert, FileClock, Settings, Sun, ShieldCheck, FileTerminal, BookOpen,
+  TriangleAlert, FileClock, Settings, BookOpen, FileTerminal, ShieldCheck,
 } from 'lucide-react'
 import { ProfilePopover } from './profile-popover'
 
@@ -15,60 +15,74 @@ interface SidebarUser { name: string; email: string; image?: string | null }
 
 const NAV: NavGroup[] = [
   {
-    label: 'OVERVIEW',
+    label: 'Overview',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
-      { href: '/activity',  label: 'Activity',  icon: <Activity size={16} /> },
-      { href: '/logs',      label: 'Logs',      icon: <FileTerminal size={16} /> },
-      { href: '/docs',      label: 'Docs',      icon: <BookOpen size={16} /> },
+      { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} /> },
+      { href: '/activity',  label: 'Activity',  icon: <Activity size={15} /> },
+      { href: '/logs',      label: 'Logs',      icon: <FileTerminal size={15} /> },
+      { href: '/docs',      label: 'Docs',      icon: <BookOpen size={15} /> },
     ],
   },
   {
-    label: 'BACKUP',
+    label: 'Backup',
     items: [
-      { href: '/jobs',      label: 'Jobs',      icon: <PlayCircle size={16} /> },
-      { href: '/schedules', label: 'Schedules', icon: <Clock size={16} /> },
-      { href: '/snapshots',     label: 'Snapshots',     icon: <Camera size={16} /> },
-      { href: '/verification', label: 'Verification', icon: <ShieldCheck size={16} /> },
+      { href: '/jobs',         label: 'Jobs',         icon: <PlayCircle size={15} /> },
+      { href: '/schedules',    label: 'Schedules',    icon: <Clock size={15} /> },
+      { href: '/snapshots',    label: 'Snapshots',    icon: <Camera size={15} /> },
+      { href: '/verification', label: 'Verification', icon: <ShieldCheck size={15} /> },
     ],
   },
   {
-    label: 'INFRASTRUCTURE',
+    label: 'Infrastructure',
     items: [
-      { href: '/agents',       label: 'Agents',       icon: <Server size={16} /> },
-      { href: '/repositories', label: 'Repositories', icon: <Database size={16} /> },
-      { href: '/monitors',     label: 'Monitors',     icon: <Radar size={16} /> },
+      { href: '/agents',       label: 'Agents',       icon: <Server size={15} /> },
+      { href: '/repositories', label: 'Repositories', icon: <Database size={15} /> },
+      { href: '/monitors',     label: 'Monitors',     icon: <Radar size={15} /> },
     ],
   },
   {
-    label: 'RESTORE',
+    label: 'Restore',
     items: [
-      { href: '/restore',      label: 'Restore specs', icon: <RotateCcw size={16} /> },
-      { href: '/restore/runs', label: 'Restore runs',  icon: <ListRestart size={16} /> },
+      { href: '/restore',      label: 'Restore specs', icon: <RotateCcw size={15} /> },
+      { href: '/restore/runs', label: 'Restore runs',  icon: <ListRestart size={15} /> },
     ],
   },
   {
-    label: 'ADMIN',
+    label: 'Admin',
     items: [
-      { href: '/alerts', label: 'Alerts',    icon: <TriangleAlert size={16} /> },
-      { href: '/audit',  label: 'Audit log', icon: <FileClock size={16} /> },
+      { href: '/alerts', label: 'Alerts',    icon: <TriangleAlert size={15} /> },
+      { href: '/audit',  label: 'Audit log', icon: <FileClock size={15} /> },
     ],
   },
 ]
 
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map(p => p[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
 function Logo() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', height: 56, flexShrink: 0 }}>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '0 16px', height: 52, flexShrink: 0,
+      borderBottom: '1px solid var(--border2)',
+    }}>
       <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="48" height="48" rx="16" fill="#1A1206" />
-        <rect x="6"  y="6"  width="16" height="16" rx="2" fill="#F5A623" />
-        <rect x="26" y="6"  width="16" height="16" rx="2" fill="#854F0B" />
-        <rect x="6"  y="26" width="16" height="16" rx="2" fill="#854F0B" />
-        <rect x="26" y="26" width="16" height="16" rx="2" fill="#C77A14" />
-        <rect x="18" y="18" width="12" height="12" rx="2" fill="#FEF5E0" />
+        <rect width="48" height="48" rx="12" fill="#1A1206" />
+        <rect x="6"  y="6"  width="16" height="16" rx="3" fill="#F5A623" />
+        <rect x="26" y="6"  width="16" height="16" rx="3" fill="#854F0B" />
+        <rect x="6"  y="26" width="16" height="16" rx="3" fill="#854F0B" />
+        <rect x="26" y="26" width="16" height="16" rx="3" fill="#C77A14" />
+        <rect x="18" y="18" width="12" height="12" rx="3" fill="#FEF5E0" />
       </svg>
-      <span style={{ fontSize: 16, fontWeight: 500, letterSpacing: '-0.01em' }}>
-        <span style={{ color: 'var(--fg)' }}>Backup</span><span style={{ color: 'var(--accent)' }}>OS</span>
+      <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em' }}>
+        <span style={{ color: 'var(--fg)' }}>Backup</span>
+        <span style={{ color: 'var(--accent)' }}>OS</span>
       </span>
     </div>
   )
@@ -79,7 +93,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
   return (
     <aside style={{
-      width: 240, minWidth: 240,
+      width: 228, minWidth: 228,
       backgroundColor: 'var(--bg2)',
       display: 'flex', flexDirection: 'column',
       borderRight: '1px solid var(--border)',
@@ -91,9 +105,9 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         {NAV.map(group => (
           <div key={group.label} style={{ marginBottom: 4 }}>
             <div style={{
-              fontSize: 11, color: 'var(--fg-dim)',
-              letterSpacing: '0.08em', fontWeight: 500,
-              padding: '12px 8px 4px', textTransform: 'uppercase',
+              fontSize: 10, color: 'var(--fg-faint)',
+              letterSpacing: '0.07em', fontWeight: 600,
+              padding: '10px 8px 4px', textTransform: 'uppercase',
             }}>
               {group.label}
             </div>
@@ -106,14 +120,15 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                   href={item.href}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '0 8px', height: 36,
+                    padding: '0 8px 0 6px', height: 34,
                     borderRadius: 'var(--radius-sm)',
-                    fontSize: 13, fontWeight: active ? 500 : 400,
-                    color: active ? 'var(--accent)' : 'var(--fg-mute)',
+                    fontSize: 13, fontWeight: active ? 600 : 400,
+                    color: active ? 'var(--accent-deep)' : 'var(--fg-dim)',
                     backgroundColor: active ? 'var(--accent-dim)' : 'transparent',
+                    borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
                     textDecoration: 'none',
-                    transition: 'background-color 0.15s, color 0.15s',
-                    marginBottom: 2,
+                    transition: 'background-color 0.12s, color 0.12s',
+                    marginBottom: 1,
                   }}
                 >
                   {item.icon}
@@ -125,27 +140,25 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         ))}
       </nav>
 
-      <div style={{ padding: '8px 12px 12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
+      <div style={{
+        padding: '10px 10px 12px',
+        borderTop: '1px solid var(--border2)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
           <Link
             href="/settings"
             title="Settings"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 'var(--radius-sm)', color: 'var(--fg-mute)', textDecoration: 'none' }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 30, height: 30, borderRadius: 'var(--radius-sm)',
+              color: 'var(--fg-faint)', textDecoration: 'none',
+            }}
           >
-            <Settings size={16} />
+            <Settings size={15} />
           </Link>
-          <button
-            title="Toggle theme (v2)"
-            disabled
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 'var(--radius-sm)', color: 'var(--fg-faint)', background: 'none', border: 'none', cursor: 'not-allowed' }}
-          >
-            <Sun size={16} />
-          </button>
         </div>
-
         <ProfilePopover user={user} />
-
-        <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 4 }}>
+        <div style={{ fontSize: 10, color: 'var(--fg-faint)', marginTop: 4 }}>
           Solo · v0.1.0
         </div>
       </div>
