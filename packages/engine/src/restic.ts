@@ -167,6 +167,11 @@ export class ResticEngine {
     }
   }
 
+  async prune(): Promise<void> {
+    const result = await this.run(['prune'])
+    if (result.exitCode !== 0) throw new ResticError('prune', result)
+  }
+
   async stats(): Promise<RepoStats> {
     const result = await this.run(['stats', '--json'])
     if (result.exitCode !== 0) throw new ResticError('stats', result)
