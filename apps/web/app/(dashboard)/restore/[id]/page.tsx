@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { RunNowButton } from './run-button'
+import { RunSplitButton } from './run-split-button'
 import { EditSpecButton } from './edit-button'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
@@ -40,7 +40,7 @@ export default async function RestoreSpecPage({ params }: { params: Promise<{ id
               <Button variant="secondary" size="md">Run history</Button>
             </Link>
             <EditSpecButton specId={id} initialName={spec.name} initialYaml={spec.yamlContent} />
-            <RunNowButton specId={id} />
+            <RunSplitButton specId={id} repositoryId={spec.repositoryId ?? null} />
           </div>
         </div>
       </div>
