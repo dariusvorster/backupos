@@ -2,7 +2,7 @@
 
 import { revalidatePath }                   from 'next/cache'
 import { getDb, user, twoFactorSecrets }    from '@backupos/db'
-import { eq }                               from 'drizzle-orm'
+import { eq }                               from '@backupos/db'
 import { randomUUID, createHash }           from 'crypto'
 import { getCurrentUser }                   from '@/lib/user'
 import { encryptPassword, decryptPassword } from '@/lib/escrow'

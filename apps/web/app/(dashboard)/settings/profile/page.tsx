@@ -1,7 +1,7 @@
 import { redirect }       from 'next/navigation'
 import { getCurrentUser } from '@/lib/user'
 import { getDb, user }    from '@backupos/db'
-import { eq }             from 'drizzle-orm'
+import { eq }             from '@backupos/db'
 import { Avatar }         from '@/components/avatar'
 import { updateProfile, uploadAvatar, removeAvatar } from '@/app/actions/user'
 

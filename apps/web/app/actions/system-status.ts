@@ -1,7 +1,7 @@
 'use server'
 
 import { getDb, backupRuns, storageAlerts } from '@backupos/db'
-import { eq, count, isNull }                 from 'drizzle-orm'
+import { eq, count, isNull }                 from '@backupos/db'
 
 export interface SystemStatus {
   activeRunCount: number

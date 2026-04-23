@@ -1,7 +1,7 @@
 'use server'
 
 import { getDb, auditLog }  from '@backupos/db'
-import { desc, eq, and, like } from 'drizzle-orm'
+import { desc, eq, and, like } from '@backupos/db'
 import { verifyAuditChain } from '@/lib/audit'
 
 export interface AuditFilters {

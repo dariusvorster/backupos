@@ -1,7 +1,7 @@
 'use server'
 
 import { getDb, backupRuns, backupJobs, repositories } from '@backupos/db'
-import { eq } from 'drizzle-orm'
+import { eq } from '@backupos/db'
 
 export interface PhaseEntry {
   startMs:    number

@@ -10,7 +10,7 @@ import {
   backupMonitors,
   or,
 } from '@backupos/db'
-import { like } from 'drizzle-orm'
+import { like } from '@backupos/db'
 
 export type ResultType =
   | 'job'

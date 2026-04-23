@@ -2,7 +2,7 @@
 
 import { revalidatePath }    from 'next/cache'
 import { getDb, user }       from '@backupos/db'
-import { eq }                from 'drizzle-orm'
+import { eq }                from '@backupos/db'
 import { writeFile, mkdir }  from 'fs/promises'
 import path                  from 'path'
 import { auth }              from '@/lib/auth'

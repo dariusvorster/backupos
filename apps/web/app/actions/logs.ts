@@ -1,7 +1,7 @@
 'use server'
 
 import { getDb, operationalLogs } from '@backupos/db'
-import { desc, eq, and, like }    from 'drizzle-orm'
+import { desc, eq, and, like }    from '@backupos/db'
 
 export interface LogFilters {
   component?:  string

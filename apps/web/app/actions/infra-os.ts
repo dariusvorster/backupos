@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDb, infraOsServices, backupJobs } from '@backupos/db'
-import { eq } from 'drizzle-orm'
+import { eq } from '@backupos/db'
 import { randomUUID } from 'crypto'
 
 export async function addInfraService(formData: FormData): Promise<{ error?: string }> {

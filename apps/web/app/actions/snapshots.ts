@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDb, snapshots } from '@backupos/db'
-import { eq } from 'drizzle-orm'
+import { eq } from '@backupos/db'
 
 export async function pinSnapshot(id: string, pinned: boolean): Promise<void> {
   const db = getDb()

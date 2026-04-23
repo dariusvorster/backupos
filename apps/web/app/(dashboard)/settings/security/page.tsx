@@ -1,7 +1,7 @@
 import { redirect }       from 'next/navigation'
 import { getCurrentUser } from '@/lib/user'
 import { getDb, user, twoFactorSecrets } from '@backupos/db'
-import { eq }             from 'drizzle-orm'
+import { eq }             from '@backupos/db'
 import { SecurityClient } from './client'
 
 export default async function SecurityPage() {

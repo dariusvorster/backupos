@@ -1,6 +1,6 @@
 import { getDb, snapshots, repositories, backupJobs } from '@backupos/db'
 import { PageHeader } from '@/components/ui/page-header'
-import { eq } from 'drizzle-orm'
+import { eq } from '@backupos/db'
 import { SnapshotActions } from '@/components/snapshot-actions'
 import { Pin, Lock } from 'lucide-react'
 

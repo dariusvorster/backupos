@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDb, repositories } from '@backupos/db'
-import { eq } from 'drizzle-orm'
+import { eq } from '@backupos/db'
 import { encryptPassword, decryptPassword } from '@/lib/escrow'
 
 export async function setEscrow(repoId: string, formData: FormData): Promise<{ error?: string }> {

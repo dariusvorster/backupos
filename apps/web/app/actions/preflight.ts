@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDb, backupJobs, backupRuns, agents, repositories } from '@backupos/db'
-import { eq, desc } from 'drizzle-orm'
+import { eq, desc } from '@backupos/db'
 import { runPreflightChecks, overallStatus, CheckResult } from '@/lib/preflight'
 
 export async function runPreflight(jobId: string): Promise<CheckResult[]> {

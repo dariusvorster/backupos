@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDb, bandwidthProfiles, bandwidthRules, backupJobs } from '@backupos/db'
-import { eq } from 'drizzle-orm'
+import { eq } from '@backupos/db'
 
 export async function createProfile(formData: FormData): Promise<void> {
   const name        = (formData.get('name') as string).trim()

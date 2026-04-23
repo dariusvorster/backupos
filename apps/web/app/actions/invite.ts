@@ -1,7 +1,7 @@
 'use server'
 
 import { getDb, invite, user } from '@backupos/db'
-import { eq, and, isNull }    from 'drizzle-orm'
+import { eq, and, isNull }    from '@backupos/db'
 import { auth }               from '@/lib/auth'
 import { getCurrentUser }     from '@/lib/user'
 import { sendInviteEmail }    from '@/lib/mailer'
