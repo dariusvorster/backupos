@@ -3,6 +3,8 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { getDb, user, session, account, verification } from '@backupos/db'
 
 export const auth = betterAuth({
+  baseURL: process.env['BETTER_AUTH_URL'],
+  trustedOrigins: process.env['BETTER_AUTH_TRUSTED_ORIGINS']?.split(',').map(s => s.trim()) ?? [],
   database: drizzleAdapter(getDb(), {
     provider: 'sqlite',
     schema: { user, session, account, verification },
