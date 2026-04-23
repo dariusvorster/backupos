@@ -73,25 +73,8 @@ COPY --from=builder /app/apps/web/server.ts    ./apps/web/server.ts
 COPY --from=builder /app/apps/web/lib          ./apps/web/lib
 COPY --from=builder /app/apps/web/tsconfig.json ./apps/web/tsconfig.json
 
-# Packages
-COPY --from=builder /app/packages/db/dist               ./packages/db/dist
-COPY --from=builder /app/packages/db/package.json        ./packages/db/package.json
-COPY --from=builder /app/packages/engine/dist            ./packages/engine/dist
-COPY --from=builder /app/packages/engine/package.json    ./packages/engine/package.json
-COPY --from=builder /app/packages/app-hooks/dist         ./packages/app-hooks/dist
-COPY --from=builder /app/packages/app-hooks/package.json ./packages/app-hooks/package.json
-COPY --from=builder /app/packages/hypervisors/dist       ./packages/hypervisors/dist
-COPY --from=builder /app/packages/hypervisors/package.json ./packages/hypervisors/package.json
-COPY --from=builder /app/packages/monitors/dist          ./packages/monitors/dist
-COPY --from=builder /app/packages/monitors/package.json  ./packages/monitors/package.json
-COPY --from=builder /app/packages/restore/dist           ./packages/restore/dist
-COPY --from=builder /app/packages/restore/package.json   ./packages/restore/package.json
-COPY --from=builder /app/packages/agent-protocol/dist    ./packages/agent-protocol/dist
-COPY --from=builder /app/packages/agent-protocol/package.json ./packages/agent-protocol/package.json
-COPY --from=builder /app/packages/api/dist               ./packages/api/dist
-COPY --from=builder /app/packages/api/package.json       ./packages/api/package.json
-COPY --from=builder /app/packages/docs-content/dist      ./packages/docs-content/dist
-COPY --from=builder /app/packages/docs-content/package.json ./packages/docs-content/package.json
+# Packages — copy entire directory so pnpm's per-package node_modules symlinks are included
+COPY --from=builder /app/packages ./packages
 
 RUN npm install -g tsx
 
