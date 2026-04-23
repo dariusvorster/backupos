@@ -69,8 +69,9 @@ export function runMigrations(): void {
       // If the schema already exists from a prior partial run, record the migration
       // as applied so future startups skip it. Any other error is re-thrown.
       const msg = e instanceof Error ? e.message : String(e)
-      if (!msg.includes('already exists')) throw e
-      console.warn(`[db] migration ${tag}: object already exists, recording as applied`)
+      const isIdempotentError = msg.includes('already exists') || msg.includes('duplicate column name')
+      if (!isIdempotentError) throw e
+      console.warn(`[db] migration ${tag}: schema already applied (${msg}), recording as done`)
     }
     sqlite.prepare('INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (?, ?)').run(hash, Date.now())
   }
