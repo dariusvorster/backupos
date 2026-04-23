@@ -1,5 +1,6 @@
 import { getDb, repositories, agents } from '@backupos/db'
 import { Button } from '@/components/ui/button'
+import { createJob } from '@/app/actions/jobs'
 
 const SOURCE_TYPES = [
   { value: 'filesystem',       label: 'Filesystem',        desc: 'Directories and files on the agent host' },
@@ -48,7 +49,7 @@ export default async function NewJobPage({
       )}
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 24 }}>
-        <form>
+        <form action={createJob}>
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
               Job name
@@ -56,6 +57,7 @@ export default async function NewJobPage({
             <input
               name="name"
               type="text"
+              required
               defaultValue={prefillName}
               placeholder="nightly-postgres"
               style={{
@@ -128,6 +130,7 @@ export default async function NewJobPage({
             <input
               name="schedule"
               type="text"
+              required
               placeholder="0 2 * * *"
               style={{
                 width: '100%', padding: '8px 12px',
