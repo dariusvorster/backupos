@@ -7,14 +7,21 @@ const TYPE_LABELS: Record<string, string> = {
   webhook: 'Webhook',
 }
 
-export default async function AlertChannelsPage() {
+export default async function AlertChannelsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const db       = getDb()
   const channels = await db.select().from(alertChannels).all()
+  const { saved } = await searchParams
 
   return (
     <div style={{ maxWidth: 560 }}>
       <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Alert channels</h1>
+
+      {saved === '1' && (
+        <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
+          Channel saved.
+        </div>
+      )}
 
       {channels.length > 0 && (
         <div style={{

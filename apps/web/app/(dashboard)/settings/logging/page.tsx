@@ -13,20 +13,22 @@ const selectStyle: React.CSSProperties = {
   border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', cursor: 'pointer',
 }
 
-export default async function LoggingSettingsPage() {
+export default async function LoggingSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const config = await getLoggingConfig()
-
-  async function handleSave(formData: FormData): Promise<void> {
-    'use server'
-    await saveLoggingConfig(formData)
-  }
+  const { saved } = await searchParams
 
   return (
     <div style={{ maxWidth: 560 }}>
       <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Logging</h1>
 
-      <form action={handleSave}>
+      {saved === '1' && (
+        <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
+          Settings saved.
+        </div>
+      )}
+
+      <form action={saveLoggingConfig}>
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 16 }}>
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
             Retention periods

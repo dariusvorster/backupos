@@ -1,5 +1,6 @@
 'use server'
 
+import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { getDb, infraOsServices, backupJobs } from '@backupos/db'
 import { eq } from '@backupos/db'
@@ -32,12 +33,13 @@ export async function addInfraService(formData: FormData): Promise<{ error?: str
 export async function addInfraServiceAction(formData: FormData): Promise<void> {
   const result = await addInfraService(formData)
   if (result.error) throw new Error(result.error)
+  redirect('/settings/infra-os?saved=1')
 }
 
 export async function removeInfraService(id: string): Promise<void> {
   const db = getDb()
   await db.update(backupJobs).set({ infraServiceId: null }).where(eq(backupJobs.infraServiceId, id)).run()
   await db.delete(infraOsServices).where(eq(infraOsServices.id, id)).run()
-  revalidatePath('/settings/infra-os')
   revalidatePath('/dashboard')
+  redirect('/settings/infra-os?saved=1')
 }

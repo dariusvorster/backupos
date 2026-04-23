@@ -9,9 +9,10 @@ const SERVICE_TYPES = [
   { value: 'container',  label: 'Container',   desc: 'Docker container or volume' },
 ]
 
-export default async function InfraOsSettingsPage() {
+export default async function InfraOsSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const db       = getDb()
   const services = await db.select().from(infraOsServices).all()
+  const { saved } = await searchParams
 
   const coveredIds = new Set(
     (await db.select({ infraServiceId: backupJobs.infraServiceId })
@@ -30,6 +31,12 @@ export default async function InfraOsSettingsPage() {
           Register services here to track backup coverage. Services without a backup job appear on the dashboard.
         </p>
       </div>
+
+      {saved === '1' && (
+        <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
+          Service updated.
+        </div>
+      )}
 
       {/* Add service form */}
       <div style={{

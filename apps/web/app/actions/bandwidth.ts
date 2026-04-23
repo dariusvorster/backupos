@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { getDb, bandwidthProfiles, bandwidthRules, backupJobs } from '@backupos/db'
 import { eq } from '@backupos/db'
 
@@ -27,7 +28,7 @@ export async function createProfile(formData: FormData): Promise<void> {
     createdAt: new Date(),
   }).run()
 
-  revalidatePath('/settings/bandwidth')
+  redirect('/settings/bandwidth?saved=1')
 }
 
 export async function deleteProfile(id: string): Promise<void> {

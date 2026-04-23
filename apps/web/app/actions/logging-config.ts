@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath }       from 'next/cache'
+import { redirect }             from 'next/navigation'
 import { getDb, loggingConfig } from '@backupos/db'
 
 const ACTIVITY_OPTIONS = ['30d', '90d', '180d', '365d', 'forever'] as const
@@ -23,17 +23,14 @@ export async function getLoggingConfig(): Promise<LoggingConfigValues> {
   }
 }
 
-export async function saveLoggingConfig(formData: FormData): Promise<{ error?: string }> {
+export async function saveLoggingConfig(formData: FormData): Promise<void> {
   const activityRetention = (formData.get('activityRetention') ?? '') as string
   const auditRetention    = (formData.get('auditRetention')    ?? '') as string
   const opsRetention      = (formData.get('opsRetention')      ?? '') as string
 
-  if (!(ACTIVITY_OPTIONS as readonly string[]).includes(activityRetention))
-    return { error: 'Invalid activity retention value.' }
-  if (!(AUDIT_OPTIONS as readonly string[]).includes(auditRetention))
-    return { error: 'Invalid audit retention value.' }
-  if (!(OPS_OPTIONS as readonly string[]).includes(opsRetention))
-    return { error: 'Invalid ops retention value.' }
+  if (!(ACTIVITY_OPTIONS as readonly string[]).includes(activityRetention)) return
+  if (!(AUDIT_OPTIONS as readonly string[]).includes(auditRetention)) return
+  if (!(OPS_OPTIONS as readonly string[]).includes(opsRetention)) return
 
   const db       = getDb()
   const existing = db.select({ id: loggingConfig.id }).from(loggingConfig).get()
@@ -45,6 +42,5 @@ export async function saveLoggingConfig(formData: FormData): Promise<{ error?: s
       .values({ id: 'singleton', activityRetention, auditRetention, opsRetention, updatedAt: new Date() }).run()
   }
 
-  revalidatePath('/settings/logging')
-  return {}
+  redirect('/settings/logging?saved=1')
 }
