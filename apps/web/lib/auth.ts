@@ -27,7 +27,7 @@ export const auth = betterAuth({
     max:     10,
   },
   advanced: {
-    useSecureCookies: process.env.NODE_ENV === 'production',
+    useSecureCookies: process.env['BETTER_AUTH_URL']?.startsWith('https://') ?? false,
   },
 })
 

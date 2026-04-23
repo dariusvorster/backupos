@@ -113,9 +113,9 @@ export const backupJobs = sqliteTable('backup_jobs', {
 
 export const backupRuns = sqliteTable('backup_runs', {
   id:           text('id').primaryKey(),
-  jobId:        text('job_id').references(() => backupJobs.id),
-  agentId:      text('agent_id').references(() => agents.id),
-  repositoryId: text('repository_id').references(() => repositories.id),
+  jobId:        text('job_id').references(() => backupJobs.id, { onDelete: 'set null' }),
+  agentId:      text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
+  repositoryId: text('repository_id').references(() => repositories.id, { onDelete: 'set null' }),
 
   status:  text('status').notNull(), // 'running'|'success'|'failed'|'cancelled'
   trigger: text('trigger').notNull(), // 'scheduled'|'manual'|'api'
@@ -142,7 +142,10 @@ export const backupRuns = sqliteTable('backup_runs', {
   // Retention (set after forget runs; null means no retention policy was configured)
   snapshotsRemoved: integer('snapshots_removed'),
   snapshotsKept:    integer('snapshots_kept'),
-})
+}, t => ({
+  jobIdIdx:     index('backup_runs_job_id_idx').on(t.jobId),
+  startedAtIdx: index('backup_runs_started_at_idx').on(t.startedAt),
+}))
 
 // ── Snapshots ─────────────────────────────────────────────────────────────
 // Cached snapshot list from Restic — synced on demand
