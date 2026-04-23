@@ -17,7 +17,7 @@ FROM base AS builder
 WORKDIR /app
 
 # Copy manifests first for layer caching
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc ./
 COPY packages/db/package.json                packages/db/
 COPY packages/engine/package.json            packages/engine/
 COPY packages/app-hooks/package.json         packages/app-hooks/
