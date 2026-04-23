@@ -10,7 +10,7 @@ import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
 const dev  = process.env.NODE_ENV !== 'production'
 const port = parseInt(process.env.PORT ?? '3000', 10)
 
-const app    = next({ dev, hostname: '0.0.0.0', port })
+const app    = next({ dev, hostname: '0.0.0.0', port, dir: __dirname })
 const handle = app.getRequestHandler()
 
 void app.prepare().then(() => {
