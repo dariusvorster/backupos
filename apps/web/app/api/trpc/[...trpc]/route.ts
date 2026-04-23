@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
 import { appRouter } from '@backupos/api'
 import { getDb } from '@backupos/db'
