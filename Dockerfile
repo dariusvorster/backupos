@@ -92,6 +92,8 @@ COPY --from=builder /app/packages/api/package.json       ./packages/api/package.
 COPY --from=builder /app/packages/docs-content/dist      ./packages/docs-content/dist
 COPY --from=builder /app/packages/docs-content/package.json ./packages/docs-content/package.json
 
+RUN npm install -g tsx
+
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data /app/apps/web
 
 USER nextjs
@@ -101,4 +103,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV RESTIC_BINARY_PATH=/usr/local/bin/restic
 
-CMD ["node_modules/.bin/tsx", "apps/web/server.ts"]
+CMD ["tsx", "apps/web/server.ts"]
