@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect, useRef } from 'react'
+import { useState, useTransition, useEffect, useRef, type CSSProperties } from 'react'
 import { runSpec, runSpecWithSnapshot, getSnapshots, getRepositories } from '@/app/actions/restore'
 
 interface Snapshot {
@@ -42,6 +42,7 @@ export function RunSplitButton({
   const [runError, setRunError]             = useState<string | null>(null)
 
   const dropRef = useRef<HTMLDivElement>(null)
+  const loadIdRef = useRef(0)
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -56,13 +57,24 @@ export function RunSplitButton({
   }, [dropOpen])
 
   function loadSnapsForRepo(repoId: string) {
+    const reqId = ++loadIdRef.current
     setLoadingSnaps(true)
     setLoadError(null)
     setSnaps([])
     setSelectedSnapId(null)
     getSnapshots(repoId)
-      .then(data => { setSnaps(data); setLoadingSnaps(false) })
-      .catch(() => { setLoadError('Failed to load snapshots.'); setLoadingSnaps(false) })
+      .then(data => {
+        if (loadIdRef.current === reqId) {
+          setSnaps(data)
+          setLoadingSnaps(false)
+        }
+      })
+      .catch(() => {
+        if (loadIdRef.current === reqId) {
+          setLoadError('Failed to load snapshots.')
+          setLoadingSnaps(false)
+        }
+      })
   }
 
   function openModal() {
@@ -96,7 +108,7 @@ export function RunSplitButton({
     })
   }
 
-  const btnBase: React.CSSProperties = {
+  const btnBase: CSSProperties = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none',
     padding: '7px 14px', lineHeight: 1,
