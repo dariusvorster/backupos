@@ -61,17 +61,17 @@ export function runMigrations(): void {
     if (appliedHashes.has(hash)) continue
     // drizzle-kit separates statements with --> statement-breakpoint in multi-op files
     const statements = sql.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean)
-    try {
-      for (const stmt of statements) {
+    // Run each statement individually so a partially-applied migration (where
+    // some statements already ran but others didn't) still applies the missing ones.
+    for (const stmt of statements) {
+      try {
         sqlite.exec(stmt)
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e)
+        const isIdempotent = msg.includes('already exists') || msg.includes('duplicate column name')
+        if (!isIdempotent) throw e
+        console.warn(`[db] ${tag}: skipping already-applied statement (${msg})`)
       }
-    } catch (e: unknown) {
-      // If the schema already exists from a prior partial run, record the migration
-      // as applied so future startups skip it. Any other error is re-thrown.
-      const msg = e instanceof Error ? e.message : String(e)
-      const isIdempotentError = msg.includes('already exists') || msg.includes('duplicate column name')
-      if (!isIdempotentError) throw e
-      console.warn(`[db] migration ${tag}: schema already applied (${msg}), recording as done`)
     }
     sqlite.prepare('INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (?, ?)').run(hash, Date.now())
   }
