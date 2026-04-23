@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3'
+import { createHash } from 'crypto'
 import { mkdirSync, existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
 import * as schema from './schema'
@@ -48,20 +49,22 @@ export function runMigrations(): void {
     readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf-8'),
   ) as { entries: Array<{ tag: string }> }
 
-  const applied = new Set(
+  const appliedHashes = new Set(
     (sqlite.prepare('SELECT hash FROM "__drizzle_migrations"').all() as Array<{ hash: string }>)
       .map(r => r.hash),
   )
 
   for (const { tag } of journal.entries) {
-    if (applied.has(tag)) continue
     const sql = readFileSync(join(migrationsFolder, `${tag}.sql`), 'utf-8')
+    // drizzle-orm computes sha256 of the raw SQL file as the migration hash
+    const hash = createHash('sha256').update(sql).digest('hex')
+    if (appliedHashes.has(hash)) continue
     // drizzle-kit separates statements with --> statement-breakpoint in multi-op files
     const statements = sql.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean)
     for (const stmt of statements) {
       sqlite.exec(stmt)
     }
-    sqlite.prepare('INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (?, ?)').run(tag, Date.now())
+    sqlite.prepare('INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (?, ?)').run(hash, Date.now())
   }
 }
 
