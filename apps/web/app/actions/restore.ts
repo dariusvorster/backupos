@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, restoreSpecs, restoreRuns, eq } from '@backupos/db'
+import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, eq, desc } from '@backupos/db'
 import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult } from '@backupos/restore'
 
 export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -93,4 +93,46 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
   }).catch(() => { /* logged by executor */ })
 
   redirect(`/restore/${specId}/runs`)
+}
+
+export async function getSnapshots(
+  repositoryId: string,
+): Promise<{ id: string; createdAt: Date | null; sizeBytes: number | null }[]> {
+  const db = getDb()
+  return db
+    .select({ id: snapshots.id, createdAt: snapshots.createdAt, sizeBytes: snapshots.sizeBytes })
+    .from(snapshots)
+    .where(eq(snapshots.repositoryId, repositoryId))
+    .orderBy(desc(snapshots.createdAt))
+    .all()
+}
+
+export async function getRepositories(): Promise<{ id: string; name: string }[]> {
+  const db = getDb()
+  return db
+    .select({ id: repositories.id, name: repositories.name })
+    .from(repositories)
+    .orderBy(repositories.name)
+    .all()
+}
+
+export async function runSpecWithSnapshot(
+  specId: string,
+  snapshotId: string,
+): Promise<{ error: string } | void> {
+  try {
+    await runSpec(specId, snapshotId)
+  } catch (err: unknown) {
+    // re-throw Next.js redirect — it's not a real error
+    if (
+      err != null &&
+      typeof err === 'object' &&
+      'digest' in err &&
+      typeof (err as { digest: unknown }).digest === 'string' &&
+      (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+    ) {
+      throw err
+    }
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
 }
