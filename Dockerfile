@@ -65,11 +65,12 @@ COPY --from=builder /app/package.json        ./package.json
 COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 # Web app
-COPY --from=builder /app/apps/web/.next      ./apps/web/.next
-COPY --from=builder /app/apps/web/public     ./apps/web/public
+COPY --from=builder /app/apps/web/.next        ./apps/web/.next
+COPY --from=builder /app/apps/web/public       ./apps/web/public
 COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
-COPY --from=builder /app/apps/web/server.ts  ./apps/web/server.ts
-COPY --from=builder /app/apps/web/lib        ./apps/web/lib
+COPY --from=builder /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=builder /app/apps/web/server.ts    ./apps/web/server.ts
+COPY --from=builder /app/apps/web/lib          ./apps/web/lib
 COPY --from=builder /app/apps/web/tsconfig.json ./apps/web/tsconfig.json
 
 # Packages
