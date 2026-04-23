@@ -3,7 +3,6 @@ import { Server } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { getDb, agents } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
@@ -32,15 +31,7 @@ export default async function AgentsPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Agents"
-        action={
-          <Button variant="primary" size="md">
-            <Server size={14} />
-            Enrol agent
-          </Button>
-        }
-      />
+      <PageHeader title="Agents" />
 
       {agentList.length === 0 ? (
         <div style={{

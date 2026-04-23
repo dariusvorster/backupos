@@ -8,6 +8,7 @@ import { setJobProfile } from '@/app/actions/bandwidth'
 import { fmtLimit } from '@/lib/bandwidth'
 import { PreflightButton } from '@/components/preflight-modal'
 import { togglePreflight } from '@/app/actions/preflight'
+import { triggerJob } from '@/app/actions/jobs'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -46,6 +47,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const profiles    = await db.select().from(bandwidthProfiles).all()
   const recentLogs  = await getLogsPage({ entityType: 'job', entityId: id }, 50)
   const boundSetJobProfile = setJobProfile.bind(null, job.id)
+  const boundTrigger       = triggerJob.bind(null, job.id)
 
   const fieldStyle: React.CSSProperties = {
     backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
@@ -66,15 +68,18 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <PreflightButton jobId={job.id} jobName={job.name} />
-        <button
-          style={{
-            padding: '6px 16px', fontSize: 13, cursor: 'pointer',
-            borderRadius: 'var(--radius-sm)', border: 'none',
-            background: 'var(--accent)', color: '#fff',
-          }}
-        >
-          Run now
-        </button>
+        <form action={boundTrigger}>
+          <button
+            type="submit"
+            style={{
+              padding: '6px 16px', fontSize: 13, cursor: 'pointer',
+              borderRadius: 'var(--radius-sm)', border: 'none',
+              background: 'var(--accent)', color: '#fff',
+            }}
+          >
+            Run now
+          </button>
+        </form>
       </div>
 
       {job.lastPreflightStatus && (

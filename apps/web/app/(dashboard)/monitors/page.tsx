@@ -4,7 +4,6 @@ import { Radar } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { getDb, backupMonitors } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { GroupFilter } from './group-filter'
 
@@ -39,15 +38,7 @@ export default async function MonitorsPage({
 
   return (
     <div>
-      <PageHeader
-        title="Monitors"
-        action={
-          <Button variant="primary" size="md">
-            <Radar size={14} />
-            Add monitor
-          </Button>
-        }
-      />
+      <PageHeader title="Monitors" />
 
       <GroupFilter groups={groups} />
 
