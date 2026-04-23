@@ -61,10 +61,11 @@ function utcOffset(tz: string): string {
   } catch { return '' }
 }
 
-export default async function GeneralSettingsPage() {
+export default async function GeneralSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 
+  const { saved } = await searchParams
   const db = getDb()
   const [cfg] = await db.select().from(instanceSettings).limit(1).all()
 
@@ -82,6 +83,12 @@ export default async function GeneralSettingsPage() {
       <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg)', marginBottom: 4 }}>General</h1>
       <p style={{ fontSize: 13, color: 'var(--fg-dim)', marginBottom: 24 }}>Instance name and locale preferences.</p>
+
+      {saved === '1' && (
+        <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
+          Settings saved.
+        </div>
+      )}
 
       <form action={saveInstanceSettings}>
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>

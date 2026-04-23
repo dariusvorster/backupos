@@ -8,16 +8,19 @@ import { updateProfile, uploadAvatar, removeAvatar } from '@/app/actions/user'
 async function handleUpdateProfile(formData: FormData): Promise<void> {
   'use server'
   await updateProfile(formData)
+  redirect('/settings/profile?saved=1')
 }
 
 async function handleUploadAvatar(formData: FormData): Promise<void> {
   'use server'
   await uploadAvatar(formData)
+  redirect('/settings/profile?saved=1')
 }
 
 async function handleRemoveAvatar(): Promise<void> {
   'use server'
   await removeAvatar()
+  redirect('/settings/profile?saved=1')
 }
 
 const TIMEZONES = [
@@ -26,10 +29,11 @@ const TIMEZONES = [
   'Europe/Berlin', 'Asia/Tokyo', 'Australia/Sydney',
 ]
 
-export default async function ProfilePage() {
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const me = await getCurrentUser()
   if (!me) redirect('/login')
 
+  const { saved } = await searchParams
   const db      = getDb()
   const profile = await db.select().from(user).where(eq(user.id, me.id)).get()
   if (!profile) redirect('/login')
@@ -37,6 +41,12 @@ export default async function ProfilePage() {
   return (
     <div style={{ maxWidth: 640 }}>
       <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Profile</h1>
+
+      {saved === '1' && (
+        <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
+          Profile saved.
+        </div>
+      )}
 
       {/* Avatar section */}
       <section style={{ marginBottom: 32 }}>

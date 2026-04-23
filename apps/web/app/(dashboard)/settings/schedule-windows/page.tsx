@@ -8,10 +8,11 @@ const HOURS = Array.from({ length: 24 }, (_, i) => ({
   label: `${i.toString().padStart(2, '0')}:00`,
 }))
 
-export default async function ScheduleWindowsPage() {
+export default async function ScheduleWindowsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 
+  const { saved } = await searchParams
   const db = getDb()
   const [cfg] = await db.select().from(backupDefaults).limit(1).all()
 
@@ -28,6 +29,12 @@ export default async function ScheduleWindowsPage() {
       <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg)', marginBottom: 4 }}>Schedule windows</h1>
       <p style={{ fontSize: 13, color: 'var(--fg-dim)', marginBottom: 24 }}>Default time window for backup jobs. Individual jobs can override this.</p>
+
+      {saved === '1' && (
+        <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
+          Settings saved.
+        </div>
+      )}
 
       <form action={saveBackupDefaults}>
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>
@@ -49,6 +56,7 @@ export default async function ScheduleWindowsPage() {
             Backups scheduled during this window will run immediately. Outside this window they will be delayed to the next window start.
           </div>
         </div>
+        <input type="hidden" name="_page"       value="schedule" />
         <input type="hidden" name="keepLast"    value={String(cfg?.keepLast    ?? 10)} />
         <input type="hidden" name="keepDaily"   value={String(cfg?.keepDaily   ?? 7)}  />
         <input type="hidden" name="keepWeekly"  value={String(cfg?.keepWeekly  ?? 4)}  />

@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { getDb, instanceSettings, smtpConfig, backupDefaults } from '@backupos/db'
 
 export async function saveInstanceSettings(formData: FormData) {
@@ -14,7 +14,7 @@ export async function saveInstanceSettings(formData: FormData) {
   }
   await db.insert(instanceSettings).values({ id: 'singleton', ...values })
     .onConflictDoUpdate({ target: instanceSettings.id, set: values })
-  revalidatePath('/settings/general')
+  redirect('/settings/general?saved=1')
 }
 
 export async function saveSmtpConfig(formData: FormData) {
@@ -32,7 +32,7 @@ export async function saveSmtpConfig(formData: FormData) {
   }
   await db.insert(smtpConfig).values({ id: 'singleton', ...values })
     .onConflictDoUpdate({ target: smtpConfig.id, set: values })
-  revalidatePath('/settings/smtp')
+  redirect('/settings/smtp?saved=1')
 }
 
 export async function saveBackupDefaults(formData: FormData) {
@@ -49,6 +49,6 @@ export async function saveBackupDefaults(formData: FormData) {
   }
   await db.insert(backupDefaults).values({ id: 'singleton', ...values })
     .onConflictDoUpdate({ target: backupDefaults.id, set: values })
-  revalidatePath('/settings/retention')
-  revalidatePath('/settings/schedule-windows')
+  const page = formData.get('_page') as string | null
+  redirect(page === 'schedule' ? '/settings/schedule-windows?saved=1' : '/settings/retention?saved=1')
 }

@@ -1,0 +1,154 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e4]:
+      - img [ref=e5]
+      - generic [ref=e12]: BackupOS
+    - navigation [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e15]: Overview
+        - link "Dashboard" [ref=e16] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e17]
+          - text: Dashboard
+        - link "Activity" [ref=e22] [cursor=pointer]:
+          - /url: /activity
+          - img [ref=e23]
+          - text: Activity
+        - link "Logs" [ref=e25] [cursor=pointer]:
+          - /url: /logs
+          - img [ref=e26]
+          - text: Logs
+        - link "Docs" [ref=e30] [cursor=pointer]:
+          - /url: /docs
+          - img [ref=e31]
+          - text: Docs
+      - generic [ref=e33]:
+        - generic [ref=e34]: Backup
+        - link "Jobs" [ref=e35] [cursor=pointer]:
+          - /url: /jobs
+          - img [ref=e36]
+          - text: Jobs
+        - link "Schedules" [ref=e39] [cursor=pointer]:
+          - /url: /schedules
+          - img [ref=e40]
+          - text: Schedules
+        - link "Snapshots" [ref=e43] [cursor=pointer]:
+          - /url: /snapshots
+          - img [ref=e44]
+          - text: Snapshots
+        - link "Verification" [ref=e47] [cursor=pointer]:
+          - /url: /verification
+          - img [ref=e48]
+          - text: Verification
+      - generic [ref=e51]:
+        - generic [ref=e52]: Infrastructure
+        - link "Agents" [ref=e53] [cursor=pointer]:
+          - /url: /agents
+          - img [ref=e54]
+          - text: Agents
+        - link "Repositories" [ref=e57] [cursor=pointer]:
+          - /url: /repositories
+          - img [ref=e58]
+          - text: Repositories
+        - link "Monitors" [ref=e62] [cursor=pointer]:
+          - /url: /monitors
+          - img [ref=e63]
+          - text: Monitors
+      - generic [ref=e70]:
+        - generic [ref=e71]: Restore
+        - link "Restore specs" [ref=e72] [cursor=pointer]:
+          - /url: /restore
+          - img [ref=e73]
+          - text: Restore specs
+        - link "Restore runs" [ref=e76] [cursor=pointer]:
+          - /url: /restore/runs
+          - img [ref=e77]
+          - text: Restore runs
+      - generic [ref=e80]:
+        - generic [ref=e81]: Admin
+        - link "Alerts" [ref=e82] [cursor=pointer]:
+          - /url: /alerts
+          - img [ref=e83]
+          - text: Alerts
+        - link "Audit log" [ref=e85] [cursor=pointer]:
+          - /url: /audit
+          - img [ref=e86]
+          - text: Audit log
+    - generic [ref=e91]:
+      - link "Settings" [ref=e93] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e94]
+      - button "DV Darius Vorster" [ref=e98] [cursor=pointer]:
+        - generic [ref=e100]: DV
+        - generic [ref=e101]: Darius Vorster
+      - generic [ref=e102]: Solo · v0.1.0
+  - generic [ref=e103]:
+    - banner [ref=e104]:
+      - navigation [ref=e105]:
+        - generic [ref=e107]: Dashboard
+      - button "Search… ⌘K" [ref=e108] [cursor=pointer]:
+        - img [ref=e109]
+        - generic [ref=e112]: Search…
+        - generic [ref=e113]: ⌘K
+      - button "Enter DR Mode (⌘⇧D)" [ref=e114] [cursor=pointer]:
+        - img [ref=e115]
+      - button "Notifications" [ref=e117] [cursor=pointer]:
+        - img [ref=e118]
+    - main [ref=e121]:
+      - generic [ref=e122]:
+        - heading "Dashboard" [level=1] [ref=e125]
+        - button "100 A+ Health score · last 30 days Click for breakdown Jobs backed up (24h) Restore verified (7d) Repositories checked (7d) Agents online Open alerts" [ref=e126] [cursor=pointer]:
+          - generic [ref=e127]:
+            - generic [ref=e128]: "100"
+            - generic [ref=e129]: A+
+          - generic [ref=e130]:
+            - generic [ref=e131]: Health score · last 30 days
+            - img [ref=e132]
+            - generic [ref=e133]: Click for breakdown
+          - generic [ref=e134]:
+            - generic [ref=e138]: Jobs backed up (24h)
+            - generic [ref=e142]: Restore verified (7d)
+            - generic [ref=e146]: Repositories checked (7d)
+            - generic [ref=e150]: Agents online
+            - generic [ref=e154]: Open alerts
+        - generic [ref=e155]:
+          - generic [ref=e156]:
+            - generic [ref=e157]: Backup jobs
+            - generic [ref=e158]: "0"
+          - generic [ref=e159]:
+            - generic [ref=e160]: Repositories
+            - generic [ref=e161]: "0"
+          - generic [ref=e162]:
+            - generic [ref=e163]: Agents
+            - generic [ref=e164]: "0"
+            - generic [ref=e165]: 0 online
+          - generic [ref=e166]:
+            - generic [ref=e167]: Runs (24 h)
+            - generic [ref=e168]: "0"
+          - generic [ref=e169]:
+            - generic [ref=e170]: Verified (7d)
+            - generic [ref=e171]: 100%
+            - generic [ref=e172]: ↑ on target
+        - generic [ref=e173]:
+          - generic [ref=e174]:
+            - generic [ref=e175]:
+              - generic [ref=e176]: Recent runs
+              - link "View all →" [ref=e177] [cursor=pointer]:
+                - /url: /activity
+            - generic [ref=e179]: No backup runs yet.
+          - generic [ref=e180]:
+            - generic [ref=e181]:
+              - generic [ref=e182]:
+                - generic [ref=e183]: Agents
+                - link "Manage →" [ref=e184] [cursor=pointer]:
+                  - /url: /agents
+              - generic [ref=e186]: No agents enrolled
+            - generic [ref=e187]:
+              - generic [ref=e188]:
+                - generic [ref=e189]: Bandwidth (global)
+                - link "Configure →" [ref=e190] [cursor=pointer]:
+                  - /url: /settings/bandwidth
+              - generic [ref=e192]:
+                - text: No global profile.
+                - link "Configure one." [ref=e193] [cursor=pointer]:
+                  - /url: /settings/bandwidth

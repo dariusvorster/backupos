@@ -1,0 +1,18 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - img [ref=e5]
+    - generic [ref=e12]: BackupOS
+  - heading "Sign in" [level=1] [ref=e13]
+  - paragraph [ref=e14]: Enter your credentials to access BackupOS
+  - generic [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]: Email
+      - textbox "admin@example.com" [ref=e18]
+    - generic [ref=e19]:
+      - generic [ref=e20]: Password
+      - textbox "••••••••" [ref=e21]
+    - button "Sign in" [ref=e22] [cursor=pointer]
+  - paragraph [ref=e23]:
+    - text: Don't have an account?
+    - link "Create one" [ref=e24] [cursor=pointer]:
+      - /url: /signup

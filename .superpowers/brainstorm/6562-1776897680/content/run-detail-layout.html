@@ -1,0 +1,102 @@
+<h2>Run detail: where do step logs live?</h2>
+<p class="subtitle">When you click a run row, how do the step logs appear?</p>
+
+<div class="split">
+
+  <div class="mockup" style="flex:1">
+    <div class="mockup-header">A — Separate page <span style="font-size:10px;opacity:.6">/restore/[id]/runs/[runId]</span></div>
+    <div class="mockup-body" style="padding:0">
+      <!-- breadcrumb -->
+      <div style="padding:10px 14px;font-size:10px;color:#888;border-bottom:1px solid #2a2a2a">← Postgres DR &nbsp;/&nbsp; Run history &nbsp;/&nbsp; Run ab3f1c2d</div>
+      <!-- header row -->
+      <div style="padding:12px 14px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:10px">
+        <span style="font-size:13px;font-weight:600">Run ab3f1c2d</span>
+        <span style="background:#14532d;color:#4ade80;font-size:10px;padding:2px 8px;border-radius:4px">success</span>
+        <span style="margin-left:auto;font-size:10px;color:#666">2025-04-22 14:01 · 4.1s</span>
+      </div>
+      <!-- steps -->
+      <div style="padding:10px 14px">
+        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Steps</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="background:#1a2a1a;border-radius:4px;padding:8px 10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+              <span style="color:#4ade80">✓ Restore snapshot to staging</span>
+              <span style="color:#666">0.8s</span>
+            </div>
+            <div style="font-family:monospace;font-size:10px;color:#666;margin-top:4px">restic restore abc12345 --target /tmp/restore-...</div>
+          </div>
+          <div style="background:#1a2a1a;border-radius:4px;padding:8px 10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+              <span style="color:#4ade80">✓ Import dump into Postgres</span>
+              <span style="color:#666">3.2s</span>
+            </div>
+            <div style="font-family:monospace;font-size:10px;color:#666;margin-top:4px">psql -U postgres ... &lt; /tmp/restore-.../dump.sql</div>
+          </div>
+          <div style="background:#2a1a1a;border-radius:4px;padding:8px 10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+              <span style="color:#f87171">✗ Verify row counts</span>
+              <span style="color:#666">0.1s</span>
+            </div>
+            <div style="font-family:monospace;font-size:10px;color:#f87171;margin-top:4px">psql: error: connection refused at host "localhost"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="flex:1">
+    <div class="mockup-header">B — Inline expand in runs table</div>
+    <div class="mockup-body" style="padding:0">
+      <!-- table header -->
+      <div style="display:grid;grid-template-columns:1fr 80px 70px 70px;padding:8px 14px;font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #2a2a2a">
+        <span>Started</span><span>Status</span><span>Trigger</span><span>Snap</span>
+      </div>
+      <!-- row 1 closed -->
+      <div style="display:grid;grid-template-columns:1fr 80px 70px 70px;padding:10px 14px;border-top:1px solid #2a2a2a;align-items:center;font-size:11px;color:#aaa">
+        <span>2025-04-22 13:45</span>
+        <span style="color:#4ade80">success</span>
+        <span>manual</span>
+        <span style="font-family:monospace;font-size:10px;color:#666">abc12345</span>
+      </div>
+      <!-- row 2 expanded -->
+      <div style="border-top:1px solid #2a2a2a;background:#1e1e1e">
+        <div style="display:grid;grid-template-columns:1fr 80px 70px 70px;padding:10px 14px;align-items:center;font-size:11px;color:#aaa">
+          <span>2025-04-22 14:01 <span style="color:#666;font-size:10px">▾</span></span>
+          <span style="color:#f87171">failed</span>
+          <span>manual</span>
+          <span style="font-family:monospace;font-size:10px;color:#666">def67890</span>
+        </div>
+        <div style="padding:0 14px 12px 14px;display:flex;flex-direction:column;gap:4px">
+          <div style="font-size:10px;padding:6px 8px;border-radius:4px;background:#1a2a1a;color:#4ade80">✓ Restore snapshot · 0.8s</div>
+          <div style="font-size:10px;padding:6px 8px;border-radius:4px;background:#1a2a1a;color:#4ade80">✓ Import dump · 3.2s</div>
+          <div style="font-size:10px;padding:6px 8px;border-radius:4px;background:#2a1a1a;color:#f87171">✗ Verify row counts — psql: error: connection refused</div>
+        </div>
+      </div>
+      <!-- row 3 -->
+      <div style="display:grid;grid-template-columns:1fr 80px 70px 70px;padding:10px 14px;border-top:1px solid #2a2a2a;align-items:center;font-size:11px;color:#aaa">
+        <span>2025-04-21 02:00</span>
+        <span style="color:#4ade80">success</span>
+        <span>manual</span>
+        <span style="font-family:monospace;font-size:10px;color:#666">ghi11223</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="options" style="margin-top:20px">
+  <div class="option" data-choice="separate-page" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Separate detail page</h3>
+      <p>Clean, full-width layout. Easy to link to or bookmark. Matches the backup run detail pattern already in the app.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="inline-expand" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Inline expand</h3>
+      <p>Never leaves the runs list. Faster to scan multiple runs. Works better on short step lists.</p>
+    </div>
+  </div>
+</div>

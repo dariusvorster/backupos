@@ -3,10 +3,11 @@ import { getCurrentUser } from '@/lib/user'
 import { getDb, smtpConfig } from '@backupos/db'
 import { saveSmtpConfig } from '@/app/actions/settings'
 
-export default async function SmtpSettingsPage() {
+export default async function SmtpSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 
+  const { saved } = await searchParams
   const db = getDb()
   const [cfg] = await db.select().from(smtpConfig).limit(1).all()
 
@@ -24,6 +25,12 @@ export default async function SmtpSettingsPage() {
       <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg)', marginBottom: 4 }}>Email SMTP</h1>
       <p style={{ fontSize: 13, color: 'var(--fg-dim)', marginBottom: 24 }}>Configure outbound email delivery for alerts and notifications.</p>
+
+      {saved === '1' && (
+        <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
+          Settings saved.
+        </div>
+      )}
 
       <form action={saveSmtpConfig}>
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>

@@ -1,0 +1,47 @@
+<h2>Restore UI — what should we build?</h2>
+<p class="subtitle">Three gaps exist today. Pick the ones you want closed.</p>
+
+<div class="options" data-multiselect>
+
+  <div class="option" data-choice="run-detail" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Run detail view</h3>
+      <p>Clicking a run row opens a page showing step-by-step logs — which shell commands ran, their output, and whether each step passed or failed. Currently the log is stored in the DB but never shown.</p>
+      <div style="margin-top:10px;background:var(--surface-2,#1a1a1a);border-radius:6px;padding:10px 14px;font-family:monospace;font-size:11px;color:var(--text-muted,#888);line-height:1.6">
+        ✓ Restore snapshot to staging area &nbsp;<span style="color:#4ade80">0.8s</span><br>
+        ✓ Import dump into Postgres &nbsp;<span style="color:#4ade80">3.2s</span><br>
+        ✗ Verify row counts &nbsp;<span style="color:#f87171">failed</span><br>
+        &nbsp;&nbsp;<span style="color:#f87171">psql: error: connection refused</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="live-poll" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Live run status</h3>
+      <p>When a restore is running, the page auto-refreshes every few seconds so the status badge updates from "running" → "success" / "failed" without a manual reload. Today you have to refresh yourself.</p>
+      <div style="margin-top:10px;background:var(--surface-2,#1a1a1a);border-radius:6px;padding:10px 14px;font-size:11px;line-height:2">
+        <span style="background:#854d0e;color:#fbbf24;padding:2px 8px;border-radius:4px;margin-right:8px">● running</span> 2025-04-22 14:01 &nbsp; manual<br>
+        <span style="background:#14532d;color:#4ade80;padding:2px 8px;border-radius:4px;margin-right:8px">✓ success</span> 2025-04-22 13:45 &nbsp; manual
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="snapshot-picker" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Snapshot picker</h3>
+      <p>"Run now" always restores from "latest". A picker lets you choose any specific snapshot from the repository — useful when you need to roll back to a particular point in time, not just the most recent backup.</p>
+      <div style="margin-top:10px;background:var(--surface-2,#1a1a1a);border-radius:6px;padding:10px 14px;font-size:11px;line-height:2">
+        <div style="color:#888;margin-bottom:4px">Select snapshot to restore</div>
+        <div style="background:#2a2a2a;border-radius:4px;padding:4px 10px;color:#ccc">▼ &nbsp;abc12345 · 2025-04-22 02:00 · 4.2 GB</div>
+        <div style="color:#666;font-size:10px;margin-top:4px">24 snapshots available for this spec's repository</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:20px">Select one or more — or just tell me in the terminal.</p>

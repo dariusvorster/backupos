@@ -1,0 +1,168 @@
+<h2>How should content pages be laid out?</h2>
+<p class="subtitle">You picked Light + Amber. Now — how dense and structured should the main content area feel?</p>
+
+<div class="cards">
+
+  <!-- Option A: Card Grid Dashboard -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#f9fafb;border-radius:8px;padding:12px;height:200px;font-family:sans-serif;overflow:hidden;">
+        <div style="font-size:11px;font-weight:700;color:#111;margin-bottom:10px;">Dashboard</div>
+        <!-- Stat row -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color:#9ca3af;font-size:7px;margin-bottom:2px;">REPOS</div>
+            <div style="color:#111;font-size:16px;font-weight:800;">12</div>
+            <div style="color:#22c55e;font-size:7px;">↑ all healthy</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color:#9ca3af;font-size:7px;margin-bottom:2px;">SNAPSHOTS</div>
+            <div style="color:#111;font-size:16px;font-weight:800;">847</div>
+            <div style="color:#9ca3af;font-size:7px;">last 30 days</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color:#9ca3af;font-size:7px;margin-bottom:2px;">STORAGE</div>
+            <div style="color:#111;font-size:16px;font-weight:800;">1.2TB</div>
+            <div style="color:#f59e0b;font-size:7px;">72% used</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color:#9ca3af;font-size:7px;margin-bottom:2px;">HEALTH</div>
+            <div style="color:#22c55e;font-size:16px;font-weight:800;">100%</div>
+            <div style="color:#9ca3af;font-size:7px;">no failures</div>
+          </div>
+        </div>
+        <!-- Two col lower -->
+        <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:6px;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color:#9ca3af;font-size:7px;margin-bottom:6px;">RECENT JOBS</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span style="font-size:8px;color:#374151;">prod-db</span>
+              <span style="background:#dcfce7;color:#16a34a;font-size:7px;padding:1px 5px;border-radius:9px;">done</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span style="font-size:8px;color:#374151;">staging</span>
+              <span style="background:#dcfce7;color:#16a34a;font-size:7px;padding:1px 5px;border-radius:9px;">done</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:8px;color:#374151;">archive-01</span>
+              <span style="background:#fef3c7;color:#d97706;font-size:7px;padding:1px 5px;border-radius:9px;">running</span>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color:#9ca3af;font-size:7px;margin-bottom:6px;">NEXT SCHEDULES</div>
+            <div style="font-size:8px;color:#374151;margin-bottom:3px;">daily-full — 2h</div>
+            <div style="font-size:8px;color:#374151;margin-bottom:3px;">hourly-inc — 45m</div>
+            <div style="font-size:8px;color:#374151;">weekly-arc — 6d</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Card Grid (borg-ui style)</h3>
+      <p>Stat cards up top, content cards below in a grid. Spacious, visual, easy to scan. Great for dashboards and summary pages. Each list page uses the same card pattern.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Table-first -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#f9fafb;border-radius:8px;padding:12px;height:200px;font-family:sans-serif;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="font-size:11px;font-weight:700;color:#111;">Jobs</span>
+          <button style="background:#f59e0b;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:8px;font-weight:600;">+ New job</button>
+        </div>
+        <!-- Table header -->
+        <div style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;padding:5px 8px;gap:4px;">
+          <span style="font-size:8px;color:#6b7280;font-weight:600;">NAME</span>
+          <span style="font-size:8px;color:#6b7280;font-weight:600;">STATUS</span>
+          <span style="font-size:8px;color:#6b7280;font-weight:600;">LAST RUN</span>
+          <span style="font-size:8px;color:#6b7280;font-weight:600;">NEXT</span>
+        </div>
+        <!-- Rows -->
+        <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;background:#fff;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;padding:5px 8px;border-bottom:1px solid #f3f4f6;align-items:center;gap:4px;">
+            <span style="font-size:9px;color:#111;font-weight:500;">prod-db</span>
+            <span style="background:#dcfce7;color:#16a34a;font-size:7px;padding:1px 5px;border-radius:9px;width:fit-content;">active</span>
+            <span style="font-size:8px;color:#6b7280;">2m ago</span>
+            <span style="font-size:8px;color:#6b7280;">1h</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;padding:5px 8px;border-bottom:1px solid #f3f4f6;align-items:center;gap:4px;">
+            <span style="font-size:9px;color:#111;font-weight:500;">staging</span>
+            <span style="background:#dcfce7;color:#16a34a;font-size:7px;padding:1px 5px;border-radius:9px;width:fit-content;">active</span>
+            <span style="font-size:8px;color:#6b7280;">15m ago</span>
+            <span style="font-size:8px;color:#6b7280;">45m</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;padding:5px 8px;align-items:center;gap:4px;">
+            <span style="font-size:9px;color:#111;font-weight:500;">archive-01</span>
+            <span style="background:#fef3c7;color:#d97706;font-size:7px;padding:1px 5px;border-radius:9px;width:fit-content;">running</span>
+            <span style="font-size:8px;color:#6b7280;">running</span>
+            <span style="font-size:8px;color:#6b7280;">6d</span>
+          </div>
+        </div>
+        <div style="margin-top:6px;font-size:8px;color:#9ca3af;">3 jobs · 2 active · 1 running</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Table-first (operational)</h3>
+      <p>Clean tables for list pages, minimal header row with action button. Dense and efficient — great when you have 20+ jobs/repos. Dashboard gets a compact stat bar instead of big cards.</p>
+    </div>
+  </div>
+
+  <!-- Option C: Hybrid -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#f9fafb;border-radius:8px;padding:12px;height:200px;font-family:sans-serif;overflow:hidden;">
+        <!-- Topbar stat strip -->
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:5px;padding:5px 10px;display:flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+            <div style="width:6px;height:6px;background:#22c55e;border-radius:50%;"></div>
+            <span style="font-size:8px;color:#374151;font-weight:500;">12 repos</span>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:5px;padding:5px 10px;display:flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+            <div style="width:6px;height:6px;background:#f59e0b;border-radius:50%;"></div>
+            <span style="font-size:8px;color:#374151;font-weight:500;">1 running</span>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:5px;padding:5px 10px;display:flex;align-items:center;gap:5px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+            <span style="font-size:8px;color:#374151;font-weight:500;">1.2 TB used</span>
+          </div>
+          <div style="flex:1;"></div>
+          <button style="background:#f59e0b;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:8px;font-weight:600;">+ New job</button>
+        </div>
+        <!-- Table -->
+        <div style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;padding:4px 8px;gap:4px;">
+          <span style="font-size:7px;color:#6b7280;font-weight:600;text-transform:uppercase;">Name</span>
+          <span style="font-size:7px;color:#6b7280;font-weight:600;text-transform:uppercase;">Status</span>
+          <span style="font-size:7px;color:#6b7280;font-weight:600;text-transform:uppercase;">Last run</span>
+          <span style="font-size:7px;color:#6b7280;font-weight:600;text-transform:uppercase;">Repo</span>
+        </div>
+        <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;background:#fff;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;padding:5px 8px;border-bottom:1px solid #f9fafb;align-items:center;">
+            <span style="font-size:9px;color:#111;font-weight:500;">prod-db</span>
+            <span style="background:#dcfce7;color:#16a34a;font-size:7px;padding:1px 5px;border-radius:9px;width:fit-content;">active</span>
+            <span style="font-size:8px;color:#6b7280;">2m ago</span>
+            <span style="font-size:8px;color:#6b7280;">nas-01</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;padding:5px 8px;border-bottom:1px solid #f9fafb;align-items:center;">
+            <span style="font-size:9px;color:#111;font-weight:500;">staging</span>
+            <span style="background:#dcfce7;color:#16a34a;font-size:7px;padding:1px 5px;border-radius:9px;width:fit-content;">active</span>
+            <span style="font-size:8px;color:#6b7280;">15m</span>
+            <span style="font-size:8px;color:#6b7280;">nas-01</span>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;padding:5px 8px;align-items:center;">
+            <span style="font-size:9px;color:#111;font-weight:500;">archive-01</span>
+            <span style="background:#fef3c7;color:#d97706;font-size:7px;padding:1px 5px;border-radius:9px;width:fit-content;">running</span>
+            <span style="font-size:8px;color:#6b7280;">—</span>
+            <span style="font-size:8px;color:#6b7280;">cold-s3</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Hybrid (stat strip + tables)</h3>
+      <p>Compact inline stat pills at the top of each page, then clean tables below. Dashboard gets full cards; list pages get the strip. Best balance of glanceable metrics and data density.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Click to select, then respond in the terminal.</p>
