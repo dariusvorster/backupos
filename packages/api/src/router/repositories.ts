@@ -7,7 +7,21 @@ import { RepositorySchema } from '../schemas'
 
 export const repositoriesRouter = router({
   list: authedProcedure.query(({ ctx }) =>
-    ctx.db.select().from(repositories).all(),
+    ctx.db.select({
+      id:                 repositories.id,
+      name:               repositories.name,
+      backend:            repositories.backend,
+      sizeBytes:          repositories.sizeBytes,
+      snapshotCount:      repositories.snapshotCount,
+      lastCheckedAt:      repositories.lastCheckedAt,
+      lastCheckStatus:    repositories.lastCheckStatus,
+      createdAt:          repositories.createdAt,
+      costPerGbMonth:     repositories.costPerGbMonth,
+      monthlyBudgetCents: repositories.monthlyBudgetCents,
+      group:              repositories.group,
+      rawSizeBytes:       repositories.rawSizeBytes,
+      replicas:           repositories.replicas,
+    }).from(repositories).all(),
   ),
 
   create: authedProcedure
