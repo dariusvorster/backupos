@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
+import { PollWrapper } from './poll-wrapper'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -21,8 +22,12 @@ export default async function RestoreRunsPage({ params }: { params: Promise<{ id
     .orderBy(desc(restoreRuns.startedAt))
     .all()
 
+  const hasRunning = runs.some(r => r.status === 'running')
+
   return (
     <div>
+      <PollWrapper initialStatus={hasRunning ? 'running' : 'done'} />
+
       <div style={{ marginBottom: 24 }}>
         <Link href={`/restore/${id}`} style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>
           ← {spec.name}
@@ -45,16 +50,34 @@ export default async function RestoreRunsPage({ params }: { params: Promise<{ id
             </thead>
             <tbody>
               {runs.map(run => (
-                <tr key={run.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                    {run.startedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
-                  </td>
-                  <td style={{ padding: '12px 20px' }}>
-                    <Badge status={(run.status ?? 'idle') as BadgeStatus} />
-                  </td>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)' }}>{run.trigger ?? '—'}</td>
-                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                    {run.snapshotId?.slice(0, 8) ?? '—'}
+                <tr
+                  key={run.id}
+                  style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}
+                >
+                  <td style={{ padding: 0 }} colSpan={4}>
+                    <Link
+                      href={`/restore/${id}/runs/${run.id}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr auto auto auto',
+                        gap: 0,
+                        textDecoration: 'none',
+                        color: 'inherit',
+                      }}
+                    >
+                      <span style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
+                        {run.startedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
+                      </span>
+                      <span style={{ padding: '12px 20px' }}>
+                        <Badge status={(run.status ?? 'idle') as BadgeStatus} />
+                      </span>
+                      <span style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', whiteSpace: 'nowrap' }}>
+                        {run.trigger ?? '—'}
+                      </span>
+                      <span style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
+                        {run.snapshotId?.slice(0, 8) ?? '—'}
+                      </span>
+                    </Link>
                   </td>
                 </tr>
               ))}
