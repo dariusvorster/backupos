@@ -3,7 +3,7 @@ import { parse } from 'url'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { getDb, agents, eq } from '@backupos/db'
+import { getDb, runMigrations, agents, eq } from '@backupos/db'
 import { registerAgent, unregisterAgent } from './lib/ws-state'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
 
@@ -12,6 +12,8 @@ const port = parseInt(process.env.PORT ?? '3000', 10)
 
 const app    = next({ dev, hostname: '0.0.0.0', port, dir: __dirname })
 const handle = app.getRequestHandler()
+
+runMigrations()
 
 void app.prepare().then(() => {
   const server = createServer((req, res) => {
@@ -87,5 +89,6 @@ void app.prepare().then(() => {
 
   server.listen(port, '0.0.0.0', () => {
     console.log(`> Ready on http://0.0.0.0:${port}`)
+    void import('./lib/scheduler').then(({ initScheduler }) => initScheduler())
   })
 })

@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3'
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3'
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { mkdirSync, existsSync } from 'fs'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
 import * as schema from './schema'
 
 export type Db = ReturnType<typeof drizzleSqlite<typeof schema>>
@@ -29,6 +30,12 @@ export function getDb(): Db {
 
   _db = drizzleSqlite(sqlite, { schema })
   return _db
+}
+
+export function runMigrations(): void {
+  const db = getDb()
+  const migrationsFolder = join(__dirname, '..', 'migrations')
+  migrate(db, { migrationsFolder })
 }
 
 export * from './schema'

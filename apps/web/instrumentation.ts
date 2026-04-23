@@ -1,6 +1,4 @@
 export async function register() {
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { initScheduler } = await import('./lib/scheduler')
-    await initScheduler()
-  }
+  // Scheduler is initialized in server.ts to avoid native module resolution
+  // issues with Next.js's bundled instrumentation context.
 }
