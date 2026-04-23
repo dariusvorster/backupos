@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3'
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3'
+import { mkdirSync, existsSync } from 'fs'
+import { dirname } from 'path'
 import * as schema from './schema'
 
 export type Db = ReturnType<typeof drizzleSqlite<typeof schema>>
@@ -19,6 +21,8 @@ export function getDb(): Db {
   }
 
   const filePath = url.slice('file:'.length)
+  const dir = dirname(filePath)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   const sqlite = new Database(filePath)
   sqlite.pragma('journal_mode = WAL')
   sqlite.pragma('foreign_keys = ON')
