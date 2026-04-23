@@ -54,29 +54,36 @@ export default async function RestoreRunsPage({ params }: { params: Promise<{ id
                   key={run.id}
                   style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}
                 >
-                  <td style={{ padding: 0 }} colSpan={4}>
+                  <td style={{ padding: 0 }}>
                     <Link
                       href={`/restore/${id}/runs/${run.id}`}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr auto auto auto',
-                        gap: 0,
-                        textDecoration: 'none',
-                        color: 'inherit',
-                      }}
+                      style={{ display: 'block', padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)', textDecoration: 'none' }}
                     >
-                      <span style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
-                        {run.startedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
-                      </span>
-                      <span style={{ padding: '12px 20px' }}>
-                        <Badge status={(run.status ?? 'idle') as BadgeStatus} />
-                      </span>
-                      <span style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', whiteSpace: 'nowrap' }}>
-                        {run.trigger ?? '—'}
-                      </span>
-                      <span style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
-                        {run.snapshotId?.slice(0, 8) ?? '—'}
-                      </span>
+                      {run.startedAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'}
+                    </Link>
+                  </td>
+                  <td style={{ padding: 0 }}>
+                    <Link
+                      href={`/restore/${id}/runs/${run.id}`}
+                      style={{ display: 'block', padding: '12px 20px', textDecoration: 'none' }}
+                    >
+                      <Badge status={(run.status ?? 'idle') as BadgeStatus} />
+                    </Link>
+                  </td>
+                  <td style={{ padding: 0 }}>
+                    <Link
+                      href={`/restore/${id}/runs/${run.id}`}
+                      style={{ display: 'block', padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textDecoration: 'none' }}
+                    >
+                      {run.trigger ?? '—'}
+                    </Link>
+                  </td>
+                  <td style={{ padding: 0 }}>
+                    <Link
+                      href={`/restore/${id}/runs/${run.id}`}
+                      style={{ display: 'block', padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)', textDecoration: 'none' }}
+                    >
+                      {run.snapshotId?.slice(0, 8) ?? '—'}
                     </Link>
                   </td>
                 </tr>
