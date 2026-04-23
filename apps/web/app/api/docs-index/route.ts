@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { readFile }    from 'fs/promises'
 import { join, resolve } from 'path'
 import { NextResponse }  from 'next/server'
