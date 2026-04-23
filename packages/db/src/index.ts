@@ -61,8 +61,16 @@ export function runMigrations(): void {
     if (appliedHashes.has(hash)) continue
     // drizzle-kit separates statements with --> statement-breakpoint in multi-op files
     const statements = sql.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean)
-    for (const stmt of statements) {
-      sqlite.exec(stmt)
+    try {
+      for (const stmt of statements) {
+        sqlite.exec(stmt)
+      }
+    } catch (e: unknown) {
+      // If the schema already exists from a prior partial run, record the migration
+      // as applied so future startups skip it. Any other error is re-thrown.
+      const msg = e instanceof Error ? e.message : String(e)
+      if (!msg.includes('already exists')) throw e
+      console.warn(`[db] migration ${tag}: object already exists, recording as applied`)
     }
     sqlite.prepare('INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (?, ?)').run(hash, Date.now())
   }
