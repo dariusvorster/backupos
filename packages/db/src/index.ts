@@ -30,4 +30,4 @@ export function getDb(): Db {
 export * from './schema'
 
 // Re-export common drizzle operators so consumers use a single drizzle-orm instance
-export { eq, ne, gt, gte, lt, lte, and, or, not, desc, asc, sql, count, isNull, isNotNull, inArray } from 'drizzle-orm'
+export { eq, ne, gt, gte, lt, lte, and, or, not, desc, asc, sql, count, isNull, isNotNull, inArray, like } from 'drizzle-orm'
