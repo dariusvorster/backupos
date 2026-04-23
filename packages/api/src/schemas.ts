@@ -18,7 +18,11 @@ export const JobSchema = z.object({
   agentId:      z.string().optional(),
   repositoryId: z.string().min(1),
   sourceType:   z.string().min(1),
-  sourceConfig: z.record(z.unknown()),
+  sourceConfig: z.record(z.unknown()).refine(cfg => {
+    const paths = cfg['paths']
+    if (!Array.isArray(paths)) return true
+    return (paths as unknown[]).every(p => typeof p === 'string' && !p.includes('..'))
+  }, { message: 'paths must not contain directory traversal sequences' }),
   schedule:     z.string().min(1),
   enabled:      z.boolean().default(true),
   keepLast:     z.number().int().optional(),

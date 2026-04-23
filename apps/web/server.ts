@@ -13,6 +13,23 @@ const port = parseInt(process.env.PORT ?? '3000', 10)
 const app    = next({ dev, hostname: '0.0.0.0', port, dir: __dirname })
 const handle = app.getRequestHandler()
 
+// Fail fast on missing or placeholder secrets before anything else touches the DB
+if (process.env.NODE_ENV === 'production') {
+  const REQUIRED = ['BETTER_AUTH_SECRET', 'BETTER_AUTH_URL', 'ENCRYPTION_KEY']
+  const PLACEHOLDERS = ['changeme', 'your-', 'placeholder', 'change_me', 'insecure', 'example']
+  for (const key of REQUIRED) {
+    const val = process.env[key]
+    if (!val) {
+      console.error(`[startup] FATAL: ${key} is not set`)
+      process.exit(1)
+    }
+    if (PLACEHOLDERS.some(p => val.toLowerCase().includes(p))) {
+      console.error(`[startup] FATAL: ${key} looks like a placeholder — set a real secret`)
+      process.exit(1)
+    }
+  }
+}
+
 runMigrations()
 
 void app.prepare().then(() => {

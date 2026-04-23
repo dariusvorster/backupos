@@ -4,6 +4,7 @@ import { ResticEngine } from '@backupos/engine'
 import { z } from 'zod'
 import { router, authedProcedure } from '../trpc'
 import { RepositorySchema } from '../schemas'
+import { appendAuditEntry } from '../audit'
 
 export const repositoriesRouter = router({
   list: authedProcedure.query(({ ctx }) =>
@@ -45,6 +46,14 @@ export const repositoriesRouter = router({
         envVars:   input.config as Record<string, string>,
       })
       await engine.init()
+
+      await appendAuditEntry(ctx.db, {
+        action:       'repository.create',
+        resourceType: 'repository',
+        resourceId:   id,
+        resourceName: input.name,
+        actor:        ctx.user.email,
+      })
 
       return { id }
     }),
@@ -100,6 +109,12 @@ export const repositoriesRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db.delete(repositories).where(eq(repositories.id, input.id))
+      await appendAuditEntry(ctx.db, {
+        action:       'repository.delete',
+        resourceType: 'repository',
+        resourceId:   input.id,
+        actor:        ctx.user.email,
+      })
       return { ok: true }
     }),
 

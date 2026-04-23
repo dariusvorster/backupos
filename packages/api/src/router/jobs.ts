@@ -3,6 +3,7 @@ import { backupJobs, backupRuns } from '@backupos/db'
 import { z } from 'zod'
 import { router, authedProcedure } from '../trpc'
 import { JobSchema, JobUpdateSchema } from '../schemas'
+import { appendAuditEntry } from '../audit'
 
 export const jobsRouter = router({
   list: authedProcedure.query(({ ctx }) =>
@@ -44,6 +45,14 @@ export const jobsRouter = router({
         postHook:     input.postHook ? JSON.stringify(input.postHook) : undefined,
         createdAt:    new Date(),
       })
+      await appendAuditEntry(ctx.db, {
+        action:       'job.create',
+        resourceType: 'job',
+        resourceId:   id,
+        resourceName: input.name,
+        actor:        ctx.user.email,
+      })
+
       return { id }
     }),
 
@@ -68,6 +77,12 @@ export const jobsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db.delete(backupJobs).where(eq(backupJobs.id, input.id))
+      await appendAuditEntry(ctx.db, {
+        action:       'job.delete',
+        resourceType: 'job',
+        resourceId:   input.id,
+        actor:        ctx.user.email,
+      })
       return { ok: true }
     }),
 

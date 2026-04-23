@@ -21,6 +21,14 @@ export const auth = betterAuth({
       maxAge:  60 * 5,
     },
   },
+  rateLimit: {
+    enabled: true,
+    window:  60,
+    max:     10,
+  },
+  advanced: {
+    useSecureCookies: process.env.NODE_ENV === 'production',
+  },
 })
 
 export type Session = typeof auth.$Infer.Session
