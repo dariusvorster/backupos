@@ -1,4 +1,6 @@
 // apps/web/app/(dashboard)/layout.tsx
+export const dynamic = 'force-dynamic'
+
 import { redirect }               from 'next/navigation'
 import { Sidebar }                from '@/components/sidebar'
 import { getCurrentUser }         from '@/lib/user'
