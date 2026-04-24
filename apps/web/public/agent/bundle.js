@@ -207,8 +207,16 @@ function startAgent(config) {
       } else if (msg.type === 'run_backup') {
         await handleBackup(msg.jobId, msg.config, send);
       } else if (msg.type === 'list_resources') {
-        const resources = await detectResources();
-        send({ type: 'resources_result', requestId: msg.requestId, resources });
+        console.log('[agent] list_resources received requestId=' + msg.requestId);
+        try {
+          const resources = await detectResources();
+          console.log('[agent] detectResources done:', JSON.stringify(resources));
+          send({ type: 'resources_result', requestId: msg.requestId, resources });
+          console.log('[agent] resources_result sent');
+        } catch (e) {
+          console.error('[agent] detectResources error:', e);
+          send({ type: 'resources_result', requestId: msg.requestId, resources: {} });
+        }
       } else if (msg.type === 'cancel_backup') {
         console.warn('[agent] cancel_backup not implemented for jobId=' + msg.jobId);
       } else if (msg.type === 'verify_repo') {
