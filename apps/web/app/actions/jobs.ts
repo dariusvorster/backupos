@@ -5,6 +5,44 @@ import { redirect } from 'next/navigation'
 import { getDb, backupJobs, backupRuns, repositories, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
 import { dispatch, connectedAgentIds } from '@/lib/ws-state'
 
+function parseSourceConfig(sourceType: string, fd: FormData): string {
+  const str = (k: string) => (fd.get(k) as string | null)?.trim() || undefined
+  const lines = (k: string) =>
+    (fd.get(k) as string | null)?.split('\n').map(s => s.trim()).filter(Boolean) ?? []
+
+  let cfg: Record<string, unknown> = {}
+
+  if (sourceType === 'filesystem' || sourceType === 'windows_system') {
+    cfg = { paths: lines('paths'), exclude: lines('exclude').length ? lines('exclude') : undefined }
+  } else if (sourceType === 'docker_volume') {
+    cfg = { volumes: lines('volumes') }
+  } else if (sourceType === 'database') {
+    cfg = {
+      type:     str('dbType') ?? 'postgresql',
+      database: str('database'),
+      host:     str('dbHost') ?? 'localhost',
+      port:     parseInt(fd.get('dbPort') as string) || 5432,
+      user:     str('dbUser'),
+      password: str('dbPassword'),
+    }
+  } else if (sourceType === 'proxmox_vm' || sourceType === 'proxmox_lxc') {
+    cfg = {
+      vmId:             str('vmId'),
+      proxmoxUrl:       str('proxmoxUrl'),
+      proxmoxUser:      str('proxmoxUser'),
+      proxmoxPassword:  str('proxmoxPassword'),
+    }
+  } else if (sourceType === 'nas_share') {
+    cfg = {
+      shareUrl:  str('shareUrl'),
+      username:  str('shareUsername'),
+      password:  str('sharePassword'),
+    }
+  }
+
+  return JSON.stringify(cfg)
+}
+
 export async function createJob(formData: FormData): Promise<void> {
   const name           = (formData.get('name')           as string)?.trim()
   const sourceType     = (formData.get('sourceType')     as string)
@@ -21,7 +59,7 @@ export async function createJob(formData: FormData): Promise<void> {
     id,
     name,
     sourceType,
-    sourceConfig:  '{}',
+    sourceConfig:  parseSourceConfig(sourceType, formData),
     agentId,
     repositoryId,
     infraServiceId,

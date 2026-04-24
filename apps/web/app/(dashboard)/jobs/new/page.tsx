@@ -1,16 +1,7 @@
 import { getDb, repositories, agents } from '@backupos/db'
 import { Button } from '@/components/ui/button'
 import { createJob } from '@/app/actions/jobs'
-
-const SOURCE_TYPES = [
-  { value: 'filesystem',       label: 'Filesystem',        desc: 'Directories and files on the agent host' },
-  { value: 'docker_volume',    label: 'Docker volume',     desc: 'Named Docker volume' },
-  { value: 'database',         label: 'Database',          desc: 'PostgreSQL, MySQL, SQLite, Redis' },
-  { value: 'proxmox_vm',       label: 'Proxmox VM',        desc: 'Virtual machine via Proxmox API' },
-  { value: 'proxmox_lxc',      label: 'Proxmox LXC',       desc: 'Container via Proxmox API' },
-  { value: 'windows_system',   label: 'Windows system',    desc: 'Full system backup via VSS' },
-  { value: 'nas_share',        label: 'NAS share',         desc: 'SMB or NFS share' },
-]
+import { SourceConfigSection } from '@/components/source-config-section'
 
 export default async function NewJobPage({
   searchParams,
@@ -69,27 +60,7 @@ export default async function NewJobPage({
             />
           </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
-              Source type
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {SOURCE_TYPES.map(st => (
-                <label key={st.value} style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                  padding: '10px 12px',
-                  backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                }}>
-                  <input type="radio" name="sourceType" value={st.value} defaultChecked={prefillSourceType === st.value} style={{ marginTop: 2 }} />
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>{st.label}</div>
-                    <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 2 }}>{st.desc}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
+          <SourceConfigSection defaultSourceType={prefillSourceType || 'filesystem'} />
 
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
