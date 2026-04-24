@@ -104,11 +104,23 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
         <div style={{
           backgroundColor: 'color-mix(in srgb, var(--surf) 80%, var(--err) 10%)',
           border: '1px solid color-mix(in srgb, var(--border) 60%, var(--err) 40%)',
-          borderRadius: 'var(--radius-sm)', padding: '12px 16px', marginBottom: 24,
+          borderRadius: 'var(--radius-sm)', padding: '12px 16px', marginBottom: run.errorDetail ? 0 : 24,
           fontSize: 13, color: 'var(--err)',
         }}>
           <strong>Error:</strong> {run.errorMessage}
         </div>
+      )}
+      {run.errorDetail && (
+        <pre style={{
+          backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+          borderTop: run.errorMessage ? 'none' : undefined,
+          borderRadius: run.errorMessage ? '0 0 var(--radius-sm) var(--radius-sm)' : 'var(--radius-sm)',
+          padding: '10px 16px', marginBottom: 24, marginTop: 0,
+          fontSize: 11, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowX: 'auto',
+        }}>
+          {run.errorDetail}
+        </pre>
       )}
 
       {/* Phase timeline */}
