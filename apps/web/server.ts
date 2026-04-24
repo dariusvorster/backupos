@@ -221,7 +221,7 @@ void app.prepare().then(() => {
           await sendAlert('backup_failed', { jobId: msg.jobId, jobName: job?.name ?? 'unknown', error: msg.error })
 
         } else if (msg.type === 'resources_result') {
-          resolveDetect(msg.requestId as string, msg.resources as never)
+          resolveDetect(msg.requestId, msg.resources)
 
         } else if (msg.type === 'restore_complete' && agentId) {
           await db.update(restoreRuns).set({

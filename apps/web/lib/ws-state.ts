@@ -22,11 +22,8 @@ export function connectedAgentIds(): string[] {
   return [...connections.keys()]
 }
 
-export interface DetectedResources {
-  dockerVolumes?: string[]
-  mountPoints?:   string[]
-  databases?:     Array<{ type: string; host: string; port: number }>
-}
+import type { DetectedResources } from '@backupos/agent-protocol'
+export type { DetectedResources }
 
 const pendingDetects = new Map<string, (r: DetectedResources) => void>()
 

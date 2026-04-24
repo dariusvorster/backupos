@@ -44,6 +44,13 @@ export type AgentMessage =
   | { type: 'restore_start'; restoreId: string; specId: string }
   | { type: 'restore_progress'; restoreId: string; step: string; status: string }
   | { type: 'restore_complete'; restoreId: string; success: boolean }
+  | { type: 'resources_result'; requestId: string; resources: DetectedResources }
+
+export interface DetectedResources {
+  dockerVolumes?: string[]
+  mountPoints?:   string[]
+  databases?:     Array<{ type: string; host: string; port: number }>
+}
 
 export type ServerMessage =
   | { type: 'welcome'; agentId: string; serverVersion: string }
@@ -52,3 +59,4 @@ export type ServerMessage =
   | { type: 'run_restore'; restoreId: string; specYaml: string; snapshotId: string }
   | { type: 'cancel_backup'; jobId: string }
   | { type: 'verify_repo'; repoId: string; repoUrl: string; repoPassword: string; readData: boolean; envVars?: Record<string, string> }
+  | { type: 'list_resources'; requestId: string }

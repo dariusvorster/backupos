@@ -26,13 +26,9 @@ const hintStyle: React.CSSProperties = {
   fontSize: 11, color: 'var(--fg-dim)', marginTop: 4,
 }
 
-type Cfg = Record<string, unknown>
+import type { DetectedResources } from '@backupos/agent-protocol'
 
-interface DetectedResources {
-  dockerVolumes?: string[]
-  mountPoints?:   string[]
-  databases?:     Array<{ type: string; host: string; port: number }>
-}
+type Cfg = Record<string, unknown>
 
 function DetectButton({ label, onDetect, loading }: {
   label: string
