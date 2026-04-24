@@ -6,6 +6,7 @@ const ALLOWED = new Set([
   'backupos-agent-linux-x64',
   'backupos-agent-linux-arm64',
   'backupos-agent-windows-x64.exe',
+  'bundle.js',
 ])
 
 export async function GET(
@@ -26,8 +27,9 @@ export async function GET(
   // Fall back to public/agent/ (populated at deploy time from CI artifacts)
   try {
     const data = await readFile(join(process.cwd(), 'public', 'agent', binary))
+    const contentType = binary.endsWith('.js') ? 'application/javascript' : 'application/octet-stream'
     return new Response(data, {
-      headers: { 'Content-Type': 'application/octet-stream' },
+      headers: { 'Content-Type': contentType },
     })
   } catch {
     return new Response(
