@@ -47,7 +47,11 @@ if ! command -v restic &>/dev/null; then
     *)             die "Unsupported platform ${OS}-${ARCH}. Install restic manually." ;;
   esac
   RESTIC_URL="https://github.com/restic/restic/releases/download/v${RESTIC_VER}/${RESTIC_PKG}"
-  curl -fsSL "$RESTIC_URL" | bunzip2 > /usr/local/bin/restic
+  if command -v bunzip2 &>/dev/null; then
+    curl -fsSL "$RESTIC_URL" | bunzip2 > /usr/local/bin/restic
+  else
+    curl -fsSL "$RESTIC_URL" | bzip2 -d > /usr/local/bin/restic
+  fi
   chmod +x /usr/local/bin/restic
   log "restic $(restic version | head -1) ✓"
 fi
