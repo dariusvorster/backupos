@@ -17,6 +17,6 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Protect everything except auth routes, static files, and public API endpoints
-    '/((?!login|signup|api/auth|api/health|install\\.sh|install\\.ps1|_next|favicon\\.ico|apple-icon|opengraph-image|icon).*)',
+    '/((?!login|signup|api/auth|api/health|install\\.sh|install\\.ps1|_next|favicon\\.ico|manifest\\.webmanifest|apple-icon|opengraph-image|icon).*)',
   ],
 }
