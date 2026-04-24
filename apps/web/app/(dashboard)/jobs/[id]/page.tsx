@@ -9,6 +9,7 @@ import { setJobProfile } from '@/app/actions/bandwidth'
 import { fmtLimit } from '@/lib/bandwidth'
 import { PreflightButton } from '@/components/preflight-modal'
 import { togglePreflight } from '@/app/actions/preflight'
+import { PreflightToggle } from '@/components/preflight-toggle'
 import { triggerJob, saveJobRetention } from '@/app/actions/jobs'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
@@ -158,41 +159,27 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       </div>
 
       {/* Auto-preflight toggle */}
-      {(() => {
-        const boundToggle = togglePreflight.bind(null, job.id)
-        return (
-          <div style={{
-            backgroundColor: 'var(--surf)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '14px 20px',
-            marginBottom: 24,
-            display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>
-                Auto pre-flight before scheduled runs
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginTop: 2 }}>
-                Runs checks 15 minutes before each scheduled backup. Fires an alert if any check fails.
-              </div>
-            </div>
-            <form action={boundToggle}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  name="preflightEnabled"
-                  defaultChecked={job.preflightEnabled ?? true}
-                  onChange={e => (e.currentTarget.form as HTMLFormElement).requestSubmit()}
-                />
-                <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>
-                  {(job.preflightEnabled ?? true) ? 'Enabled' : 'Disabled'}
-                </span>
-              </label>
-            </form>
+      <div style={{
+        backgroundColor: 'var(--surf)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        padding: '14px 20px',
+        marginBottom: 24,
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>
+            Auto pre-flight before scheduled runs
           </div>
-        )
-      })()}
+          <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginTop: 2 }}>
+            Runs checks 15 minutes before each scheduled backup. Fires an alert if any check fails.
+          </div>
+        </div>
+        <PreflightToggle
+          enabled={job.preflightEnabled ?? true}
+          action={togglePreflight.bind(null, job.id)}
+        />
+      </div>
 
       {/* Retention policy */}
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
