@@ -1,4 +1,7 @@
 import { createServer } from 'http'
+import { createHash } from 'crypto'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { parse } from 'url'
 import next from 'next'
 import { WebSocketServer } from 'ws'
@@ -34,6 +37,14 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 runMigrations()
+
+function getBundleHash(): string {
+  try {
+    const buf = readFileSync(join(__dirname, 'public', 'agent', 'bundle.js'))
+    return createHash('sha256').update(buf).digest('hex')
+  } catch { return '' }
+}
+const BUNDLE_HASH = getBundleHash()
 
 void app.prepare().then(() => {
   const server = createServer((req, res) => {
@@ -81,7 +92,7 @@ void app.prepare().then(() => {
             ...(msg.hostname ? { hostname: msg.hostname } : {}),
           }).where(eq(agents.id, agentId))
 
-          const welcome: ServerMessage = { type: 'welcome', agentId, serverVersion: '0.1.0' }
+          const welcome: ServerMessage = { type: 'welcome', agentId, serverVersion: '0.1.0', bundleHash: BUNDLE_HASH || undefined }
           ws.send(JSON.stringify(welcome))
 
           await db.insert(auditLog).values({

@@ -53,7 +53,7 @@ export interface DetectedResources {
 }
 
 export type ServerMessage =
-  | { type: 'welcome'; agentId: string; serverVersion: string }
+  | { type: 'welcome'; agentId: string; serverVersion: string; bundleHash?: string }
   | { type: 'pong' }
   | { type: 'run_backup'; jobId: string; config: BackupJobConfig }
   | { type: 'run_restore'; restoreId: string; specYaml: string; snapshotId: string }

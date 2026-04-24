@@ -1,9 +1,12 @@
 'use strict';
 const { parseArgs } = require('node:util');
-const { readFileSync, writeFileSync, mkdirSync } = require('node:fs');
+const { readFileSync, writeFileSync, mkdirSync, renameSync } = require('node:fs');
 const { spawnSync, spawn } = require('node:child_process');
 const { hostname, networkInterfaces, release, homedir } = require('node:os');
 const { join } = require('node:path');
+const { createHash } = require('node:crypto');
+const { get: httpGet } = require('node:http');
+const { get: httpsGet } = require('node:https');
 
 // ── executor ─────────────────────────────────────────────────────────────────
 const ALLOWED_COMMANDS = ['restic', 'systemctl', 'df', 'hostname', 'uname', 'docker', 'ss', 'netstat'];
@@ -116,6 +119,35 @@ function writeConfig(config) {
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
+// ── self-update ───────────────────────────────────────────────────────────────
+function selfHash() {
+  try {
+    return createHash('sha256').update(readFileSync(__filename)).digest('hex');
+  } catch (_) { return ''; }
+}
+
+function selfUpdate(serverUrl) {
+  return new Promise((resolve, reject) => {
+    const base = serverUrl.replace(/\/$/, '');
+    const url  = base + '/agent/bundle.js';
+    const get  = url.startsWith('https') ? httpsGet : httpGet;
+    const tmp  = __filename + '.tmp';
+    get(url, (res) => {
+      if (res.statusCode !== 200) { reject(new Error('HTTP ' + res.statusCode)); return; }
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        try {
+          writeFileSync(tmp, Buffer.concat(chunks));
+          renameSync(tmp, __filename);
+          console.log('[agent] Bundle updated. Restarting...');
+          resolve();
+        } catch (e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
+}
+
 // ── agent (ws) ────────────────────────────────────────────────────────────────
 const METRICS_INTERVAL_MS = 30_000;
 const RECONNECT_BASE_MS   = 2_000;
@@ -159,6 +191,15 @@ function startAgent(config) {
 
       if (msg.type === 'welcome') {
         console.log('[agent] Connected as ' + msg.agentId);
+        if (msg.bundleHash && msg.bundleHash !== selfHash()) {
+          console.log('[agent] New bundle available — updating...');
+          try {
+            await selfUpdate(config.serverUrl);
+            process.exit(0); // systemd will restart with the new bundle
+          } catch (e) {
+            console.error('[agent] Self-update failed:', e.message);
+          }
+        }
         if (metricsTimer) clearInterval(metricsTimer);
         const sendMetrics = async () => { send({ type: 'metrics', metrics: await collectMetrics() }); };
         await sendMetrics();
