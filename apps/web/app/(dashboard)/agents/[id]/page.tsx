@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { getLogsPage } from '@/app/actions/logs'
 import { setAgentChannelFromForm } from '@/app/actions/agents'
+import { AutoRefresh } from '@/components/ui/auto-refresh'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -96,6 +97,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div>
+      <AutoRefresh intervalMs={5_000} />
       <div style={{ marginBottom: 24 }}>
         <Link href="/agents" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Agents</Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
@@ -204,6 +206,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         </div>
         <form action={setChannel} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select
+            key={agent.updateChannel ?? 'stable'}
             name="channel"
             defaultValue={agent.updateChannel ?? 'stable'}
             style={{

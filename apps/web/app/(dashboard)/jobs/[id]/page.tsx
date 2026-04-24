@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDb, backupJobs, backupRuns, bandwidthProfiles, eq, desc } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
+import { AutoRefresh } from '@/components/ui/auto-refresh'
 import { getLogsPage } from '@/app/actions/logs'
 import { setJobProfile } from '@/app/actions/bandwidth'
 import { fmtLimit } from '@/lib/bandwidth'
@@ -60,6 +61,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div>
+      <AutoRefresh intervalMs={10_000} />
       <div style={{ marginBottom: 24 }}>
         <Link href="/jobs" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Jobs</Link>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginTop: 8 }}>{job.name}</h1>

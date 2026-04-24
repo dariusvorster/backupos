@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { getDb, agents } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
+import { AutoRefresh } from '@/components/ui/auto-refresh'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -32,6 +33,7 @@ export default async function AgentsPage() {
 
   return (
     <div>
+      <AutoRefresh intervalMs={5_000} />
       <PageHeader
         title="Agents"
         action={

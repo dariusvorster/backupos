@@ -3,6 +3,7 @@ import { Database }        from 'lucide-react'
 import { PageHeader }      from '@/components/ui/page-header'
 import { getDb, repositories } from '@backupos/db'
 import { GroupFilter }     from './group-filter'
+import { AutoRefresh }     from '@/components/ui/auto-refresh'
 import { DedupBar, fmtBytes } from './dedup-bar'
 
 function fmtDate(d: Date | null): string {
@@ -42,6 +43,7 @@ export default async function RepositoriesPage({
 
   return (
     <div>
+      <AutoRefresh intervalMs={30_000} />
       <PageHeader
         title="Repositories"
         action={

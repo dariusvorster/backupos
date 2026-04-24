@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { getDb, backupRuns, backupJobs, alerts, eq } from '@backupos/db'
 import { desc } from '@backupos/db'
 import { PageHeader } from '@/components/ui/page-header'
+import { AutoRefresh } from '@/components/ui/auto-refresh'
 
 function fmtDate(d: Date | null): string {
   if (!d) return '—'
@@ -83,6 +84,7 @@ export default async function ActivityPage() {
 
   return (
     <div>
+      <AutoRefresh intervalMs={10_000} />
       <PageHeader title="Activity" description="Backup runs and alerts from the last 30 days." />
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>

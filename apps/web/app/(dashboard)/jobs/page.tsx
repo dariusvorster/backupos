@@ -1,5 +1,6 @@
 import { getDb, backupJobs, backupRuns, desc, gte } from '@backupos/db'
 import { JobsTable } from './jobs-table'
+import { AutoRefresh } from '@/components/ui/auto-refresh'
 
 export type RunDot = 'success' | 'failed' | 'none'
 
@@ -50,5 +51,10 @@ export default async function JobsPage() {
 
   const strips = buildStrips(jobs, recentRuns)
 
-  return <JobsTable jobs={jobs} strips={strips} />
+  return (
+    <>
+      <AutoRefresh intervalMs={10_000} />
+      <JobsTable jobs={jobs} strips={strips} />
+    </>
+  )
 }

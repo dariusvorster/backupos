@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Radar } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { getDb, backupMonitors } from '@backupos/db'
+import { AutoRefresh } from '@/components/ui/auto-refresh'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { GroupFilter } from './group-filter'
@@ -38,6 +39,7 @@ export default async function MonitorsPage({
 
   return (
     <div>
+      <AutoRefresh intervalMs={30_000} />
       <PageHeader
         title="Monitors"
         action={
