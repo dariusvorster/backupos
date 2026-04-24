@@ -1,7 +1,27 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { getDb, agents, eq } from '@backupos/db'
+
+export async function enrollAgent(formData: FormData): Promise<void> {
+  const name = (formData.get('name') as string)?.trim()
+  if (!name) return
+
+  const id    = crypto.randomUUID()
+  const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')
+
+  const db = getDb()
+  await db.insert(agents).values({
+    id,
+    name,
+    status:     'disconnected',
+    publicKey:  token,
+    enrolledAt: new Date(),
+  })
+
+  redirect(`/agents/${id}`)
+}
 
 export async function setAgentUpdateChannel(
   agentId: string,

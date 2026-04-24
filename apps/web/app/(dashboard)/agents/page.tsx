@@ -1,4 +1,5 @@
 import type { ComponentProps } from 'react'
+import Link from 'next/link'
 import { Server } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { getDb, agents } from '@backupos/db'
@@ -31,7 +32,20 @@ export default async function AgentsPage() {
 
   return (
     <div>
-      <PageHeader title="Agents" />
+      <PageHeader
+        title="Agents"
+        action={
+          <Link
+            href="/agents/new"
+            style={{
+              padding: '7px 16px', fontSize: 13, borderRadius: 'var(--radius-sm)',
+              background: 'var(--accent)', color: '#fff', textDecoration: 'none',
+            }}
+          >
+            Enroll agent
+          </Link>
+        }
+      />
 
       {agentList.length === 0 ? (
         <div style={{

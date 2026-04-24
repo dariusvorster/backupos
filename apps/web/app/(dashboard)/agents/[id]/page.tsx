@@ -3,6 +3,7 @@ import { getDb, agents, backupJobs } from '@backupos/db'
 import { eq } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { headers } from 'next/headers'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { getLogsPage } from '@/app/actions/logs'
@@ -78,6 +79,13 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   const [agent] = await db.select().from(agents).where(eq(agents.id, id)).limit(1)
   if (!agent) notFound()
 
+  const hdrs    = await headers()
+  const host    = hdrs.get('host') ?? 'localhost:3000'
+  const proto   = host.startsWith('localhost') ? 'http' : 'https'
+  const wsProto = proto === 'https' ? 'wss' : 'ws'
+  const baseUrl = `${proto}://${host}`
+  const wsUrl   = `${wsProto}://${host}/ws/agent`
+
   const jobs      = await db.select().from(backupJobs).where(eq(backupJobs.agentId, id)).all()
   const agentLogs = await getLogsPage({ entityType: 'agent', entityId: id }, 50)
   const history   = parseHistory(agent.resourceHistory ?? null)
@@ -103,6 +111,30 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
           <Badge status={(agent.status ?? 'idle') as BadgeStatus} />
         </div>
       </div>
+
+      {agent.status === 'disconnected' && !agent.lastSeenAt && (
+        <div style={{
+          backgroundColor: 'color-mix(in srgb, var(--surf) 80%, var(--accent) 5%)',
+          border: '1px solid var(--accent)',
+          borderRadius: 'var(--radius)', padding: 20, marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 8 }}>
+            Waiting for agent to connect
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginBottom: 12 }}>
+            Run this command on <strong>{agent.name}</strong> to install and start the agent:
+          </div>
+          <pre style={{
+            margin: 0, padding: '10px 14px',
+            background: 'var(--surf2)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)',
+            fontSize: 12, color: 'var(--fg)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          }}>{`curl -fsSL ${baseUrl}/install.sh | BACKUPOS_URL=${wsUrl} BACKUPOS_TOKEN=${agent.publicKey} bash`}</pre>
+          <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 8 }}>
+            Keep this token secret — it grants this agent access to your BackupOS instance.
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
         <StatCard label="Platform"  value={`${agent.platform ?? '—'} / ${agent.arch ?? '—'}`} />
