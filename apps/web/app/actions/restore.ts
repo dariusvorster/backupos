@@ -90,7 +90,12 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
         completedAt: result.completedAt ?? result.abortedAt ?? new Date(),
       })
       .where(eq(restoreRuns.id, runId))
-  }).catch(() => { /* logged by executor */ })
+  }).catch(async (err: unknown) => {
+    await db.update(restoreRuns).set({
+      status: 'failed', completedAt: new Date(),
+    }).where(eq(restoreRuns.id, runId))
+    console.error('[restore] executeRestoreSpec failed:', err)
+  })
 
   redirect(`/restore/${specId}/runs`)
 }

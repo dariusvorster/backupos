@@ -175,11 +175,11 @@ void app.prepare().then(() => {
                 .where(eq(repositories.id, job.repositoryId)).limit(1)
               if (!repo) return
 
-              const repoConfig = JSON.parse(repo.config) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
+              const repoCfg = JSON.parse(repo.config) as Record<string, string>
               const engine = new ResticEngine({
-                repositoryUrl: repoConfig.repositoryUrl,
-                password:      repoConfig.password,
-                envVars:       repoConfig.envVars ?? {},
+                repositoryUrl: repoCfg['repositoryUrl'] ?? '',
+                password:      repo.resticPassword,
+                envVars:       repoCfg,
                 binaryPath:    process.env['RESTIC_BINARY_PATH'],
               })
 

@@ -18,12 +18,9 @@ export async function promoteMonitorToRepo(monitorId: string, formData: FormData
   const repoUrl = `rest:${pbsCfg.url}/${pbsCfg.datastore}/`
 
   const config = {
-    repositoryUrl:         repoUrl,
-    password,
-    envVars: {
-      RESTIC_REST_USERNAME: pbsCfg.tokenId,
-      RESTIC_REST_PASSWORD: pbsCfg.tokenSecret,
-    },
+    repositoryUrl:        repoUrl,
+    RESTIC_REST_USERNAME: pbsCfg.tokenId,
+    RESTIC_REST_PASSWORD: pbsCfg.tokenSecret,
   }
 
   const id = crypto.randomUUID()
@@ -64,6 +61,12 @@ export async function createMonitor(formData: FormData): Promise<void> {
 
 export async function testMonitorConnection(url: string): Promise<{ ok: boolean; message: string }> {
   if (!url) return { ok: false, message: 'No URL provided' }
+
+  let parsed: URL
+  try { parsed = new URL(url) } catch { return { ok: false, message: 'Invalid URL' } }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return { ok: false, message: 'Only http:// and https:// URLs are allowed' }
+  }
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)

@@ -80,9 +80,9 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
     .where(eq(repositories.id, job.repositoryId)).limit(1)
   if (!repo) return false
 
-  const repoConfig = JSON.parse(repo.config) as RepoConfig
-  const srcConfig  = JSON.parse(job.sourceConfig) as SourceConfig
-  const paths      = srcConfig.paths ?? []
+  const cfg       = JSON.parse(repo.config) as Record<string, string>
+  const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
+  const paths     = srcConfig.paths ?? []
   if (paths.length === 0) return false
 
   const runId = crypto.randomUUID()
@@ -101,12 +101,12 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
     type:   'run_backup',
     jobId:  job.id,
     config: {
-      repoUrl:      repoConfig.repositoryUrl,
-      repoPassword: repoConfig.password,
+      repoUrl:      cfg['repositoryUrl'] ?? '',
+      repoPassword: repo.resticPassword,
       paths,
       exclude:  srcConfig.exclude,
       tags,
-      envVars:  repoConfig.envVars,
+      envVars:  cfg,
     },
   }
 
@@ -152,16 +152,16 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, job.repositoryId)).limit(1)
   if (!repo) return
 
-  const repoConfig = JSON.parse(repo.config)     as RepoConfig
-  const srcConfig  = JSON.parse(job.sourceConfig) as SourceConfig
-  const paths      = srcConfig.paths ?? []
+  const cfg       = JSON.parse(repo.config) as Record<string, string>
+  const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
+  const paths     = srcConfig.paths ?? []
   if (paths.length === 0) return
 
   try {
     const engine = new ResticEngine({
-      repositoryUrl: repoConfig.repositoryUrl,
-      password:      repoConfig.password,
-      envVars:       repoConfig.envVars ?? {},
+      repositoryUrl: cfg['repositoryUrl'] ?? '',
+      password:      repo.resticPassword,
+      envVars:       cfg,
       binaryPath:    process.env['RESTIC_BINARY_PATH'],
     })
 
