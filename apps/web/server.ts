@@ -3,7 +3,8 @@ import { parse } from 'url'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { getDb, runMigrations, agents, backupRuns, backupJobs, restoreRuns, auditLog, eq, and, desc } from '@backupos/db'
+import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
+import { ResticEngine } from '@backupos/engine'
 import { registerAgent, unregisterAgent } from './lib/ws-state'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
@@ -131,6 +132,63 @@ void app.prepare().then(() => {
             actor: agentId, detail: JSON.stringify({ snapshotId: msg.snapshotId }),
             createdAt: new Date(),
           })
+
+          // Run forget/prune using the job's retention policy (falls back to global defaults)
+          void (async () => {
+            try {
+              const [job] = await db.select().from(backupJobs)
+                .where(eq(backupJobs.id, msg.jobId)).limit(1)
+              if (!job?.repositoryId) return
+
+              const jobHasRetention = job.keepLast || job.keepDaily || job.keepWeekly || job.keepMonthly || job.keepYearly
+              let policy: { keepLast?: number; keepDaily?: number; keepWeekly?: number; keepMonthly?: number; keepYearly?: number; keepTags?: string[] } | null = null
+
+              if (jobHasRetention) {
+                policy = {
+                  keepLast:    job.keepLast    ?? undefined,
+                  keepDaily:   job.keepDaily   ?? undefined,
+                  keepWeekly:  job.keepWeekly  ?? undefined,
+                  keepMonthly: job.keepMonthly ?? undefined,
+                  keepYearly:  job.keepYearly  ?? undefined,
+                }
+              } else {
+                const [defaults] = await db.select().from(backupDefaults).limit(1).all()
+                if (defaults && (defaults.keepLast || defaults.keepDaily || defaults.keepWeekly || defaults.keepMonthly || defaults.keepYearly)) {
+                  policy = {
+                    keepLast:    defaults.keepLast    ?? undefined,
+                    keepDaily:   defaults.keepDaily   ?? undefined,
+                    keepWeekly:  defaults.keepWeekly  ?? undefined,
+                    keepMonthly: defaults.keepMonthly ?? undefined,
+                    keepYearly:  defaults.keepYearly  ?? undefined,
+                  }
+                }
+              }
+
+              if (!policy) return
+
+              const [repo] = await db.select().from(repositories)
+                .where(eq(repositories.id, job.repositoryId)).limit(1)
+              if (!repo) return
+
+              const repoConfig = JSON.parse(repo.config) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
+              const engine = new ResticEngine({
+                repositoryUrl: repoConfig.repositoryUrl,
+                password:      repoConfig.password,
+                envVars:       repoConfig.envVars ?? {},
+                binaryPath:    process.env['RESTIC_BINARY_PATH'],
+              })
+
+              const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
+              const forget = await engine.forget({ ...policy, keepTags: tags })
+
+              await db.update(backupRuns).set({
+                snapshotsRemoved: forget.removed,
+                snapshotsKept:    forget.kept,
+              }).where(eq(backupRuns.id, run.id))
+            } catch (err) {
+              console.error('[server] forget/prune failed for job', msg.jobId, err)
+            }
+          })()
 
         } else if (msg.type === 'backup_failed' && agentId) {
           const [run] = await db.select().from(backupRuns)
