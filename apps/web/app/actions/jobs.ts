@@ -130,3 +130,19 @@ export async function triggerJob(id: string): Promise<void> {
 
   redirect(`/jobs/${id}`)
 }
+
+export async function saveJobRetention(id: string, formData: FormData): Promise<void> {
+  const parse = (key: string) => {
+    const v = parseInt(formData.get(key) as string, 10)
+    return isNaN(v) || v === 0 ? null : v
+  }
+  const db = getDb()
+  await db.update(backupJobs).set({
+    keepLast:    parse('keepLast'),
+    keepDaily:   parse('keepDaily'),
+    keepWeekly:  parse('keepWeekly'),
+    keepMonthly: parse('keepMonthly'),
+    keepYearly:  parse('keepYearly'),
+  }).where(eq(backupJobs.id, id))
+  revalidatePath(`/jobs/${id}`)
+}

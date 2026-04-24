@@ -8,7 +8,7 @@ import { setJobProfile } from '@/app/actions/bandwidth'
 import { fmtLimit } from '@/lib/bandwidth'
 import { PreflightButton } from '@/components/preflight-modal'
 import { togglePreflight } from '@/app/actions/preflight'
-import { triggerJob } from '@/app/actions/jobs'
+import { triggerJob, saveJobRetention } from '@/app/actions/jobs'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -190,6 +190,58 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         )
       })()}
+
+      {/* Retention policy */}
+      <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
+          Retention policy
+        </div>
+        <form
+          action={async (fd: FormData) => { 'use server'; await saveJobRetention(id, fd) }}
+          style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}
+        >
+          {([ 'keepLast', 'keepDaily', 'keepWeekly', 'keepMonthly', 'keepYearly' ] as const).map(key => (
+            <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 11, color: 'var(--fg-mute)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {key.replace('keep', '')}
+              </span>
+              <input
+                type="number"
+                name={key}
+                min={0}
+                defaultValue={job[key] ?? ''}
+                placeholder="default"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--fg)',
+                  fontSize: 13,
+                  padding: '6px 10px',
+                  width: '100%',
+                }}
+              />
+            </label>
+          ))}
+          <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 11, color: 'var(--fg-dim)' }}>Leave blank to use global defaults</span>
+            <button
+              type="submit"
+              style={{
+                background: 'var(--accent)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 'var(--radius-sm)',
+                padding: '6px 16px',
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </form>
+      </div>
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border2)', fontSize: 14, fontWeight: 500 }}>
