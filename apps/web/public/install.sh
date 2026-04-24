@@ -45,12 +45,15 @@ if ! command -v restic &>/dev/null; then
     *)       die "Unsupported arch: $(uname -m)" ;;
   esac
   RESTIC_URL="https://github.com/restic/restic/releases/download/v${RESTIC_VER}/${RESTIC_PKG}"
+  curl -fsSL "$RESTIC_URL" -o /tmp/restic.bz2 || die "Failed to download restic"
   if command -v bunzip2 &>/dev/null; then
-    curl -fsSL "$RESTIC_URL" | bunzip2 | sudo tee /usr/local/bin/restic > /dev/null
+    bunzip2 -k /tmp/restic.bz2 && sudo mv /tmp/restic /usr/local/bin/restic
   else
-    curl -fsSL "$RESTIC_URL" | bzip2 -d | sudo tee /usr/local/bin/restic > /dev/null
+    bzip2 -d -k /tmp/restic.bz2 && sudo mv /tmp/restic /usr/local/bin/restic
   fi
+  rm -f /tmp/restic.bz2
   sudo chmod +x /usr/local/bin/restic
+  restic version &>/dev/null || die "restic installed but cannot execute — check architecture"
   log "restic installed ✓"
 fi
 
