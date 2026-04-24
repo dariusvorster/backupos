@@ -5,6 +5,7 @@ import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
+import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent } from './lib/ws-state'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
@@ -123,7 +124,11 @@ void app.prepare().then(() => {
             duration:        msg.stats.durationSeconds,
           }).where(eq(backupRuns.id, run.id))
 
-          await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'success' })
+          const [jobForNext] = await db.select({ schedule: backupJobs.schedule })
+            .from(backupJobs).where(eq(backupJobs.id, msg.jobId)).limit(1)
+          let nextRunAt: Date | undefined
+          try { nextRunAt = parseExpression(jobForNext?.schedule ?? '', { tz: 'UTC' }).next().toDate() } catch { /* invalid cron */ }
+          await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'success', ...(nextRunAt ? { nextRunAt } : {}) })
             .where(eq(backupJobs.id, msg.jobId))
 
           await db.insert(auditLog).values({

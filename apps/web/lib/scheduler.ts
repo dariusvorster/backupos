@@ -33,6 +33,7 @@ export async function initScheduler(): Promise<void> {
     }
 
     cron.schedule(job.schedule, () => { void runJob(db, job) }, { timezone: 'UTC' })
+    void stampNextRun(db, job.id, job.schedule)
     console.log(`[scheduler] Scheduled "${job.name}" (${job.schedule})`)
   }
 
@@ -47,6 +48,21 @@ export async function initScheduler(): Promise<void> {
 
 type Db = ReturnType<typeof getDb>
 type Job = typeof backupJobs.$inferSelect
+
+function nextRunDate(schedule: string): Date | null {
+  try {
+    return parseExpression(schedule, { tz: 'UTC' }).next().toDate()
+  } catch {
+    return null
+  }
+}
+
+async function stampNextRun(db: Db, jobId: string, schedule: string): Promise<void> {
+  const next = nextRunDate(schedule)
+  if (next) {
+    await db.update(backupJobs).set({ nextRunAt: next }).where(eq(backupJobs.id, jobId))
+  }
+}
 
 // executeRun performs local restic execution for an already-inserted backupRun row.
 // Called by both the scheduler (runJob) and manual triggers (triggerJob server action).
@@ -196,14 +212,16 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
       }).where(eq(backupRuns.id, runId))
     }
 
-    await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'success' })
+    const nextRun = nextRunDate(job.schedule)
+    await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'success', ...(nextRun ? { nextRunAt: nextRun } : {}) })
       .where(eq(backupJobs.id, job.id))
 
   } catch (err) {
     const errorMessage = String(err)
     await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage })
       .where(eq(backupRuns.id, runId))
-    await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'failed' })
+    const nextRun = nextRunDate(job.schedule)
+    await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'failed', ...(nextRun ? { nextRunAt: nextRun } : {}) })
       .where(eq(backupJobs.id, job.id))
     await sendAlert('backup_failed', { jobId: job.id, jobName: job.name, error: errorMessage })
   }
