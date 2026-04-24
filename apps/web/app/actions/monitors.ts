@@ -2,8 +2,42 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, backupMonitors, monitorResults, eq } from '@backupos/db'
-import { MONITOR_REGISTRY, type MonitorConfig } from '@backupos/monitors'
+import { getDb, backupMonitors, monitorResults, repositories, eq } from '@backupos/db'
+import { MONITOR_REGISTRY, type MonitorConfig, type PBSConfig } from '@backupos/monitors'
+
+export async function promoteMonitorToRepo(monitorId: string, formData: FormData): Promise<void> {
+  const password = (formData.get('password') as string)?.trim()
+  if (!password) return
+
+  const db = getDb()
+  const [monitor] = await db.select().from(backupMonitors).where(eq(backupMonitors.id, monitorId)).limit(1)
+  if (!monitor || monitor.type !== 'proxmox_pbs') return
+
+  const pbsCfg = JSON.parse(monitor.config) as PBSConfig
+  // Build the Restic REST URL pointing at the PBS REST API
+  const repoUrl = `rest:${pbsCfg.url}/${pbsCfg.datastore}/`
+
+  const config = {
+    repositoryUrl:         repoUrl,
+    password,
+    envVars: {
+      RESTIC_REST_USERNAME: pbsCfg.tokenId,
+      RESTIC_REST_PASSWORD: pbsCfg.tokenSecret,
+    },
+  }
+
+  const id = crypto.randomUUID()
+  await db.insert(repositories).values({
+    id,
+    name:           `${monitor.name} (PBS)`,
+    backend:        'rest',
+    config:         JSON.stringify(config),
+    resticPassword: password,
+    createdAt:      new Date(),
+  })
+
+  redirect(`/repositories/${id}`)
+}
 
 export async function createMonitor(formData: FormData): Promise<void> {
   const name   = (formData.get('name')   as string)?.trim()

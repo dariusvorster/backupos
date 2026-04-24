@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { getDb, backupMonitors, monitorResults } from '@backupos/db'
+import { getDb, backupMonitors, monitorResults, repositories } from '@backupos/db'
 import { eq, desc } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -64,18 +64,17 @@ export default async function MonitorDetailPage({ params }: { params: Promise<{ 
               Import this PBS datastore as a native Restic repository so BackupOS can schedule and verify backups directly.
             </div>
           </div>
-          <button
-            disabled
-            title="Coming soon"
+          <Link
+            href={`/monitors/${id}/promote`}
             style={{
               padding: '7px 16px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
-              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-              background: 'var(--surf2)', color: 'var(--fg-dim)', cursor: 'not-allowed',
-              opacity: 0.6,
+              borderRadius: 'var(--radius-sm)', border: 'none',
+              background: 'var(--accent)', color: '#fff', textDecoration: 'none',
+              display: 'inline-block',
             }}
           >
             Promote →
-          </button>
+          </Link>
         </div>
       )}
 
