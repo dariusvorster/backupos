@@ -37,6 +37,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@backupos/agent": "workspace:*",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.0",

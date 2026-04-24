@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import WebSocket from 'ws'
 import * as os from 'os'
 import { ResticEngine } from '@backupos/engine'
