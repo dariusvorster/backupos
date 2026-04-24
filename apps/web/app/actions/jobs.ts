@@ -2,7 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, backupJobs, backupRuns, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
+import { dispatch, connectedAgentIds } from '@/lib/ws-state'
 
 export async function createJob(formData: FormData): Promise<void> {
   const name           = (formData.get('name')           as string)?.trim()
@@ -79,18 +80,53 @@ async function resolveBandwidthLimitKbps(db: ReturnType<typeof getDb>, jobId: st
 }
 
 export async function triggerJob(id: string): Promise<void> {
-  const db               = getDb()
-  const now              = new Date()
+  const db  = getDb()
+  const now = new Date()
+
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, id)).limit(1)
+  if (!job || !job.repositoryId) { redirect(`/jobs/${id}`) }
+
   const bandwidthLimitKbps = await resolveBandwidthLimitKbps(db, id)
+  const runId = crypto.randomUUID()
 
   await db.insert(backupRuns).values({
-    id:        crypto.randomUUID(),
-    jobId:     id,
-    status:    'running',
-    trigger:   'manual',
-    startedAt: now,
+    id:           runId,
+    jobId:        id,
+    repositoryId: job.repositoryId,
+    agentId:      job.agentId ?? null,
+    status:       'running',
+    trigger:      'manual',
+    startedAt:    now,
     bandwidthLimitKbps,
   })
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, id))
+
+  if (job.agentId && connectedAgentIds().includes(job.agentId)) {
+    const [repo] = await db.select().from(repositories)
+      .where(eq(repositories.id, job.repositoryId!)).limit(1)
+
+    if (repo) {
+      const repoConfig = JSON.parse(repo.config) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
+      const srcConfig  = JSON.parse(job.sourceConfig) as { paths?: string[]; exclude?: string[] }
+      const tags       = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${id}`]
+
+      dispatch(job.agentId, {
+        type:   'run_backup',
+        jobId:  id,
+        config: {
+          repoUrl:      repoConfig.repositoryUrl,
+          repoPassword: repoConfig.password,
+          paths:        srcConfig.paths ?? [],
+          exclude:      srcConfig.exclude,
+          tags,
+          envVars:      repoConfig.envVars,
+        },
+      })
+    }
+  } else {
+    // No connected agent — run locally in a detached promise
+    void import('@/lib/scheduler').then(({ executeRun }) => executeRun(id, runId))
+  }
+
   redirect(`/jobs/${id}`)
 }

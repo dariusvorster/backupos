@@ -1,0 +1,24 @@
+{
+  "name": "@backupos/agent",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/agent.js",
+  "bin": {
+    "backupos-agent": "./dist/agent.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/agent.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@backupos/agent-protocol": "workspace:*",
+    "@backupos/engine": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.0"
+  }
+}

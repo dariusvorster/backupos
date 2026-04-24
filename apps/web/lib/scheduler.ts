@@ -3,6 +3,8 @@ import { parseExpression } from 'cron-parser'
 import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq, and, lt } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
+import { dispatch, connectedAgentIds } from './ws-state'
+import type { ServerMessage } from '@backupos/agent-protocol'
 
 interface RepoConfig {
   repositoryUrl: string
@@ -46,20 +48,75 @@ export async function initScheduler(): Promise<void> {
 type Db = ReturnType<typeof getDb>
 type Job = typeof backupJobs.$inferSelect
 
+// executeRun performs local restic execution for an already-inserted backupRun row.
+// Called by both the scheduler (runJob) and manual triggers (triggerJob server action).
+export async function executeRun(jobId: string, runId: string): Promise<void> {
+  const db = getDb()
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (!job || !job.repositoryId) return
+  await runJobCore(db, job, runId)
+}
+
+async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
+  if (!job.agentId || !job.repositoryId) return false
+
+  const [repo] = await db.select().from(repositories)
+    .where(eq(repositories.id, job.repositoryId)).limit(1)
+  if (!repo) return false
+
+  const repoConfig = JSON.parse(repo.config) as RepoConfig
+  const srcConfig  = JSON.parse(job.sourceConfig) as SourceConfig
+  const paths      = srcConfig.paths ?? []
+  if (paths.length === 0) return false
+
+  const runId = crypto.randomUUID()
+  const now   = new Date()
+
+  await db.insert(backupRuns).values({
+    id: runId, jobId: job.id, repositoryId: job.repositoryId,
+    agentId: job.agentId, status: 'running', trigger: 'scheduled', startedAt: now,
+  })
+
+  await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, job.id))
+
+  const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
+
+  const msg: ServerMessage = {
+    type:   'run_backup',
+    jobId:  job.id,
+    config: {
+      repoUrl:      repoConfig.repositoryUrl,
+      repoPassword: repoConfig.password,
+      paths,
+      exclude:  srcConfig.exclude,
+      tags,
+      envVars:  repoConfig.envVars,
+    },
+  }
+
+  const sent = dispatch(job.agentId, msg)
+  if (!sent) {
+    await db.update(backupRuns).set({
+      status: 'failed', completedAt: now,
+      errorMessage: 'Agent disconnected before dispatch',
+    }).where(eq(backupRuns.id, runId))
+    return false
+  }
+
+  console.log(`[scheduler] Dispatched job "${job.name}" to agent ${job.agentId}`)
+  return true
+}
+
 async function runJob(db: Db, job: Job): Promise<void> {
   if (!job.repositoryId) return
 
-  const [repo] = await db.select().from(repositories).where(eq(repositories.id, job.repositoryId)).limit(1)
-  if (!repo) return
+  // Prefer agent execution when one is assigned and currently connected
+  if (job.agentId && connectedAgentIds().includes(job.agentId)) {
+    const dispatched = await dispatchToAgent(db, job)
+    if (dispatched) return
+  }
 
-  const repoConfig  = JSON.parse(repo.config)    as RepoConfig
-  const srcConfig   = JSON.parse(job.sourceConfig) as SourceConfig
-  const paths       = srcConfig.paths ?? []
-  if (paths.length === 0) return
-
-  const runId     = crypto.randomUUID()
-  const startedAt = new Date()
-
+  const runId = crypto.randomUUID()
   await db.insert(backupRuns).values({
     id:           runId,
     jobId:        job.id,
@@ -67,8 +124,22 @@ async function runJob(db: Db, job: Job): Promise<void> {
     agentId:      job.agentId ?? null,
     status:       'running',
     trigger:      'scheduled',
-    startedAt,
+    startedAt:    new Date(),
   })
+  await runJobCore(db, job, runId)
+}
+
+// Core local backup execution — updates an existing backupRun row identified by runId.
+async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
+  if (!job.repositoryId) return
+
+  const [repo] = await db.select().from(repositories).where(eq(repositories.id, job.repositoryId)).limit(1)
+  if (!repo) return
+
+  const repoConfig = JSON.parse(repo.config)     as RepoConfig
+  const srcConfig  = JSON.parse(job.sourceConfig) as SourceConfig
+  const paths      = srcConfig.paths ?? []
+  if (paths.length === 0) return
 
   try {
     const engine = new ResticEngine({
@@ -117,32 +188,23 @@ async function runJob(db: Db, job: Job): Promise<void> {
         })()
 
     if (retentionPolicy) {
-      const forgetResult = await engine.forget({ ...retentionPolicy, keepTags: tags })
+      const tags2  = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
+      const forget = await engine.forget({ ...retentionPolicy, keepTags: tags2 })
       await db.update(backupRuns).set({
-        snapshotsRemoved: forgetResult.removed,
-        snapshotsKept:    forgetResult.kept,
+        snapshotsRemoved: forget.removed,
+        snapshotsKept:    forget.kept,
       }).where(eq(backupRuns.id, runId))
     }
 
-    await db.update(backupJobs).set({
-      lastRunAt:     new Date(),
-      lastRunStatus: 'success',
-    }).where(eq(backupJobs.id, job.id))
+    await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'success' })
+      .where(eq(backupJobs.id, job.id))
 
   } catch (err) {
     const errorMessage = String(err)
-
-    await db.update(backupRuns).set({
-      status:       'failed',
-      completedAt:  new Date(),
-      errorMessage,
-    }).where(eq(backupRuns.id, runId))
-
-    await db.update(backupJobs).set({
-      lastRunAt:     new Date(),
-      lastRunStatus: 'failed',
-    }).where(eq(backupJobs.id, job.id))
-
+    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage })
+      .where(eq(backupRuns.id, runId))
+    await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'failed' })
+      .where(eq(backupJobs.id, job.id))
     await sendAlert('backup_failed', { jobId: job.id, jobName: job.name, error: errorMessage })
   }
 }
