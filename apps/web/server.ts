@@ -9,7 +9,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect } from './lib/ws-state'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
 
@@ -48,7 +48,26 @@ const BUNDLE_HASH = getBundleHash()
 
 void app.prepare().then(() => {
   const server = createServer((req, res) => {
-    void handle(req, res, parse(req.url!, true))
+    const parsed = parse(req.url!, true)
+
+    // Handle agent-detect directly so it shares the same ws-state singleton as the WS handler
+    const detectMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/detect$/)
+    if (req.method === 'POST' && detectMatch) {
+      const agentId = detectMatch[1]!
+      requestDetect(agentId)
+        .then(resources => {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify(resources))
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : 'Detection failed'
+          res.writeHead(503, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: message }))
+        })
+      return
+    }
+
+    void handle(req, res, parsed)
   })
 
   const wss = new WebSocketServer({ noServer: true })
