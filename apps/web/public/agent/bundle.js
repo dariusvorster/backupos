@@ -297,7 +297,10 @@ async function detectResources() {
       const device = parts[0];
       const mp = parts[1];
       if (!mp) continue;
-      if (
+      const skip = mp.startsWith('/snap/') || mp.startsWith('/var/lib/docker') ||
+        mp.startsWith('/sys') || mp.startsWith('/proc') || mp.startsWith('/dev') ||
+        mp.startsWith('/run') || mp.startsWith('/tmp');
+      if (!skip && (
         (device && device.startsWith('/dev/')) ||
         mp === '/' ||
         mp.startsWith('/home') ||
@@ -306,7 +309,7 @@ async function detectResources() {
         mp.startsWith('/mnt') ||
         mp.startsWith('/media') ||
         mp.startsWith('/srv')
-      ) {
+      )) {
         interesting.add(mp);
       }
     }
