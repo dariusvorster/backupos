@@ -38,21 +38,29 @@ log "Node.js $(node --version) ✓"
 # ── 2. restic ─────────────────────────────────────────────────────────────────
 if ! command -v restic &>/dev/null; then
   log "Installing restic..."
-  RESTIC_VER="0.17.3"
-  case "$(uname -m)" in
-    x86_64)  RESTIC_PKG="restic_${RESTIC_VER}_linux_amd64.bz2" ;;
-    aarch64) RESTIC_PKG="restic_${RESTIC_VER}_linux_arm64.bz2" ;;
-    *)       die "Unsupported arch: $(uname -m)" ;;
-  esac
-  RESTIC_URL="https://github.com/restic/restic/releases/download/v${RESTIC_VER}/${RESTIC_PKG}"
-  curl -fsSL "$RESTIC_URL" -o /tmp/restic.bz2 || die "Failed to download restic"
-  if command -v bunzip2 &>/dev/null; then
-    bunzip2 -k /tmp/restic.bz2 && sudo mv /tmp/restic /usr/local/bin/restic
+  if command -v apt-get &>/dev/null; then
+    sudo apt-get install -y restic
+  elif command -v yum &>/dev/null; then
+    sudo yum install -y restic
   else
-    bzip2 -d -k /tmp/restic.bz2 && sudo mv /tmp/restic /usr/local/bin/restic
+    RESTIC_VER="0.17.3"
+    case "$(uname -m)" in
+      x86_64)  RESTIC_PKG="restic_${RESTIC_VER}_linux_amd64.bz2" ;;
+      aarch64) RESTIC_PKG="restic_${RESTIC_VER}_linux_arm64.bz2" ;;
+      *)       die "Unsupported arch: $(uname -m)" ;;
+    esac
+    RESTIC_URL="https://github.com/restic/restic/releases/download/v${RESTIC_VER}/${RESTIC_PKG}"
+    curl -fsSL "$RESTIC_URL" -o /tmp/restic.bz2 || die "Failed to download restic"
+    if command -v bunzip2 &>/dev/null; then
+      bunzip2 -k /tmp/restic.bz2 && sudo mv /tmp/restic /usr/local/bin/restic
+    elif command -v bzip2 &>/dev/null; then
+      bzip2 -d -k /tmp/restic.bz2 && sudo mv /tmp/restic /usr/local/bin/restic
+    else
+      die "No bzip2/bunzip2 found — install bzip2 and re-run"
+    fi
+    rm -f /tmp/restic.bz2
+    sudo chmod +x /usr/local/bin/restic
   fi
-  rm -f /tmp/restic.bz2
-  sudo chmod +x /usr/local/bin/restic
   restic version &>/dev/null || die "restic installed but cannot execute — check architecture"
   log "restic installed ✓"
 fi
