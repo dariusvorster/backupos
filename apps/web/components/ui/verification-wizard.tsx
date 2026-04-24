@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
+import { createVerificationTest } from '@/app/actions/verification'
 
 interface Job { id: string; name: string }
 
@@ -23,6 +24,7 @@ export function VerificationWizard({ jobs }: Props) {
   const [validationHook, setValidationHook] = useState('')
   const [testName,       setTestName]       = useState('')
   const [schedule,       setSchedule]       = useState('0 3 * * 0')
+  const [submitting,     startSubmit]       = useTransition()
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '8px 12px',
@@ -209,8 +211,15 @@ export function VerificationWizard({ jobs }: Props) {
                 Continue
               </Button>
             ) : (
-              <Button variant="primary" size="md">
-                Create test
+              <Button
+                variant="primary"
+                size="md"
+                disabled={submitting || !testName}
+                onClick={() => startSubmit(() => createVerificationTest({
+                  name: testName, jobId, targetType, validationHook, schedule,
+                }))}
+              >
+                {submitting ? 'Creating…' : 'Create test'}
               </Button>
             )}
           </div>

@@ -142,6 +142,9 @@ export const backupRuns = sqliteTable('backup_runs', {
   // Retention (set after forget runs; null means no retention policy was configured)
   snapshotsRemoved: integer('snapshots_removed'),
   snapshotsKept:    integer('snapshots_kept'),
+
+  // Resolved at trigger time — agent applies this limit (null = unlimited)
+  bandwidthLimitKbps: integer('bandwidth_limit_kbps'),
 }, t => ({
   jobIdIdx:     index('backup_runs_job_id_idx').on(t.jobId),
   startedAtIdx: index('backup_runs_started_at_idx').on(t.startedAt),

@@ -1,7 +1,33 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { getDb, verificationTests, verificationRuns, eq } from '@backupos/db'
+
+export async function createVerificationTest(data: {
+  name: string
+  jobId: string
+  targetType: string
+  validationHook: string
+  schedule: string
+}): Promise<void> {
+  const { name, jobId, targetType, validationHook, schedule } = data
+  if (!name || !jobId || !targetType || !schedule) return
+
+  const db = getDb()
+  const id = crypto.randomUUID()
+  await db.insert(verificationTests).values({
+    id,
+    name,
+    jobId,
+    targetType,
+    validationHook: validationHook || null,
+    schedule,
+    enabled:   true,
+    createdAt: new Date(),
+  })
+  redirect(`/verification/${id}`)
+}
 
 export async function runVerification(testId: string): Promise<void> {
   const db    = getDb()

@@ -38,7 +38,22 @@ export default async function MonitorsPage({
 
   return (
     <div>
-      <PageHeader title="Monitors" />
+      <PageHeader
+        title="Monitors"
+        action={
+          <Link
+            href="/monitors/new"
+            style={{
+              padding: '7px 16px', fontSize: 13, fontWeight: 500,
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--accent)', color: '#fff',
+              textDecoration: 'none', display: 'inline-block',
+            }}
+          >
+            Add monitor
+          </Link>
+        }
+      />
 
       <GroupFilter groups={groups} />
 

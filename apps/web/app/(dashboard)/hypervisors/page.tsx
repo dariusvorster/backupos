@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { SyncButton } from './sync-button'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -62,7 +63,10 @@ export default async function HypervisorsPage() {
                       {integration.type} · {vmList.length} VMs/LXCs
                     </div>
                   </div>
-                  <Badge status={integrationBadge(integration.status)} label={integration.status ?? 'unknown'} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Badge status={integrationBadge(integration.status)} label={integration.status ?? 'unknown'} />
+                    <SyncButton integrationId={integration.id} />
+                  </div>
                 </div>
 
                 {vmList.length > 0 && (

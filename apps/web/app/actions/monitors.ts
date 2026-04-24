@@ -1,8 +1,52 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { getDb, backupMonitors, monitorResults, eq } from '@backupos/db'
 import { MONITOR_REGISTRY, type MonitorConfig } from '@backupos/monitors'
+
+export async function createMonitor(formData: FormData): Promise<void> {
+  const name   = (formData.get('name')   as string)?.trim()
+  const type   = (formData.get('type')   as string)
+  const url    = (formData.get('url')    as string)?.trim()
+  const apiKey = (formData.get('apiKey') as string)?.trim() || null
+  const group  = (formData.get('group')  as string)?.trim() || null
+
+  if (!name || !type || !url) return
+
+  const db = getDb()
+  const id = crypto.randomUUID()
+  await db.insert(backupMonitors).values({
+    id,
+    name,
+    type,
+    group,
+    config:    JSON.stringify({ url, apiKey }),
+    status:    'unknown',
+    createdAt: new Date(),
+  })
+  redirect(`/monitors/${id}`)
+}
+
+export async function testMonitorConnection(url: string): Promise<{ ok: boolean; message: string }> {
+  if (!url) return { ok: false, message: 'No URL provided' }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 5000)
+
+  try {
+    const res = await fetch(url, { method: 'GET', signal: controller.signal })
+    clearTimeout(timer)
+    return { ok: res.ok, message: `HTTP ${res.status} ${res.statusText}` }
+  } catch (err: unknown) {
+    clearTimeout(timer)
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.toLowerCase().includes('abort')) {
+      return { ok: false, message: 'Connection timed out after 5s' }
+    }
+    return { ok: false, message: msg }
+  }
+}
 
 export async function syncMonitor(monitorId: string): Promise<{ ok: boolean; error?: string }> {
   const db      = getDb()

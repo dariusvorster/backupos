@@ -96,6 +96,9 @@ importers:
       '@backupos/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@backupos/hypervisors':
+        specifier: workspace:*
+        version: link:../../packages/hypervisors
       '@backupos/monitors':
         specifier: workspace:*
         version: link:../../packages/monitors

@@ -15,6 +15,7 @@
     "@backupos/db": "workspace:*",
     "@backupos/docs-content": "workspace:*",
     "@backupos/engine": "workspace:*",
+    "@backupos/hypervisors": "workspace:*",
     "@backupos/monitors": "workspace:*",
     "@backupos/restore": "workspace:*",
     "@trpc/client": "^11.0.0",

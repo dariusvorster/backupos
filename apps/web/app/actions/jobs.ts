@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, backupJobs, backupRuns, eq, inArray } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
 
 export async function createJob(formData: FormData): Promise<void> {
   const name           = (formData.get('name')           as string)?.trim()
@@ -53,7 +53,44 @@ export async function deleteJobs(ids: string[]): Promise<void> {
   revalidatePath('/jobs')
 }
 
-export async function triggerJob(_id: string): Promise<void> {
-  // Stub — agent triggering not yet implemented
-  revalidatePath('/jobs')
+async function resolveBandwidthLimitKbps(db: ReturnType<typeof getDb>, jobId: string): Promise<number | null> {
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (!job) return null
+
+  let profileId = job.bandwidthProfileId
+  if (!profileId) {
+    const [global] = await db.select().from(bandwidthProfiles).where(eq(bandwidthProfiles.isGlobal, true)).limit(1)
+    profileId = global?.id ?? null
+  }
+  if (!profileId) return null
+
+  const currentHour = new Date().getHours()
+  const [rule] = await db
+    .select()
+    .from(bandwidthRules)
+    .where(and(
+      eq(bandwidthRules.profileId, profileId),
+      lte(bandwidthRules.startHour, currentHour),
+      gte(bandwidthRules.endHour,   currentHour),
+    ))
+    .limit(1)
+
+  return rule?.limitKbps ?? null
+}
+
+export async function triggerJob(id: string): Promise<void> {
+  const db               = getDb()
+  const now              = new Date()
+  const bandwidthLimitKbps = await resolveBandwidthLimitKbps(db, id)
+
+  await db.insert(backupRuns).values({
+    id:        crypto.randomUUID(),
+    jobId:     id,
+    status:    'running',
+    trigger:   'manual',
+    startedAt: now,
+    bandwidthLimitKbps,
+  })
+  await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, id))
+  redirect(`/jobs/${id}`)
 }
