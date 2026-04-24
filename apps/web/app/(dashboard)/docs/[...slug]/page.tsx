@@ -3,8 +3,7 @@ import { join, resolve }            from 'path'
 import { notFound }                 from 'next/navigation'
 import { MDXRemote }                from 'next-mdx-remote/rsc'
 import { getMdxComponents }         from '../mdx-components'
-
-const DOCS_ROOT = resolve(process.cwd(), '../../packages/docs-content/content')
+import { DOCS_ROOT }                from '@backupos/docs-content'
 
 export default async function DocsPage({
   params,
