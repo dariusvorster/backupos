@@ -3,7 +3,23 @@ import { join, resolve }            from 'path'
 import { notFound }                 from 'next/navigation'
 import { MDXRemote }                from 'next-mdx-remote/rsc'
 import { getMdxComponents }         from '../mdx-components'
-import { DOCS_ROOT }                from '@backupos/docs-content'
+
+// Try candidates in order — works regardless of cwd or bundle location
+function findDocsRoot(): string {
+  const candidates = [
+    process.env.DOCS_CONTENT_ROOT,
+    join(process.cwd(), '../../packages/docs-content/content'),
+    join(process.cwd(), 'packages/docs-content/content'),
+    join(process.cwd(), '../packages/docs-content/content'),
+  ].filter(Boolean) as string[]
+
+  for (const c of candidates) {
+    if (existsSync(c)) return c
+  }
+  throw new Error(`docs content not found (cwd=${process.cwd()})`)
+}
+
+const DOCS_ROOT = findDocsRoot()
 
 export default async function DocsPage({
   params,
