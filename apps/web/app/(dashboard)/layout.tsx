@@ -1,6 +1,3 @@
-// apps/web/app/(dashboard)/layout.tsx
-export const dynamic = 'force-dynamic'
-
 import { redirect }               from 'next/navigation'
 import { Sidebar }                from '@/components/sidebar'
 import { getCurrentUser }         from '@/lib/user'
@@ -10,31 +7,38 @@ import { DrModeOverlay }          from '@/components/dr-mode-overlay'
 import { CommandPaletteProvider } from '@/components/command-palette-provider'
 import { CommandPalette }         from '@/components/command-palette'
 import { FaviconManager }         from '@/components/favicon-manager'
+import { unstable_cache }         from 'next/cache'
 import {
   getDb, backupJobs, backupRuns,
   eq, and, gte,
 } from '@backupos/db'
 
+const getLayoutData = unstable_cache(
+  async () => {
+    const db       = getDb()
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const [failedRuns, jobs] = await Promise.all([
+      db.select({ id: backupRuns.id })
+        .from(backupRuns)
+        .where(and(eq(backupRuns.status, 'failed'), gte(backupRuns.startedAt, since24h)))
+        .limit(1)
+        .all(),
+      db.select({ id: backupJobs.id, name: backupJobs.name })
+        .from(backupJobs)
+        .where(eq(backupJobs.enabled, true))
+        .all(),
+    ])
+    return { hasFailed24h: failedRuns.length > 0, jobs }
+  },
+  ['dashboard-layout'],
+  { revalidate: 30 },
+)
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const db       = getDb()
-  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
-
-  const [failedRuns, jobs] = await Promise.all([
-    db.select({ id: backupRuns.id })
-      .from(backupRuns)
-      .where(and(eq(backupRuns.status, 'failed'), gte(backupRuns.startedAt, since24h)))
-      .limit(1)
-      .all(),
-    db.select({ id: backupJobs.id, name: backupJobs.name })
-      .from(backupJobs)
-      .where(eq(backupJobs.enabled, true))
-      .all(),
-  ])
-
-  const hasFailed24h = failedRuns.length > 0
-
   const currentUser = await getCurrentUser()
   if (!currentUser) redirect('/login')
+
+  const { hasFailed24h, jobs } = await getLayoutData()
 
   const sidebarUser = {
     name:  currentUser.name,
