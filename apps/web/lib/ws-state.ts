@@ -21,3 +21,36 @@ export function dispatch(agentId: string, msg: object): boolean {
 export function connectedAgentIds(): string[] {
   return [...connections.keys()]
 }
+
+export interface DetectedResources {
+  dockerVolumes?: string[]
+  mountPoints?:   string[]
+  databases?:     Array<{ type: string; host: string; port: number }>
+}
+
+const pendingDetects = new Map<string, (r: DetectedResources) => void>()
+
+export function requestDetect(agentId: string): Promise<DetectedResources> {
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID()
+    const timer = setTimeout(() => {
+      pendingDetects.delete(requestId)
+      reject(new Error('Agent did not respond in time'))
+    }, 15_000)
+    pendingDetects.set(requestId, (result) => {
+      clearTimeout(timer)
+      pendingDetects.delete(requestId)
+      resolve(result)
+    })
+    const sent = dispatch(agentId, { type: 'list_resources', requestId })
+    if (!sent) {
+      clearTimeout(timer)
+      pendingDetects.delete(requestId)
+      reject(new Error('Agent not connected'))
+    }
+  })
+}
+
+export function resolveDetect(requestId: string, result: DetectedResources): void {
+  pendingDetects.get(requestId)?.(result)
+}

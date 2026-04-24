@@ -6,7 +6,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect } from './lib/ws-state'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
 
@@ -219,6 +219,9 @@ void app.prepare().then(() => {
           const [job] = await db.select({ name: backupJobs.name }).from(backupJobs)
             .where(eq(backupJobs.id, msg.jobId)).limit(1)
           await sendAlert('backup_failed', { jobId: msg.jobId, jobName: job?.name ?? 'unknown', error: msg.error })
+
+        } else if (msg.type === 'resources_result') {
+          resolveDetect(msg.requestId as string, msg.resources as never)
 
         } else if (msg.type === 'restore_complete' && agentId) {
           await db.update(restoreRuns).set({

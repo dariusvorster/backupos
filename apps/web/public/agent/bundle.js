@@ -6,7 +6,7 @@ const { hostname, networkInterfaces, release, homedir } = require('node:os');
 const { join } = require('node:path');
 
 // ── executor ─────────────────────────────────────────────────────────────────
-const ALLOWED_COMMANDS = ['restic', 'systemctl', 'df', 'hostname', 'uname'];
+const ALLOWED_COMMANDS = ['restic', 'systemctl', 'df', 'hostname', 'uname', 'docker', 'ss', 'netstat'];
 
 function execAllowed(cmd, args, env) {
   if (!ALLOWED_COMMANDS.includes(cmd)) {
@@ -165,6 +165,9 @@ function startAgent(config) {
         metricsTimer = setInterval(() => { sendMetrics().catch(console.error); }, METRICS_INTERVAL_MS);
       } else if (msg.type === 'run_backup') {
         await handleBackup(msg.jobId, msg.config, send);
+      } else if (msg.type === 'list_resources') {
+        const resources = await detectResources();
+        send({ type: 'resources_result', requestId: msg.requestId, resources });
       } else if (msg.type === 'cancel_backup') {
         console.warn('[agent] cancel_backup not implemented for jobId=' + msg.jobId);
       } else if (msg.type === 'verify_repo') {
@@ -187,6 +190,60 @@ function startAgent(config) {
   }
 
   connect();
+}
+
+async function detectResources() {
+  const resources = {};
+
+  // Docker volumes
+  try {
+    const r = spawnSync('docker', ['volume', 'ls', '--format', '{{.Name}}'], { encoding: 'utf-8' });
+    if (r.status === 0) {
+      resources.dockerVolumes = r.stdout.split('\n').map(s => s.trim()).filter(Boolean);
+    }
+  } catch (_) {}
+
+  // Filesystem mount points (real block devices + bind mounts under /home, /var, /data, /mnt, /media)
+  try {
+    const mounts = readFileSync('/proc/mounts', 'utf-8');
+    const interesting = new Set();
+    for (const line of mounts.split('\n')) {
+      const [device, mp] = line.split(' ');
+      if (!mp) continue;
+      if (
+        (device && device.startsWith('/dev/')) ||
+        mp === '/' ||
+        mp.startsWith('/home') ||
+        mp.startsWith('/var') ||
+        mp.startsWith('/data') ||
+        mp.startsWith('/mnt') ||
+        mp.startsWith('/media') ||
+        mp.startsWith('/srv')
+      ) {
+        interesting.add(mp);
+      }
+    }
+    resources.mountPoints = [...interesting].sort();
+  } catch (_) {}
+
+  // Running databases (check well-known ports via ss)
+  try {
+    const r = spawnSync('ss', ['-tlnp'], { encoding: 'utf-8' });
+    const DB_PORTS = { 5432: 'postgresql', 3306: 'mysql', 6379: 'redis', 27017: 'mongodb', 1433: 'mssql' };
+    const dbs = [];
+    if (r.status === 0) {
+      for (const line of r.stdout.split('\n')) {
+        for (const [port, type] of Object.entries(DB_PORTS)) {
+          if (line.includes(':' + port + ' ') || line.includes(':' + port + '\t')) {
+            dbs.push({ type, host: 'localhost', port: Number(port) });
+          }
+        }
+      }
+    }
+    if (dbs.length) resources.databases = dbs;
+  } catch (_) {}
+
+  return resources;
 }
 
 async function handleBackup(jobId, jobConfig, send) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 
 const SOURCE_TYPES = [
   { value: 'filesystem',     label: 'Filesystem',      desc: 'Directories and files on the agent host' },
@@ -28,16 +28,57 @@ const hintStyle: React.CSSProperties = {
 
 type Cfg = Record<string, unknown>
 
-function FilesystemFields({ cfg }: { cfg: Cfg }) {
+interface DetectedResources {
+  dockerVolumes?: string[]
+  mountPoints?:   string[]
+  databases?:     Array<{ type: string; host: string; port: number }>
+}
+
+function DetectButton({ label, onDetect, loading }: {
+  label: string
+  onDetect: () => void
+  loading: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onDetect}
+      disabled={loading}
+      style={{
+        fontSize: 11, padding: '3px 10px', cursor: loading ? 'wait' : 'pointer',
+        borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+        background: 'var(--surf2)', color: 'var(--fg-mute)',
+      }}
+    >
+      {loading ? 'Detecting…' : `Detect ${label}`}
+    </button>
+  )
+}
+
+function FilesystemFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedResources }) {
+  const mounts = detected?.mountPoints
   return (
     <div style={{ marginTop: 16 }}>
       <label style={labelStyle}>Paths to back up</label>
+      {mounts && mounts.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          {mounts.map(mp => (
+            <span key={mp} style={{
+              fontSize: 11, padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+              background: 'var(--surf2)', border: '1px solid var(--border)', fontFamily: 'var(--font-mono)',
+              color: 'var(--fg-mute)',
+            }}>{mp}</span>
+          ))}
+          <span style={{ fontSize: 11, color: 'var(--fg-dim)', alignSelf: 'center' }}>detected</span>
+        </div>
+      )}
       <textarea
         name="paths"
         rows={4}
-        defaultValue={(cfg.paths as string[] | undefined)?.join('\n') ?? ''}
+        defaultValue={(cfg.paths as string[] | undefined)?.join('\n') ?? (mounts?.join('\n') ?? '')}
         placeholder={'/home/user\n/var/www\n/etc/nginx'}
         style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
+        key={mounts?.join(',') ?? 'paths'}
       />
       <p style={hintStyle}>One path per line. Absolute paths only.</p>
       <label style={{ ...labelStyle, marginTop: 12 }}>Exclude patterns (optional)</label>
@@ -53,32 +94,61 @@ function FilesystemFields({ cfg }: { cfg: Cfg }) {
   )
 }
 
-function DockerVolumeFields({ cfg }: { cfg: Cfg }) {
+function DockerVolumeFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedResources }) {
+  const volumes = detected?.dockerVolumes
   return (
     <div style={{ marginTop: 16 }}>
       <label style={labelStyle}>Volume names</label>
+      {volumes && volumes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          {volumes.map(v => (
+            <span key={v} style={{
+              fontSize: 11, padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+              background: 'var(--surf2)', border: '1px solid var(--border)', fontFamily: 'var(--font-mono)',
+              color: 'var(--fg-mute)',
+            }}>{v}</span>
+          ))}
+          <span style={{ fontSize: 11, color: 'var(--fg-dim)', alignSelf: 'center' }}>detected</span>
+        </div>
+      )}
       <textarea
         name="volumes"
         rows={3}
-        defaultValue={(cfg.volumes as string[] | undefined)?.join('\n') ?? ''}
+        defaultValue={(cfg.volumes as string[] | undefined)?.join('\n') ?? (volumes?.join('\n') ?? '')}
         placeholder={'postgres_data\nredis_data'}
         style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
+        key={volumes?.join(',') ?? 'volumes'}
       />
       <p style={hintStyle}>One Docker volume name per line.</p>
     </div>
   )
 }
 
-function DatabaseFields({ cfg }: { cfg: Cfg }) {
+function DatabaseFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedResources }) {
+  const detectedDb = detected?.databases?.[0]
   return (
     <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      {detected?.databases && detected.databases.length > 0 && (
+        <div style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {detected.databases.map((db, i) => (
+            <span key={i} style={{
+              fontSize: 11, padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+              background: 'var(--surf2)', border: '1px solid var(--border)', fontFamily: 'var(--font-mono)',
+              color: 'var(--fg-mute)',
+            }}>{db.type} :{db.port}</span>
+          ))}
+          <span style={{ fontSize: 11, color: 'var(--fg-dim)', alignSelf: 'center' }}>detected</span>
+        </div>
+      )}
       <div style={{ gridColumn: '1 / -1' }}>
         <label style={labelStyle}>Database type</label>
-        <select name="dbType" defaultValue={(cfg.type as string) ?? 'postgresql'} style={inputStyle}>
+        <select name="dbType" defaultValue={(cfg.type as string) ?? detectedDb?.type ?? 'postgresql'} style={inputStyle} key={detectedDb?.type ?? 'dbtype'}>
           <option value="postgresql">PostgreSQL</option>
           <option value="mysql">MySQL / MariaDB</option>
           <option value="sqlite">SQLite</option>
           <option value="redis">Redis</option>
+          <option value="mongodb">MongoDB</option>
+          <option value="mssql">MS SQL Server</option>
         </select>
       </div>
       <div>
@@ -87,7 +157,7 @@ function DatabaseFields({ cfg }: { cfg: Cfg }) {
       </div>
       <div>
         <label style={labelStyle}>Port</label>
-        <input name="dbPort" type="number" defaultValue={(cfg.port as number) ?? ''} placeholder="5432" style={inputStyle} />
+        <input name="dbPort" type="number" defaultValue={(cfg.port as number) ?? detectedDb?.port ?? ''} placeholder="5432" style={inputStyle} key={detectedDb?.port ?? 'dbport'} />
       </div>
       <div>
         <label style={labelStyle}>Database name</label>
@@ -164,6 +234,8 @@ function WindowsFields({ cfg }: { cfg: Cfg }) {
   )
 }
 
+const DETECTABLE = new Set(['filesystem', 'docker_volume', 'database'])
+
 export function SourceConfigSection({
   defaultSourceType,
   initialConfig,
@@ -175,6 +247,30 @@ export function SourceConfigSection({
     try { return JSON.parse(initialConfig ?? '{}') as Cfg } catch { return {} }
   })()
   const [selected, setSelected] = useState(defaultSourceType ?? 'filesystem')
+  const [detecting, setDetecting] = useState(false)
+  const [detected, setDetected] = useState<DetectedResources | undefined>(undefined)
+  const [detectError, setDetectError] = useState<string | undefined>(undefined)
+
+  const handleDetect = useCallback(async () => {
+    const agentSelect = document.querySelector<HTMLSelectElement>('select[name="agentId"]')
+    const agentId = agentSelect?.value
+    if (!agentId) { setDetectError('Select an agent first'); return }
+    setDetecting(true)
+    setDetectError(undefined)
+    try {
+      const res = await fetch(`/api/agents/${agentId}/detect`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json() as { error?: string }
+        setDetectError(body.error ?? 'Detection failed')
+      } else {
+        setDetected(await res.json() as DetectedResources)
+      }
+    } catch {
+      setDetectError('Network error')
+    } finally {
+      setDetecting(false)
+    }
+  }, [])
 
   return (
     <>
@@ -199,7 +295,7 @@ export function SourceConfigSection({
                 name="sourceType"
                 value={st.value}
                 checked={selected === st.value}
-                onChange={() => setSelected(st.value)}
+                onChange={() => { setSelected(st.value); setDetected(undefined); setDetectError(undefined) }}
                 style={{ marginTop: 2 }}
               />
               <div>
@@ -216,12 +312,22 @@ export function SourceConfigSection({
         backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
         borderRadius: 'var(--radius-sm)',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)', marginBottom: 2 }}>
-          Source configuration
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)' }}>Source configuration</div>
+          {DETECTABLE.has(selected) && (
+            <DetectButton
+              label={selected === 'docker_volume' ? 'volumes' : selected === 'database' ? 'databases' : 'mount points'}
+              onDetect={() => { void handleDetect() }}
+              loading={detecting}
+            />
+          )}
         </div>
-        {selected === 'filesystem'     && <FilesystemFields cfg={cfg} />}
-        {selected === 'docker_volume'  && <DockerVolumeFields cfg={cfg} />}
-        {selected === 'database'       && <DatabaseFields cfg={cfg} />}
+        {detectError && (
+          <div style={{ fontSize: 11, color: 'var(--err)', marginTop: 4 }}>{detectError}</div>
+        )}
+        {selected === 'filesystem'     && <FilesystemFields cfg={cfg} detected={detected} />}
+        {selected === 'docker_volume'  && <DockerVolumeFields cfg={cfg} detected={detected} />}
+        {selected === 'database'       && <DatabaseFields cfg={cfg} detected={detected} />}
         {selected === 'proxmox_vm'     && <ProxmoxFields label="VM" cfg={cfg} />}
         {selected === 'proxmox_lxc'    && <ProxmoxFields label="LXC" cfg={cfg} />}
         {selected === 'windows_system' && <WindowsFields cfg={cfg} />}
