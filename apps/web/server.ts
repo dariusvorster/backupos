@@ -9,7 +9,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, connectedAgentIds } from './lib/ws-state'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
 
@@ -54,6 +54,7 @@ void app.prepare().then(() => {
     const detectMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/detect$/)
     if (req.method === 'POST' && detectMatch) {
       const agentId = detectMatch[1]!
+      console.log('[detect] request agentId=%s connected=%s', agentId, connectedAgentIds().includes(agentId), 'all:', connectedAgentIds())
       requestDetect(agentId)
         .then(resources => {
           res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -251,6 +252,7 @@ void app.prepare().then(() => {
           await sendAlert('backup_failed', { jobId: msg.jobId, jobName: job?.name ?? 'unknown', error: msg.error })
 
         } else if (msg.type === 'resources_result') {
+          console.log('[detect] resources_result requestId=%s resources=%j', msg.requestId, msg.resources)
           resolveDetect(msg.requestId, msg.resources)
 
         } else if (msg.type === 'restore_complete' && agentId) {
