@@ -1,6 +1,21 @@
 import type { WebSocket } from 'ws'
+import type { DetectedResources } from '@backupos/agent-protocol'
+export type { DetectedResources }
 
-const connections = new Map<string, WebSocket>()
+// Use globalThis so these Maps are shared between server.ts and Next.js API routes
+// (Next.js compiles API routes in a separate module context in the same process)
+declare global {
+  // eslint-disable-next-line no-var
+  var __bkp_connections: Map<string, WebSocket> | undefined
+  // eslint-disable-next-line no-var
+  var __bkp_pending_detects: Map<string, (r: DetectedResources) => void> | undefined
+}
+
+const connections: Map<string, WebSocket> =
+  (globalThis.__bkp_connections ??= new Map())
+
+const pendingDetects: Map<string, (r: DetectedResources) => void> =
+  (globalThis.__bkp_pending_detects ??= new Map())
 
 export function registerAgent(agentId: string, ws: WebSocket): void {
   connections.set(agentId, ws)
@@ -21,11 +36,6 @@ export function dispatch(agentId: string, msg: object): boolean {
 export function connectedAgentIds(): string[] {
   return [...connections.keys()]
 }
-
-import type { DetectedResources } from '@backupos/agent-protocol'
-export type { DetectedResources }
-
-const pendingDetects = new Map<string, (r: DetectedResources) => void>()
 
 export function requestDetect(agentId: string): Promise<DetectedResources> {
   return new Promise((resolve, reject) => {
