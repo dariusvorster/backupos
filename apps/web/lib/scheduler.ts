@@ -13,8 +13,19 @@ interface RepoConfig {
 }
 
 interface SourceConfig {
-  paths?: string[]
-  exclude?: string[]
+  paths?:    string[]
+  volumes?:  string[]
+  exclude?:  string[]
+}
+
+function resolveBackupPaths(sourceType: string, srcConfig: SourceConfig): string[] {
+  if (sourceType === 'filesystem' || sourceType === 'windows_system') {
+    return srcConfig.paths ?? []
+  }
+  if (sourceType === 'docker_volume') {
+    return (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
+  }
+  return []
 }
 
 export async function initScheduler(): Promise<void> {
@@ -82,7 +93,7 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
 
   const cfg       = JSON.parse(repo.config) as Record<string, string>
   const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
-  const paths     = srcConfig.paths ?? []
+  const paths     = resolveBackupPaths(job.sourceType, srcConfig)
   if (paths.length === 0) return false
 
   const runId = crypto.randomUUID()
@@ -154,7 +165,7 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
 
   const cfg       = JSON.parse(repo.config) as Record<string, string>
   const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
-  const paths     = srcConfig.paths ?? []
+  const paths     = resolveBackupPaths(job.sourceType, srcConfig)
   if (paths.length === 0) return
 
   try {

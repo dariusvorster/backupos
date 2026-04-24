@@ -150,8 +150,12 @@ export async function triggerJob(id: string): Promise<void> {
 
     if (repo) {
       const repoConfig = JSON.parse(repo.config) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
-      const srcConfig  = JSON.parse(job.sourceConfig) as { paths?: string[]; exclude?: string[] }
+      const srcConfig  = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
       const tags       = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${id}`]
+
+      const paths = job.sourceType === 'docker_volume'
+        ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
+        : (srcConfig.paths ?? [])
 
       dispatch(job.agentId, {
         type:   'run_backup',
@@ -159,7 +163,7 @@ export async function triggerJob(id: string): Promise<void> {
         config: {
           repoUrl:      repoConfig.repositoryUrl,
           repoPassword: repoConfig.password,
-          paths:        srcConfig.paths ?? [],
+          paths,
           exclude:      srcConfig.exclude,
           tags,
           envVars:      repoConfig.envVars,
