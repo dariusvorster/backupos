@@ -15,6 +15,7 @@ const PUBLIC_PREFIXES = [
   '/api/auth',
   '/api/health',
   '/_next',
+  '/agent/',
   '/favicon',
   '/apple-icon',
   '/opengraph-image',
