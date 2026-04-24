@@ -31,8 +31,7 @@ const config: NextConfig = {
   async headers() {
     return [{ source: '/(.*)', headers: SECURITY_HEADERS }]
   },
-  transpilePackages: ['@backupos/docs-content'],
-  serverExternalPackages: ['better-sqlite3', 'bindings', 'file-uri-to-path'],
+  serverExternalPackages: ['better-sqlite3', 'bindings', 'file-uri-to-path', '@backupos/docs-content'],
   webpack(webpackConfig, { isServer }) {
     if (isServer) {
       webpackConfig.externals = [
