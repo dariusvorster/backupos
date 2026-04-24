@@ -26,13 +26,16 @@ const hintStyle: React.CSSProperties = {
   fontSize: 11, color: 'var(--fg-dim)', marginTop: 4,
 }
 
-function FilesystemFields() {
+type Cfg = Record<string, unknown>
+
+function FilesystemFields({ cfg }: { cfg: Cfg }) {
   return (
     <div style={{ marginTop: 16 }}>
       <label style={labelStyle}>Paths to back up</label>
       <textarea
         name="paths"
         rows={4}
+        defaultValue={(cfg.paths as string[] | undefined)?.join('\n') ?? ''}
         placeholder={'/home/user\n/var/www\n/etc/nginx'}
         style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
       />
@@ -41,6 +44,7 @@ function FilesystemFields() {
       <textarea
         name="exclude"
         rows={2}
+        defaultValue={(cfg.exclude as string[] | undefined)?.join('\n') ?? ''}
         placeholder={'*.log\nnode_modules/'}
         style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
       />
@@ -49,13 +53,14 @@ function FilesystemFields() {
   )
 }
 
-function DockerVolumeFields() {
+function DockerVolumeFields({ cfg }: { cfg: Cfg }) {
   return (
     <div style={{ marginTop: 16 }}>
       <label style={labelStyle}>Volume names</label>
       <textarea
         name="volumes"
         rows={3}
+        defaultValue={(cfg.volumes as string[] | undefined)?.join('\n') ?? ''}
         placeholder={'postgres_data\nredis_data'}
         style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
       />
@@ -64,12 +69,12 @@ function DockerVolumeFields() {
   )
 }
 
-function DatabaseFields() {
+function DatabaseFields({ cfg }: { cfg: Cfg }) {
   return (
     <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       <div style={{ gridColumn: '1 / -1' }}>
         <label style={labelStyle}>Database type</label>
-        <select name="dbType" style={inputStyle}>
+        <select name="dbType" defaultValue={(cfg.type as string) ?? 'postgresql'} style={inputStyle}>
           <option value="postgresql">PostgreSQL</option>
           <option value="mysql">MySQL / MariaDB</option>
           <option value="sqlite">SQLite</option>
@@ -78,78 +83,79 @@ function DatabaseFields() {
       </div>
       <div>
         <label style={labelStyle}>Host</label>
-        <input name="dbHost" type="text" defaultValue="localhost" style={inputStyle} />
+        <input name="dbHost" type="text" defaultValue={(cfg.host as string) ?? 'localhost'} style={inputStyle} />
       </div>
       <div>
         <label style={labelStyle}>Port</label>
-        <input name="dbPort" type="number" placeholder="5432" style={inputStyle} />
+        <input name="dbPort" type="number" defaultValue={(cfg.port as number) ?? ''} placeholder="5432" style={inputStyle} />
       </div>
       <div>
         <label style={labelStyle}>Database name</label>
-        <input name="database" type="text" placeholder="mydb" style={inputStyle} required />
+        <input name="database" type="text" defaultValue={(cfg.database as string) ?? ''} placeholder="mydb" style={inputStyle} required />
       </div>
       <div>
         <label style={labelStyle}>Username</label>
-        <input name="dbUser" type="text" placeholder="postgres" style={inputStyle} />
+        <input name="dbUser" type="text" defaultValue={(cfg.user as string) ?? ''} placeholder="postgres" style={inputStyle} />
       </div>
       <div style={{ gridColumn: '1 / -1' }}>
         <label style={labelStyle}>Password</label>
-        <input name="dbPassword" type="password" style={inputStyle} />
+        <input name="dbPassword" type="password" defaultValue={(cfg.password as string) ?? ''} style={inputStyle} />
       </div>
     </div>
   )
 }
 
-function ProxmoxFields({ label }: { label: string }) {
+function ProxmoxFields({ label, cfg }: { label: string; cfg: Cfg }) {
   return (
     <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       <div>
         <label style={labelStyle}>{label} ID</label>
-        <input name="vmId" type="text" placeholder="100" style={inputStyle} required />
+        <input name="vmId" type="text" defaultValue={(cfg.vmId as string) ?? ''} placeholder="100" style={inputStyle} required />
       </div>
       <div>
         <label style={labelStyle}>Proxmox URL</label>
-        <input name="proxmoxUrl" type="text" placeholder="https://pve.local:8006" style={inputStyle} required />
+        <input name="proxmoxUrl" type="text" defaultValue={(cfg.proxmoxUrl as string) ?? ''} placeholder="https://pve.local:8006" style={inputStyle} required />
       </div>
       <div>
         <label style={labelStyle}>Username</label>
-        <input name="proxmoxUser" type="text" placeholder="root@pam" style={inputStyle} />
+        <input name="proxmoxUser" type="text" defaultValue={(cfg.proxmoxUser as string) ?? ''} placeholder="root@pam" style={inputStyle} />
       </div>
       <div>
         <label style={labelStyle}>Password / API token</label>
-        <input name="proxmoxPassword" type="password" style={inputStyle} />
+        <input name="proxmoxPassword" type="password" defaultValue={(cfg.proxmoxPassword as string) ?? ''} style={inputStyle} />
       </div>
     </div>
   )
 }
 
-function NasShareFields() {
+function NasShareFields({ cfg }: { cfg: Cfg }) {
   return (
     <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       <div style={{ gridColumn: '1 / -1' }}>
         <label style={labelStyle}>Share URL</label>
-        <input name="shareUrl" type="text" placeholder="smb://nas.local/backups" style={inputStyle} required />
+        <input name="shareUrl" type="text" defaultValue={(cfg.shareUrl as string) ?? ''} placeholder="smb://nas.local/backups" style={inputStyle} required />
         <p style={hintStyle}>SMB: <code>smb://host/share</code> · NFS: <code>nfs://host/path</code></p>
       </div>
       <div>
         <label style={labelStyle}>Username (optional)</label>
-        <input name="shareUsername" type="text" style={inputStyle} />
+        <input name="shareUsername" type="text" defaultValue={(cfg.username as string) ?? ''} style={inputStyle} />
       </div>
       <div>
         <label style={labelStyle}>Password (optional)</label>
-        <input name="sharePassword" type="password" style={inputStyle} />
+        <input name="sharePassword" type="password" defaultValue={(cfg.password as string) ?? ''} style={inputStyle} />
       </div>
     </div>
   )
 }
 
-function WindowsFields() {
+function WindowsFields({ cfg }: { cfg: Cfg }) {
   return (
     <div style={{ marginTop: 16 }}>
       <label style={labelStyle}>Paths to back up</label>
       <textarea
         name="paths"
         rows={3}
+        defaultValue={(cfg.paths as string[] | undefined)?.join('\n') ?? ''}
         placeholder={'C:\\Users\\Administrator\nC:\\inetpub\\wwwroot'}
         style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
       />
@@ -158,7 +164,16 @@ function WindowsFields() {
   )
 }
 
-export function SourceConfigSection({ defaultSourceType }: { defaultSourceType?: string }) {
+export function SourceConfigSection({
+  defaultSourceType,
+  initialConfig,
+}: {
+  defaultSourceType?: string
+  initialConfig?: string
+}) {
+  const cfg: Cfg = (() => {
+    try { return JSON.parse(initialConfig ?? '{}') as Cfg } catch { return {} }
+  })()
   const [selected, setSelected] = useState(defaultSourceType ?? 'filesystem')
 
   return (
@@ -204,13 +219,13 @@ export function SourceConfigSection({ defaultSourceType }: { defaultSourceType?:
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)', marginBottom: 2 }}>
           Source configuration
         </div>
-        {selected === 'filesystem'     && <FilesystemFields />}
-        {selected === 'docker_volume'  && <DockerVolumeFields />}
-        {selected === 'database'       && <DatabaseFields />}
-        {selected === 'proxmox_vm'     && <ProxmoxFields label="VM" />}
-        {selected === 'proxmox_lxc'    && <ProxmoxFields label="LXC" />}
-        {selected === 'windows_system' && <WindowsFields />}
-        {selected === 'nas_share'      && <NasShareFields />}
+        {selected === 'filesystem'     && <FilesystemFields cfg={cfg} />}
+        {selected === 'docker_volume'  && <DockerVolumeFields cfg={cfg} />}
+        {selected === 'database'       && <DatabaseFields cfg={cfg} />}
+        {selected === 'proxmox_vm'     && <ProxmoxFields label="VM" cfg={cfg} />}
+        {selected === 'proxmox_lxc'    && <ProxmoxFields label="LXC" cfg={cfg} />}
+        {selected === 'windows_system' && <WindowsFields cfg={cfg} />}
+        {selected === 'nas_share'      && <NasShareFields cfg={cfg} />}
       </div>
     </>
   )

@@ -169,6 +169,50 @@ export async function triggerJob(id: string): Promise<void> {
   redirect(`/jobs/${id}`)
 }
 
+export async function updateJob(id: string, formData: FormData): Promise<void> {
+  const name         = (formData.get('name')         as string)?.trim()
+  const sourceType   = (formData.get('sourceType')   as string)
+  const agentId      = (formData.get('agentId')      as string) || null
+  const repositoryId = (formData.get('repositoryId') as string) || null
+  const schedule     = (formData.get('schedule')     as string)?.trim()
+
+  if (!name || !sourceType || !schedule) return
+
+  const db = getDb()
+  await db.update(backupJobs).set({
+    name,
+    sourceType,
+    sourceConfig: parseSourceConfig(sourceType, formData),
+    agentId,
+    repositoryId,
+    schedule,
+  }).where(eq(backupJobs.id, id))
+
+  revalidatePath(`/jobs/${id}`)
+  redirect(`/jobs/${id}`)
+}
+
+export async function cancelJob(jobId: string): Promise<void> {
+  const db = getDb()
+  const [run] = await db
+    .select()
+    .from(backupRuns)
+    .where(and(eq(backupRuns.jobId, jobId), eq(backupRuns.status, 'running')))
+    .limit(1)
+
+  if (!run) { revalidatePath(`/jobs/${jobId}`); return }
+
+  await db.update(backupRuns).set({ status: 'cancelled', completedAt: new Date() }).where(eq(backupRuns.id, run.id))
+  await db.update(backupJobs).set({ lastRunStatus: 'cancelled' }).where(eq(backupJobs.id, jobId))
+
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (job?.agentId && connectedAgentIds().includes(job.agentId)) {
+    dispatch(job.agentId, { type: 'cancel_backup', jobId })
+  }
+
+  revalidatePath(`/jobs/${jobId}`)
+}
+
 export async function saveJobRetention(id: string, formData: FormData): Promise<void> {
   const parse = (key: string) => {
     const v = parseInt(formData.get(key) as string, 10)

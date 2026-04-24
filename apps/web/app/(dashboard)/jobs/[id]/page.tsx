@@ -10,7 +10,7 @@ import { fmtLimit } from '@/lib/bandwidth'
 import { PreflightButton } from '@/components/preflight-modal'
 import { togglePreflight } from '@/app/actions/preflight'
 import { PreflightToggle } from '@/components/preflight-toggle'
-import { triggerJob, saveJobRetention } from '@/app/actions/jobs'
+import { triggerJob, saveJobRetention, cancelJob } from '@/app/actions/jobs'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -84,6 +84,30 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             Run now
           </button>
         </form>
+        {runs.some(r => r.status === 'running') && (
+          <form action={cancelJob.bind(null, job.id)}>
+            <button
+              type="submit"
+              style={{
+                padding: '6px 16px', fontSize: 13, cursor: 'pointer',
+                borderRadius: 'var(--radius-sm)', border: '1px solid var(--err)',
+                background: 'transparent', color: 'var(--err)',
+              }}
+            >
+              Cancel run
+            </button>
+          </form>
+        )}
+        <Link
+          href={`/jobs/${id}/edit`}
+          style={{
+            padding: '6px 16px', fontSize: 13,
+            borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+            color: 'var(--fg)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center',
+          }}
+        >
+          Edit
+        </Link>
       </div>
 
       {job.lastPreflightStatus && (
