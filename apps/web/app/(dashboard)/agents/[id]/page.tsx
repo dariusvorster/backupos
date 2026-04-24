@@ -11,9 +11,6 @@ import { setAgentUpdateChannel } from '@/app/actions/agents'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
-const VALID_CHANNELS = ['stable', 'beta', 'pinned'] as const
-type UpdateChannel = typeof VALID_CHANNELS[number]
-
 interface ResourceSample { ts: number; cpuPct: number; ramBytes: number }
 
 function parseHistory(raw: string | null): ResourceSample[] {
@@ -90,12 +87,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   const agentLogs = await getLogsPage({ entityType: 'agent', entityId: id }, 50)
   const history   = parseHistory(agent.resourceHistory ?? null)
 
-  async function handleSetChannel(formData: FormData) {
-    'use server'
-    const raw = formData.get('channel')
-    if (typeof raw !== 'string' || !(VALID_CHANNELS as readonly string[]).includes(raw)) return
-    await setAgentUpdateChannel(id, raw as UpdateChannel)
-  }
+  const setChannel = setAgentUpdateChannel.bind(null, id)
 
   const cardStyle: React.CSSProperties = {
     backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
@@ -210,7 +202,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginBottom: 12 }}>
           Controls which release track this agent follows for automatic updates.
         </div>
-        <form action={handleSetChannel} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <form action={setChannel} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select
             name="channel"
             defaultValue={agent.updateChannel ?? 'stable'}
