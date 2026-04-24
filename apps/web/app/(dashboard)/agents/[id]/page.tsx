@@ -7,7 +7,7 @@ import { headers } from 'next/headers'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { getLogsPage } from '@/app/actions/logs'
-import { setAgentUpdateChannel } from '@/app/actions/agents'
+import { setAgentChannelFromForm } from '@/app/actions/agents'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -87,7 +87,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   const agentLogs = await getLogsPage({ entityType: 'agent', entityId: id }, 50)
   const history   = parseHistory(agent.resourceHistory ?? null)
 
-  const setChannel = setAgentUpdateChannel.bind(null, id)
+  const setChannel = setAgentChannelFromForm.bind(null, id)
 
   const cardStyle: React.CSSProperties = {
     backgroundColor: 'var(--surf)', border: '1px solid var(--border)',

@@ -31,3 +31,11 @@ export async function setAgentUpdateChannel(
   await db.update(agents).set({ updateChannel: channel }).where(eq(agents.id, agentId))
   revalidatePath(`/agents/${agentId}`)
 }
+
+const VALID_CHANNELS = new Set(['stable', 'beta', 'pinned'])
+
+export async function setAgentChannelFromForm(agentId: string, formData: FormData): Promise<void> {
+  const raw = formData.get('channel') as string
+  if (!VALID_CHANNELS.has(raw)) return
+  await setAgentUpdateChannel(agentId, raw as 'stable' | 'beta' | 'pinned')
+}
