@@ -22,11 +22,11 @@ die() { echo "[install] ERROR: $*" >&2; exit 1; }
 if ! command -v node &>/dev/null; then
   log "Node.js not found — installing via NodeSource..."
   if command -v apt-get &>/dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+    sudo apt-get install -y nodejs
   elif command -v yum &>/dev/null; then
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
-    yum install -y nodejs
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+    sudo yum install -y nodejs
   else
     die "Cannot install Node.js automatically. Install Node.js 18+ and re-run."
   fi
@@ -46,29 +46,29 @@ if ! command -v restic &>/dev/null; then
   esac
   RESTIC_URL="https://github.com/restic/restic/releases/download/v${RESTIC_VER}/${RESTIC_PKG}"
   if command -v bunzip2 &>/dev/null; then
-    curl -fsSL "$RESTIC_URL" | bunzip2 > /usr/local/bin/restic
+    curl -fsSL "$RESTIC_URL" | bunzip2 | sudo tee /usr/local/bin/restic > /dev/null
   else
-    curl -fsSL "$RESTIC_URL" | bzip2 -d > /usr/local/bin/restic
+    curl -fsSL "$RESTIC_URL" | bzip2 -d | sudo tee /usr/local/bin/restic > /dev/null
   fi
-  chmod +x /usr/local/bin/restic
+  sudo chmod +x /usr/local/bin/restic
   log "restic installed ✓"
 fi
 
 # ── 3. Agent bundle ───────────────────────────────────────────────────────────
 INSTALL_DIR=/opt/backupos-agent
-mkdir -p "$INSTALL_DIR"
+sudo mkdir -p "$INSTALL_DIR"
 log "Downloading agent..."
-curl -fsSL "$SERVER_URL/agent/bundle.js" -o "$INSTALL_DIR/agent.js" \
+sudo curl -fsSL "$SERVER_URL/agent/bundle.js" -o "$INSTALL_DIR/agent.js" \
   || die "Failed to download agent bundle from $SERVER_URL/agent/bundle.js"
 log "Agent downloaded ✓"
 
 # ── 4. Enroll ─────────────────────────────────────────────────────────────────
-node "$INSTALL_DIR/agent.js" enroll --url "$SERVER_URL" --token "$TOKEN"
+sudo node "$INSTALL_DIR/agent.js" enroll --url "$SERVER_URL" --token "$TOKEN"
 log "Enrolled ✓"
 
 # ── 5. Service ────────────────────────────────────────────────────────────────
-node "$INSTALL_DIR/agent.js" service install
-node "$INSTALL_DIR/agent.js" service start
+sudo node "$INSTALL_DIR/agent.js" service install
+sudo node "$INSTALL_DIR/agent.js" service start
 log "Service started ✓"
 
 log ""
