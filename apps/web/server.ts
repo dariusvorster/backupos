@@ -45,6 +45,7 @@ function getBundleHash(): string {
   } catch { return '' }
 }
 const BUNDLE_HASH = getBundleHash()
+console.log('[server] bundle hash:', BUNDLE_HASH || '(not found)')
 
 void app.prepare().then(() => {
   const server = createServer((req, res) => {

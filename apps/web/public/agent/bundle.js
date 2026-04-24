@@ -191,7 +191,9 @@ function startAgent(config) {
 
       if (msg.type === 'welcome') {
         console.log('[agent] Connected as ' + msg.agentId);
-        if (msg.bundleHash && msg.bundleHash !== selfHash()) {
+        const myHash = selfHash();
+        console.log('[agent] bundleHash server=' + (msg.bundleHash || 'none') + ' self=' + myHash);
+        if (msg.bundleHash && msg.bundleHash !== myHash) {
           console.log('[agent] New bundle available — updating...');
           try {
             await selfUpdate(config.serverUrl);
