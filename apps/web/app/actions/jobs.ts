@@ -7,8 +7,13 @@ import { dispatch, connectedAgentIds } from '@/lib/ws-state'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
   const str = (k: string) => (fd.get(k) as string | null)?.trim() || undefined
-  const lines = (k: string) =>
-    (fd.get(k) as string | null)?.split('\n').map(s => s.trim()).filter(Boolean) ?? []
+  const lines = (k: string) => {
+    const all = fd.getAll(k) as string[]
+    if (all.length > 1 || (all.length === 1 && !all[0]?.includes('\n'))) {
+      return all.map(s => s.trim()).filter(Boolean)
+    }
+    return (all[0] ?? '').split('\n').map(s => s.trim()).filter(Boolean)
+  }
 
   let cfg: Record<string, unknown> = {}
 

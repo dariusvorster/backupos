@@ -51,32 +51,102 @@ function DetectButton({ label, onDetect, loading }: {
   )
 }
 
+function ChecklistPicker({ name, items, saved, placeholder, hint }: {
+  name: string
+  items: string[]
+  saved: string[]
+  placeholder: string
+  hint: string
+}) {
+  const [checked, setChecked] = useState<Set<string>>(() => {
+    if (saved.length > 0) return new Set(saved)
+    return new Set(items)
+  })
+  const [custom, setCustom] = useState(saved.filter(s => !items.includes(s)).join('\n'))
+
+  const toggle = (item: string) =>
+    setChecked(prev => { const n = new Set(prev); n.has(item) ? n.delete(item) : n.add(item); return n })
+
+  const customLines = custom.split('\n').map(s => s.trim()).filter(Boolean)
+  const allSelected = [...checked, ...customLines]
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {allSelected.map(p => (
+        <input key={p} type="hidden" name={name} value={p} />
+      ))}
+      <div style={{
+        border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+        overflow: 'hidden', marginBottom: 8,
+      }}>
+        {items.map((item, i) => (
+          <label key={item} style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '7px 12px', cursor: 'pointer',
+            backgroundColor: checked.has(item) ? 'color-mix(in srgb, var(--surf2) 60%, var(--accent) 8%)' : 'var(--surf2)',
+            borderTop: i > 0 ? '1px solid var(--border)' : undefined,
+          }}>
+            <input
+              type="checkbox"
+              checked={checked.has(item)}
+              onChange={() => toggle(item)}
+              style={{ accentColor: 'var(--accent)', width: 14, height: 14 }}
+            />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg)' }}>{item}</span>
+          </label>
+        ))}
+      </div>
+      <textarea
+        rows={2}
+        value={custom}
+        onChange={e => setCustom(e.target.value)}
+        placeholder={placeholder}
+        style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical', fontSize: 12 }}
+      />
+      <p style={hintStyle}>{hint}</p>
+    </div>
+  )
+}
+
 function FilesystemFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedResources }) {
-  const mounts = detected?.mountPoints
+  const mounts  = detected?.mountPoints
+  const saved   = (cfg.paths as string[] | undefined) ?? []
+
+  if (mounts && mounts.length > 0) {
+    return (
+      <div style={{ marginTop: 16 }}>
+        <label style={labelStyle}>Select paths to back up</label>
+        <ChecklistPicker
+          name="paths"
+          items={mounts}
+          saved={saved}
+          placeholder="Additional paths (one per line)"
+          hint="Custom paths in addition to selected ones above."
+        />
+        <label style={{ ...labelStyle, marginTop: 12 }}>Exclude patterns (optional)</label>
+        <textarea
+          name="exclude"
+          rows={2}
+          defaultValue={(cfg.exclude as string[] | undefined)?.join('\n') ?? ''}
+          placeholder={'*.log\nnode_modules/'}
+          style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
+        />
+        <p style={hintStyle}>One pattern per line.</p>
+      </div>
+    )
+  }
+
   return (
     <div style={{ marginTop: 16 }}>
       <label style={labelStyle}>Paths to back up</label>
-      {mounts && mounts.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-          {mounts.map(mp => (
-            <span key={mp} style={{
-              fontSize: 11, padding: '2px 8px', borderRadius: 'var(--radius-sm)',
-              background: 'var(--surf2)', border: '1px solid var(--border)', fontFamily: 'var(--font-mono)',
-              color: 'var(--fg-mute)',
-            }}>{mp}</span>
-          ))}
-          <span style={{ fontSize: 11, color: 'var(--fg-dim)', alignSelf: 'center' }}>detected</span>
-        </div>
-      )}
       <textarea
         name="paths"
         rows={4}
-        defaultValue={(cfg.paths as string[] | undefined)?.join('\n') ?? (mounts?.join('\n') ?? '')}
+        defaultValue={saved.join('\n')}
         placeholder={'/home/user\n/var/www\n/etc/nginx'}
         style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
-        key={mounts?.join(',') ?? 'paths'}
       />
-      <p style={hintStyle}>One path per line. Absolute paths only.</p>
+      <p style={hintStyle}>One path per line. Click "Detect mount points" above to auto-discover.</p>
       <label style={{ ...labelStyle, marginTop: 12 }}>Exclude patterns (optional)</label>
       <textarea
         name="exclude"
@@ -91,37 +161,41 @@ function FilesystemFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedReso
 }
 
 function DockerVolumeFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedResources }) {
-  const volumes = detected?.dockerVolumes
+  const volumes    = detected?.dockerVolumes
   const hasDetected = detected !== undefined
+  const saved      = (cfg.volumes as string[] | undefined) ?? []
+
+  if (hasDetected && volumes && volumes.length > 0) {
+    return (
+      <div style={{ marginTop: 16 }}>
+        <label style={labelStyle}>Select volumes to back up</label>
+        <ChecklistPicker
+          name="volumes"
+          items={volumes}
+          saved={saved}
+          placeholder="Additional volume names (one per line)"
+          hint="Custom volume names in addition to selected ones above."
+        />
+      </div>
+    )
+  }
+
   return (
     <div style={{ marginTop: 16 }}>
-      <label style={labelStyle}>Volume names</label>
-      {hasDetected && volumes && volumes.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-          {volumes.map(v => (
-            <span key={v} style={{
-              fontSize: 11, padding: '2px 8px', borderRadius: 'var(--radius-sm)',
-              background: 'var(--surf2)', border: '1px solid var(--border)', fontFamily: 'var(--font-mono)',
-              color: 'var(--fg-mute)',
-            }}>{v}</span>
-          ))}
-          <span style={{ fontSize: 11, color: 'var(--fg-dim)', alignSelf: 'center' }}>detected</span>
-        </div>
-      )}
-      {hasDetected && (!volumes || volumes.length === 0) && (
-        <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 6 }}>
+      {hasDetected && (
+        <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 8 }}>
           No named Docker volumes found on this agent. If your containers use bind mounts, use the <strong>Filesystem</strong> source type instead.
         </div>
       )}
+      <label style={labelStyle}>Volume names</label>
       <textarea
         name="volumes"
         rows={3}
-        defaultValue={(cfg.volumes as string[] | undefined)?.join('\n') ?? (volumes?.join('\n') ?? '')}
+        defaultValue={saved.join('\n')}
         placeholder={'postgres_data\nredis_data'}
         style={{ ...inputStyle, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
-        key={volumes?.join(',') ?? 'volumes'}
       />
-      <p style={hintStyle}>One Docker volume name per line.</p>
+      <p style={hintStyle}>One Docker volume name per line. Click "Detect volumes" above.</p>
     </div>
   )
 }
