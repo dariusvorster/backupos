@@ -349,15 +349,16 @@ async function handleBackup(jobId, jobConfig, send) {
   send({ type: 'backup_start', jobId, config: jobConfig });
   try {
     const result = await execAllowed('restic', args, env);
+    const log = [result.stdout, result.stderr].filter(Boolean).join('\n');
     if (result.exitCode !== 0) {
-      send({ type: 'backup_failed', jobId, error: 'restic exited non-zero', detail: result.stderr });
+      send({ type: 'backup_failed', jobId, error: 'restic exited non-zero', detail: result.stderr, log });
       return;
     }
     const summaryLine = result.stdout.trim().split('\n').reverse()
       .find(l => l.includes('"message_type":"summary"'));
     const s = summaryLine ? JSON.parse(summaryLine) : {};
     send({
-      type: 'backup_complete', jobId,
+      type: 'backup_complete', jobId, log,
       snapshotId: s['snapshot_id'] || '',
       stats: {
         filesNew:            s['files_new']             || 0,
@@ -370,7 +371,7 @@ async function handleBackup(jobId, jobConfig, send) {
       },
     });
   } catch (err) {
-    send({ type: 'backup_failed', jobId, error: String(err), detail: '' });
+    send({ type: 'backup_failed', jobId, error: String(err), detail: '', log: '' });
   }
 }
 

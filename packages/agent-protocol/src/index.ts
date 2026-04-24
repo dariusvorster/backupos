@@ -39,8 +39,8 @@ export type AgentMessage =
   | { type: 'metrics'; metrics: AgentMetrics }
   | { type: 'backup_start'; jobId: string; config: BackupJobConfig }
   | { type: 'backup_progress'; jobId: string; filesProcessed: number; bytesProcessed: number }
-  | { type: 'backup_complete'; jobId: string; snapshotId: string; stats: BackupStats }
-  | { type: 'backup_failed'; jobId: string; error: string; detail: string }
+  | { type: 'backup_complete'; jobId: string; snapshotId: string; stats: BackupStats; log?: string }
+  | { type: 'backup_failed'; jobId: string; error: string; detail: string; log?: string }
   | { type: 'restore_start'; restoreId: string; specId: string }
   | { type: 'restore_progress'; restoreId: string; step: string; status: string }
   | { type: 'restore_complete'; restoreId: string; success: boolean }

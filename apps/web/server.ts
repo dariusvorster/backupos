@@ -147,6 +147,7 @@ void app.prepare().then(() => {
 
           await db.update(backupRuns).set({
             status: 'success', completedAt: new Date(),
+            log:             msg.log ?? null,
             snapshotId:      msg.snapshotId,
             filesNew:        msg.stats.filesNew,
             filesChanged:    msg.stats.filesChanged,
@@ -235,6 +236,7 @@ void app.prepare().then(() => {
 
           await db.update(backupRuns).set({
             status: 'failed', completedAt: new Date(),
+            log:          msg.log ?? null,
             errorMessage: msg.error, errorDetail: msg.detail,
           }).where(eq(backupRuns.id, run.id))
 
