@@ -268,13 +268,18 @@ function runCmd(cmd, args, timeoutMs) {
 async function detectResources() {
   const resources = {};
 
-  // Docker volumes
+  // Docker volumes — try common binary locations
   try {
-    const r = await runCmd('docker', ['volume', 'ls', '--format', '{{.Name}}'], 5000);
-    if (r.exitCode === 0) {
-      resources.dockerVolumes = r.stdout.split('\n').map(s => s.trim()).filter(Boolean);
+    const dockerPaths = ['docker', '/usr/bin/docker', '/usr/local/bin/docker'];
+    for (const dockerBin of dockerPaths) {
+      const r = await runCmd(dockerBin, ['volume', 'ls', '--format', '{{.Name}}'], 5000);
+      if (r.exitCode === 0) {
+        resources.dockerVolumes = r.stdout.split('\n').map(s => s.trim()).filter(Boolean);
+        break;
+      }
+      console.log('[agent] docker at', dockerBin, 'exit=' + r.exitCode, r.stderr.slice(0, 80));
     }
-  } catch (_) {}
+  } catch (e) { console.log('[agent] docker detection error:', e.message); }
 
   // Filesystem mount points from /proc/mounts (non-blocking file read)
   try {

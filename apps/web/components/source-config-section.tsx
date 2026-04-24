@@ -92,10 +92,11 @@ function FilesystemFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedReso
 
 function DockerVolumeFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedResources }) {
   const volumes = detected?.dockerVolumes
+  const hasDetected = detected !== undefined
   return (
     <div style={{ marginTop: 16 }}>
       <label style={labelStyle}>Volume names</label>
-      {volumes && volumes.length > 0 && (
+      {hasDetected && volumes && volumes.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
           {volumes.map(v => (
             <span key={v} style={{
@@ -105,6 +106,11 @@ function DockerVolumeFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedRe
             }}>{v}</span>
           ))}
           <span style={{ fontSize: 11, color: 'var(--fg-dim)', alignSelf: 'center' }}>detected</span>
+        </div>
+      )}
+      {hasDetected && (!volumes || volumes.length === 0) && (
+        <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 6 }}>
+          No named Docker volumes found on this agent. If your containers use bind mounts, use the <strong>Filesystem</strong> source type instead.
         </div>
       )}
       <textarea
