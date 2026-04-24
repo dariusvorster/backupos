@@ -58,6 +58,7 @@ RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
 
 COPY --from=base /usr/local/bin/restic /usr/local/bin/restic
+RUN chmod +x /usr/local/bin/restic
 
 # Workspace root
 COPY --from=builder /app/node_modules        ./node_modules
