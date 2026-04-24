@@ -47,8 +47,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   const profiles    = await db.select().from(bandwidthProfiles).all()
   const recentLogs  = await getLogsPage({ entityType: 'job', entityId: id }, 50)
-  const boundSetJobProfile = setJobProfile.bind(null, job.id)
-  const boundTrigger       = triggerJob.bind(null, job.id)
+  const boundSetJobProfile  = setJobProfile.bind(null, job.id)
+  const boundTrigger        = triggerJob.bind(null, job.id)
+  const boundSaveRetention  = saveJobRetention.bind(null, job.id)
 
   const fieldStyle: React.CSSProperties = {
     backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
@@ -199,7 +200,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           Retention policy
         </div>
         <form
-          action={async (fd: FormData) => { 'use server'; await saveJobRetention(id, fd) }}
+          action={boundSaveRetention}
           style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}
         >
           {([ 'keepLast', 'keepDaily', 'keepWeekly', 'keepMonthly', 'keepYearly' ] as const).map(key => (
