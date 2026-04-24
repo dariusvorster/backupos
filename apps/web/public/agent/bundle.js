@@ -268,18 +268,25 @@ function runCmd(cmd, args, timeoutMs) {
 async function detectResources() {
   const resources = {};
 
-  // Docker volumes — try common binary locations
+  // Docker volumes — query socket directly (avoids PATH/permission issues)
   try {
-    const dockerPaths = ['docker', '/usr/bin/docker', '/usr/local/bin/docker'];
-    for (const dockerBin of dockerPaths) {
-      const r = await runCmd(dockerBin, ['volume', 'ls', '--format', '{{.Name}}'], 5000);
-      if (r.exitCode === 0) {
-        resources.dockerVolumes = r.stdout.split('\n').map(s => s.trim()).filter(Boolean);
-        break;
-      }
-      console.log('[agent] docker at', dockerBin, 'exit=' + r.exitCode, r.stderr.slice(0, 80));
-    }
-  } catch (e) { console.log('[agent] docker detection error:', e.message); }
+    const dockerVolumes = await new Promise((resolve, reject) => {
+      const req = httpGet({ socketPath: '/var/run/docker.sock', path: '/volumes', headers: { Host: 'localhost' } }, (res) => {
+        let data = '';
+        res.on('data', d => { data += d; });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            resolve((parsed.Volumes || []).map(v => v.Name).filter(Boolean));
+          } catch (e) { reject(e); }
+        });
+      });
+      req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')); });
+      req.on('error', reject);
+      req.end();
+    });
+    resources.dockerVolumes = dockerVolumes;
+  } catch (e) { console.log('[agent] docker socket error:', e.message); }
 
   // Filesystem mount points from /proc/mounts (non-blocking file read)
   try {
