@@ -233,23 +233,47 @@ function startAgent(config) {
   connect();
 }
 
+function runCmd(cmd, args, timeoutMs) {
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let done = false;
+    let child;
+    const finish = (code) => {
+      if (done) return;
+      done = true;
+      resolve({ exitCode: code ?? 1, stdout, stderr });
+    };
+    try {
+      child = spawn(cmd, args, { stdio: 'pipe' });
+      const timer = setTimeout(() => { if (!done) { done = true; try { child.kill(); } catch (_) {} resolve({ exitCode: 1, stdout, stderr }); } }, timeoutMs || 5000);
+      child.stdout.on('data', (d) => { stdout += d.toString(); });
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.on('close', (code) => { clearTimeout(timer); finish(code); });
+      child.on('error', () => { clearTimeout(timer); finish(1); });
+    } catch (_) { finish(1); }
+  });
+}
+
 async function detectResources() {
   const resources = {};
 
   // Docker volumes
   try {
-    const r = spawnSync('docker', ['volume', 'ls', '--format', '{{.Name}}'], { encoding: 'utf-8' });
-    if (r.status === 0) {
+    const r = await runCmd('docker', ['volume', 'ls', '--format', '{{.Name}}'], 5000);
+    if (r.exitCode === 0) {
       resources.dockerVolumes = r.stdout.split('\n').map(s => s.trim()).filter(Boolean);
     }
   } catch (_) {}
 
-  // Filesystem mount points (real block devices + bind mounts under /home, /var, /data, /mnt, /media)
+  // Filesystem mount points from /proc/mounts (non-blocking file read)
   try {
     const mounts = readFileSync('/proc/mounts', 'utf-8');
     const interesting = new Set();
     for (const line of mounts.split('\n')) {
-      const [device, mp] = line.split(' ');
+      const parts = line.split(' ');
+      const device = parts[0];
+      const mp = parts[1];
       if (!mp) continue;
       if (
         (device && device.startsWith('/dev/')) ||
@@ -267,15 +291,15 @@ async function detectResources() {
     resources.mountPoints = [...interesting].sort();
   } catch (_) {}
 
-  // Running databases (check well-known ports via ss)
+  // Running databases via ss (with timeout)
   try {
-    const r = spawnSync('ss', ['-tlnp'], { encoding: 'utf-8' });
+    const r = await runCmd('ss', ['-tlnp'], 3000);
     const DB_PORTS = { 5432: 'postgresql', 3306: 'mysql', 6379: 'redis', 27017: 'mongodb', 1433: 'mssql' };
     const dbs = [];
-    if (r.status === 0) {
+    if (r.exitCode === 0) {
       for (const line of r.stdout.split('\n')) {
         for (const [port, type] of Object.entries(DB_PORTS)) {
-          if (line.includes(':' + port + ' ') || line.includes(':' + port + '\t')) {
+          if (line.includes(':' + port + ' ') || line.includes(':' + port + '\t') || line.endsWith(':' + port)) {
             dbs.push({ type, host: 'localhost', port: Number(port) });
           }
         }
