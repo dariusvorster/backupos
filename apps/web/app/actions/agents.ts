@@ -39,3 +39,14 @@ export async function setAgentChannelFromForm(agentId: string, formData: FormDat
   if (!VALID_CHANNELS.has(raw)) return
   await setAgentUpdateChannel(agentId, raw as 'stable' | 'beta' | 'pinned')
 }
+
+export async function forceUpdateAgent(agentId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { dispatch } = await import('@/lib/ws-state')
+    const sent = dispatch(agentId, { type: 'force_update' })
+    if (!sent) return { ok: false, error: 'Agent is not connected' }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+}

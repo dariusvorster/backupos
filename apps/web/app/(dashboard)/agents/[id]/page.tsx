@@ -9,6 +9,7 @@ import { StatCard } from '@/components/ui/stat-card'
 import { getLogsPage } from '@/app/actions/logs'
 import { setAgentChannelFromForm } from '@/app/actions/agents'
 import { AutoRefresh } from '@/components/ui/auto-refresh'
+import { UpdateAgentButton } from './update-button'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -227,6 +228,15 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
             Save
           </button>
         </form>
+      </div>
+
+      {/* Manual update */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>Update agent</div>
+        <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginBottom: 12 }}>
+          Force the agent to download the latest bundle from this server and restart immediately.
+        </div>
+        <UpdateAgentButton agentId={id} />
       </div>
 
       {/* Jobs */}

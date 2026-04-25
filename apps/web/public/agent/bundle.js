@@ -234,6 +234,14 @@ function startAgent(config) {
         await handleTestMount(msg.requestId, msg.mountConfig, send);
       } else if (msg.type === 'remove_mount') {
         await removeMount(msg.repoId, msg.mountPoint || `/mnt/backupos/${msg.repoId}`);
+      } else if (msg.type === 'force_update') {
+        console.log('[agent] force_update received — downloading new bundle...');
+        try {
+          await selfUpdate(config.serverUrl);
+          process.exit(0);
+        } catch (e) {
+          console.error('[agent] force_update failed:', e.message);
+        }
       } else if (msg.type === 'run_restore') {
         console.warn('[agent] run_restore not implemented for restoreId=' + msg.restoreId);
         send({ type: 'restore_complete', restoreId: msg.restoreId, success: false });
