@@ -162,6 +162,10 @@ else
   if [[ -f "$REPO_ROOT/package.json" ]] && grep -q 'backupos' "$REPO_ROOT/package.json" 2>/dev/null; then
     SRC="$REPO_ROOT"
     log "Using repo at $SRC..."
+    if [[ -d "$SRC/.git" ]]; then
+      log "Pulling latest changes..."
+      git -C "$SRC" pull --ff-only || log "git pull failed — continuing with current code"
+    fi
   else
     die "Run from inside the repo, or pass --source /path/to/repo"
   fi
