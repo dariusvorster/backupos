@@ -55,6 +55,7 @@ void app.prepare().then(() => {
     const forceUpdateMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/force-update$/)
     if (req.method === 'POST' && forceUpdateMatch) {
       const agentId = forceUpdateMatch[1]!
+      console.log('[force-update] requested agentId=%s connected=%s all=%j', agentId, connectedAgentIds().includes(agentId), connectedAgentIds())
       const sent = dispatch(agentId, { type: 'force_update' })
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(sent ? { ok: true } : { ok: false, error: 'Agent not connected' }))
