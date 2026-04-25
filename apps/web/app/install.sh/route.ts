@@ -87,6 +87,7 @@ INSTALL_DIR=/opt/backupos-agent
 mkdir -p "\$INSTALL_DIR"
 log "Downloading agent..."
 curl -fsSL "$SERVER_URL/agent/bundle.js" -o "\$INSTALL_DIR/agent.js" || die "Failed to download agent bundle from $SERVER_URL/agent/bundle.js"
+chmod +x "\$INSTALL_DIR/agent.js"
 log "Agent downloaded ✓"
 
 # ── 5. Enroll ─────────────────────────────────────────────────────────────────
@@ -96,7 +97,10 @@ log "Enrolled ✓"
 # ── 6. Service ────────────────────────────────────────────────────────────────
 node "\$INSTALL_DIR/agent.js" service install
 node "\$INSTALL_DIR/agent.js" service start
-log "Service started ✓"
+log ""
+log "BackupOS Agent installed. Check status with:"
+log "  systemctl status backupos-agent"
+log "  journalctl -u backupos-agent -f"
 
 log ""
 log "BackupOS Agent installed successfully."

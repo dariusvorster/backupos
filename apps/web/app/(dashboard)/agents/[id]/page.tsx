@@ -124,7 +124,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
             background: 'var(--surf2)', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)',
             fontSize: 12, color: 'var(--fg)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-          }}>{`curl -fsSL ${baseUrl}/install.sh | BACKUPOS_URL=${baseUrl} BACKUPOS_TOKEN=${agent.publicKey} bash`}</pre>
+          }}>{`curl -fsSL ${baseUrl}/install.sh | sudo BACKUPOS_TOKEN=${agent.publicKey} bash`}</pre>
           <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 8 }}>
             Keep this token secret — it grants this agent access to your BackupOS instance.
           </div>
