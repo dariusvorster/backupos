@@ -62,6 +62,7 @@ export default function NewRepositoryPage() {
       const raw = (fd.get('smbShare') as string)?.trim() ?? ''
       if (!raw) { setMountState('error'); setMountDetail('Enter SMB share path'); return }
       const s   = raw.replace(/\\/g, '/').replace(/^\/\//, '')
+      if (s.includes(':')) { setMountState('error'); setMountDetail('Remove the colon — use //host/share (e.g. //192.168.10.9/Backups)'); return }
       const idx = s.indexOf('/')
       if (idx === -1) { setMountState('error'); setMountDetail('Format must be //host/share'); return }
       host = s.slice(0, idx); remotePath = s.slice(idx + 1)

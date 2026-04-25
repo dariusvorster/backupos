@@ -12,9 +12,10 @@ function parseRepoConfig(raw: string): Record<string, string> {
 
 function parseSmbSharePath(raw: string): { host: string; remotePath: string } | { error: string } {
   const s = raw.replace(/\\/g, '/').replace(/^\/\//, '')
+  if (s.includes(':')) return { error: 'SMB share should not contain a colon — use //host/share format (e.g. //192.168.10.9/Backups). For NFS use the NFS backend.' }
   const idx = s.indexOf('/')
   if (idx === -1 || !s.slice(0, idx) || !s.slice(idx + 1)) {
-    return { error: 'SMB share must be in format //host/share' }
+    return { error: 'SMB share must be in format //host/share (e.g. //192.168.10.9/Backups)' }
   }
   return { host: s.slice(0, idx), remotePath: s.slice(idx + 1) }
 }
