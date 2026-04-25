@@ -292,7 +292,13 @@ function startAgent(config) {
       reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
     };
 
-    ws.onerror = (err) => { console.error('[agent] WebSocket error:', err); };
+    ws.onerror = (err) => {
+      console.error('[agent] WebSocket error:', err.message || err.type || String(err));
+      // Ensure onclose fires so the reconnect loop continues
+      if (ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
+        ws.terminate();
+      }
+    };
   }
 
   connect();
