@@ -54,11 +54,20 @@ export function runPreflightChecks(input: PreflightInput): CheckResult[] {
 
   // Source configured
   const config = (() => { try { return JSON.parse(input.job.sourceConfig) } catch { return {} } })()
-  const path = config.path ?? config.paths?.[0] ?? config.database ?? config.container ?? null
-  if (!path) {
+  const sourceType = input.job.sourceType
+  let sourceLabel: string | null = null
+  if (sourceType === 'docker_volume') {
+    const vols: string[] = config.volumes ?? []
+    sourceLabel = vols.length > 0 ? vols.join(', ') : null
+  } else {
+    const paths: string[] = config.paths ?? []
+    sourceLabel = paths.length > 0 ? paths[0]! + (paths.length > 1 ? ` (+${paths.length - 1} more)` : '') : null
+    if (!sourceLabel) sourceLabel = config.database ?? config.shareUrl ?? config.vmId ?? null
+  }
+  if (!sourceLabel) {
     results.push({ id: 'source', label: 'Source configured', status: 'warning', detail: 'Source path or target not set in job config.' })
   } else {
-    results.push({ id: 'source', label: 'Source configured', status: 'ok', detail: `Source: ${path}` })
+    results.push({ id: 'source', label: 'Source configured', status: 'ok', detail: `Source: ${sourceLabel}` })
   }
 
   // Repository reachable

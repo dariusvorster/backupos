@@ -283,4 +283,20 @@ async function checkAgents(db: Db): Promise<void> {
     await db.update(agents).set({ status: 'disconnected' }).where(eq(agents.id, agent.id))
     await sendAlert('agent_disconnected', { agentId: agent.id, agentName: agent.name })
   }
+
+  // Mark runs stuck in 'running' for more than 2 hours as failed
+  const staleRunCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  const staleRuns = await db
+    .select()
+    .from(backupRuns)
+    .where(and(eq(backupRuns.status, 'running'), lt(backupRuns.startedAt, staleRunCutoff)))
+    .all()
+
+  for (const run of staleRuns) {
+    await db.update(backupRuns).set({
+      status: 'failed', completedAt: new Date(),
+      errorMessage: 'Run timed out — no completion message received from agent',
+    }).where(eq(backupRuns.id, run.id))
+    await db.update(backupJobs).set({ lastRunStatus: 'failed' }).where(eq(backupJobs.id, run.jobId))
+  }
 }
