@@ -9,6 +9,7 @@ import { PruneButton } from './prune-button'
 import { TestConnectionButton } from './test-connection-button'
 import { DeleteRepositoryButton } from './delete-button'
 import { TestMountButton } from './test-mount-button'
+import { MountStatusBadge } from './mount-status-badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { computeForecast, fmtCents, fmtGb, fmtGbPerMonth, BACKEND_PRESETS } from '@/lib/growth-forecast'
 import { saveCostConfig } from '@/app/actions/repository-cost'
@@ -94,7 +95,12 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
           <Button variant="secondary" size="md">Browse snapshots</Button>
         </Link>
         <TestConnectionButton repoId={id} />
-        {(repo.backend === 'nfs' || repo.backend === 'smb') && <TestMountButton repoId={id} />}
+        {(repo.backend === 'nfs' || repo.backend === 'smb') && (
+          <>
+            <TestMountButton repoId={id} />
+            <MountStatusBadge repoId={id} />
+          </>
+        )}
         <RunCheckButton repoId={id} />
         <PruneButton repoId={id} />
         <Link href={`/repositories/${id}/edit`} style={{ textDecoration: 'none' }}>
