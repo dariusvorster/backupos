@@ -92,6 +92,25 @@ void app.prepare().then(() => {
       return
     }
 
+    // Test mount with raw config (no repo saved yet — used from the new-repo form)
+    if (req.method === 'POST' && parsed.pathname === '/api/mount/test') {
+      void (async () => {
+        let body: { mountConfig?: MountConfig } = {}
+        try {
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(chunk as Buffer)
+          body = JSON.parse(Buffer.concat(chunks).toString()) as { mountConfig?: MountConfig }
+        } catch { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Invalid JSON' })); return }
+        if (!body.mountConfig) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'mountConfig required' })); return }
+        const agentId = connectedAgentIds()[0] ?? null
+        if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent' })); return }
+        requestTestMount(agentId, body.mountConfig)
+          .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
+          .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Mount test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
+      })()
+      return
+    }
+
     // Test NAS mount via agent
     const testMountMatch = parsed.pathname?.match(/^\/api\/repos\/([^/]+)\/test-mount$/)
     if (req.method === 'POST' && testMountMatch) {

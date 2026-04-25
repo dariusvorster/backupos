@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useRef } from 'react'
 import { createRepository } from '@/app/actions/repositories'
 
 const BACKENDS = [
@@ -26,9 +26,12 @@ const fieldStyle: React.CSSProperties = { marginBottom: 16 }
 const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }
 
 export default function NewRepositoryPage() {
-  const [backend, setBackend] = useState('local')
-  const [error, setError]     = useState('')
-  const [isPending, start]    = useTransition()
+  const [backend, setBackend]           = useState('local')
+  const [error, setError]               = useState('')
+  const [isPending, start]              = useTransition()
+  const [mountState, setMountState]     = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
+  const [mountDetail, setMountDetail]   = useState<string | null>(null)
+  const formRef                         = useRef<HTMLFormElement>(null)
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -40,13 +43,53 @@ export default function NewRepositoryPage() {
     })
   }
 
+  async function handleTestMount() {
+    if (!formRef.current) return
+    const fd = new FormData(formRef.current)
+    const mountCommand = (fd.get('mountCommand') as string)?.trim()
+    const host         = (fd.get('host') as string)?.trim()
+    const remotePath   = (fd.get('remotePath') as string)?.trim()
+    const options      = (fd.get('options') as string)?.trim()
+    const username     = (fd.get('username') as string)?.trim()
+    const smbPassword  = (fd.get('smbPassword') as string)?.trim()
+    const domain       = (fd.get('domain') as string)?.trim()
+    const mountPoint   = `/mnt/backupos/test-${Date.now()}`
+
+    if (!mountCommand && (!host || !remotePath)) {
+      setMountState('error')
+      setMountDetail('Fill in host and export/share path, or provide a custom mount command')
+      return
+    }
+
+    const mountConfig = {
+      type: backend as 'nfs' | 'smb',
+      host: host ?? '', remotePath: remotePath ?? '', mountPoint,
+      ...(options      ? { options }                  : {}),
+      ...(username     ? { username }                 : {}),
+      ...(smbPassword  ? { password: smbPassword }    : {}),
+      ...(domain       ? { domain }                   : {}),
+      ...(mountCommand ? { mountCommand }              : {}),
+    }
+
+    setMountState('testing')
+    setMountDetail(null)
+    try {
+      const res  = await fetch('/api/mount/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mountConfig }) })
+      const body = await res.json() as { ok?: boolean; error?: string }
+      if (!res.ok || !body.ok) { setMountState('error'); setMountDetail(body.error ?? 'Mount failed') }
+      else { setMountState('ok'); setMountDetail('Mounted and unmounted successfully') }
+    } catch {
+      setMountState('error'); setMountDetail('Network error')
+    }
+  }
+
   return (
     <div style={{ maxWidth: 600 }}>
       <a href="/repositories" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 20 }}>← Repositories</a>
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 8 }}>Add repository</h1>
       <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 24 }}>Connect a Restic repository to start tracking snapshots and health.</p>
 
-      <form onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit}>
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 16 }}>General</div>
 
@@ -101,6 +144,17 @@ export default function NewRepositoryPage() {
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
                 Paste the exact command your NAS shows. Use <code>{'{mountPoint}'}</code> where the mount directory goes. The agent must run as root.
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+                <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
+                  style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
+                  {mountState === 'testing' ? 'Testing…' : 'Test mount'}
+                </button>
+                {mountDetail && (
+                  <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
+                    {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
+                  </span>
+                )}
+              </div>
             </div>
           </>)}
 
@@ -139,7 +193,18 @@ export default function NewRepositoryPage() {
               <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
               <input name="mountCommand" type="text" placeholder={'mount -t cifs //192.168.10.9/backups {mountPoint} -o username=user,password=pass,vers=3.0'} style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                Paste the exact command your NAS provides. Use <code>{'{mountPoint}'}</code> as the mount directory. Requires <code>cifs-utils</code> on the agent: <code>sudo apt-get install -y cifs-utils</code>
+                Paste the exact command your NAS provides. Use <code>{'{mountPoint}'}</code> as the mount directory. Requires <code>cifs-utils</code>: <code>sudo apt-get install -y cifs-utils</code>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+                <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
+                  style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
+                  {mountState === 'testing' ? 'Testing…' : 'Test mount'}
+                </button>
+                {mountDetail && (
+                  <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
+                    {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
+                  </span>
+                )}
               </div>
             </div>
           </>)}
