@@ -10,7 +10,7 @@ export async function GET(req: Request): Promise<Response> {
 set -euo pipefail
 
 SERVER_URL="${origin}"
-TOKEN=""
+TOKEN="\${BACKUPOS_TOKEN:-}"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$TOKEN" ]]; then
-  echo "Usage: curl -fsSL $SERVER_URL/install.sh | bash -s -- --token TOKEN"
+  echo "Usage: curl -fsSL $SERVER_URL/install.sh | BACKUPOS_TOKEN=<token> bash"
   exit 1
 fi
 
