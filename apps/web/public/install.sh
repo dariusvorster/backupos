@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-SERVER_URL=""
-TOKEN=""
+SERVER_URL="${BACKUPOS_URL:-}"
+TOKEN="${BACKUPOS_TOKEN:-}"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -15,8 +15,14 @@ done
 log() { echo "[install] $*"; }
 die() { echo "[install] ERROR: $*" >&2; exit 1; }
 
+# Normalise ws(s):// → http(s):// so we can use it for downloads too
+SERVER_URL="${SERVER_URL/wss:\/\//https://}"
+SERVER_URL="${SERVER_URL/ws:\/\//http://}"
+# Strip trailing /ws/agent path if present
+SERVER_URL="${SERVER_URL%/ws/agent}"
+
 [[ -z "$SERVER_URL" ]] && SERVER_URL="http://localhost:3093"
-[[ -z "$TOKEN" ]] && die "Usage: curl -fsSL $SERVER_URL/install.sh | bash -s -- --token TOKEN [--url URL]"
+[[ -z "$TOKEN" ]] && die "Usage: curl -fsSL \$SERVER_URL/install.sh | BACKUPOS_URL=\$URL BACKUPOS_TOKEN=\$TOKEN bash"
 
 # ── 1. Node.js ────────────────────────────────────────────────────────────────
 if ! command -v node &>/dev/null; then
