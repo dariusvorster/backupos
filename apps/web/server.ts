@@ -73,17 +73,18 @@ void app.prepare().then(() => {
     const testRepoMatch = parsed.pathname?.match(/^\/api\/repos\/([^/]+)\/test$/)
     if (req.method === 'POST' && testRepoMatch) {
       const repoId = testRepoMatch[1]!
-      const db2 = getDb()
-      const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
-      if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
-      // Find a connected agent from jobs using this repo
-      const jobs2 = await db2.select({ agentId: backupJobs.agentId }).from(backupJobs).where(eq(backupJobs.repositoryId, repoId)).all()
-      const agentId = jobs2.map(j => j.agentId).find(aid => aid && connectedAgentIds().includes(aid)) ?? null
-      if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent found for this repository' })); return }
-      const repoCfg = JSON.parse(repo.config) as Record<string, string>
-      requestTestRepo(agentId, repoCfg['repositoryUrl'] ?? '', repo.resticPassword, repoCfg)
-        .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
-        .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
+      void (async () => {
+        const db2 = getDb()
+        const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
+        if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
+        const jobs2 = await db2.select({ agentId: backupJobs.agentId }).from(backupJobs).where(eq(backupJobs.repositoryId, repoId)).all()
+        const agentId = jobs2.map(j => j.agentId).find(aid => aid && connectedAgentIds().includes(aid)) ?? null
+        if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent found for this repository' })); return }
+        const repoCfg = JSON.parse(repo.config) as Record<string, string>
+        requestTestRepo(agentId, repoCfg['repositoryUrl'] ?? '', repo.resticPassword, repoCfg)
+          .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
+          .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
+      })()
       return
     }
 
