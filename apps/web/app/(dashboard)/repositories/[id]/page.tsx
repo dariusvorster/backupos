@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { RunCheckButton } from './run-check-button'
 import { PruneButton } from './prune-button'
 import { TestConnectionButton } from './test-connection-button'
+import { DeleteRepositoryButton } from './delete-button'
 import { StatCard } from '@/components/ui/stat-card'
 import { computeForecast, fmtCents, fmtGb, fmtGbPerMonth, BACKEND_PRESETS } from '@/lib/growth-forecast'
 import { saveCostConfig } from '@/app/actions/repository-cost'
@@ -87,13 +88,17 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
         <StatCard label="Last check" value={repo.lastCheckStatus ?? 'unchecked'} />
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'center', flexWrap: 'wrap' }}>
         <Link href={`/repositories/${id}/snapshots`} style={{ textDecoration: 'none' }}>
           <Button variant="secondary" size="md">Browse snapshots</Button>
         </Link>
         <TestConnectionButton repoId={id} />
         <RunCheckButton repoId={id} />
         <PruneButton repoId={id} />
+        <Link href={`/repositories/${id}/edit`} style={{ textDecoration: 'none' }}>
+          <Button variant="secondary" size="md">Edit</Button>
+        </Link>
+        <DeleteRepositoryButton repoId={id} repoName={repo.name} />
       </div>
 
       {/* Environment group */}

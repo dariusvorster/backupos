@@ -28,7 +28,7 @@ export function TestConnectionButton({ repoId }: { repoId: string }) {
   const color = state === 'ok' ? 'var(--ok)' : state === 'error' ? 'var(--err)' : 'var(--fg-mute)'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+    <div style={{ position: 'relative' }}>
       <button
         onClick={() => { void handleClick() }}
         disabled={state === 'testing'}
@@ -41,7 +41,13 @@ export function TestConnectionButton({ repoId }: { repoId: string }) {
         {state === 'testing' ? 'Testing…' : 'Test connection'}
       </button>
       {detail && (
-        <span style={{ fontSize: 11, color }}>
+        <span style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+          fontSize: 11, color, whiteSpace: 'nowrap',
+          backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)', padding: '3px 8px',
+          zIndex: 10,
+        }}>
           {state === 'ok' ? '✓ ' : '✗ '}{detail}
         </span>
       )}

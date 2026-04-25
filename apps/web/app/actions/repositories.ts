@@ -109,6 +109,104 @@ export async function createRepository(formData: FormData): Promise<{ error: str
   redirect(`/repositories/${id}`)
 }
 
+export async function updateRepository(id: string, formData: FormData): Promise<{ error: string } | undefined> {
+  const name     = (formData.get('name') as string)?.trim()
+  const password = (formData.get('password') as string)?.trim()
+  const group    = (formData.get('group') as string)?.trim() || null
+  if (!name) return { error: 'Name is required' }
+
+  const db   = getDb()
+  const [repo] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1)
+  if (!repo) return { error: 'Repository not found' }
+
+  const config: Record<string, string> = JSON.parse(repo.config) as Record<string, string>
+
+  if (repo.backend === 'local') {
+    const path = (formData.get('path') as string)?.trim()
+    if (!path) return { error: 'Path is required' }
+    config['repositoryUrl'] = path
+    config['path'] = path
+  } else if (repo.backend === 's3') {
+    const bucket    = (formData.get('bucket') as string)?.trim()
+    const region    = (formData.get('region') as string)?.trim() || 'us-east-1'
+    const endpoint  = (formData.get('endpoint') as string)?.trim()
+    const accessKey = (formData.get('accessKey') as string)?.trim()
+    const secretKey = (formData.get('secretKey') as string)?.trim()
+    if (!bucket) return { error: 'Bucket is required' }
+    if (accessKey) config['AWS_ACCESS_KEY_ID'] = accessKey
+    if (secretKey) config['AWS_SECRET_ACCESS_KEY'] = secretKey
+    config['AWS_DEFAULT_REGION'] = region
+    config['repositoryUrl'] = endpoint ? `s3:${endpoint}/${bucket}` : `s3:s3.amazonaws.com/${bucket}`
+    if (endpoint) config['endpoint'] = endpoint
+  } else if (repo.backend === 'r2') {
+    const accountId = (formData.get('accountId') as string)?.trim()
+    const bucket    = (formData.get('bucket') as string)?.trim()
+    const accessKey = (formData.get('accessKey') as string)?.trim()
+    const secretKey = (formData.get('secretKey') as string)?.trim()
+    if (!accountId || !bucket) return { error: 'Account ID and bucket are required' }
+    if (accessKey) config['AWS_ACCESS_KEY_ID'] = accessKey
+    if (secretKey) config['AWS_SECRET_ACCESS_KEY'] = secretKey
+    config['repositoryUrl'] = `s3:https://${accountId}.r2.cloudflarestorage.com/${bucket}`
+  } else if (repo.backend === 'b2') {
+    const bucket = (formData.get('bucket') as string)?.trim()
+    const keyId  = (formData.get('keyId') as string)?.trim()
+    const appKey = (formData.get('appKey') as string)?.trim()
+    if (!bucket) return { error: 'Bucket is required' }
+    if (keyId)  config['B2_ACCOUNT_ID']  = keyId
+    if (appKey) config['B2_ACCOUNT_KEY'] = appKey
+    config['repositoryUrl'] = `b2:${bucket}`
+  } else if (repo.backend === 'sftp') {
+    const host = (formData.get('host') as string)?.trim()
+    const port = (formData.get('port') as string)?.trim() || '22'
+    const user = (formData.get('user') as string)?.trim()
+    const path = (formData.get('path') as string)?.trim()
+    if (!host || !user || !path) return { error: 'Host, user, and path are required' }
+    config['repositoryUrl'] = `sftp:${user}@${host}:${path}`
+    config['host'] = host; config['port'] = port; config['user'] = user
+  } else if (repo.backend === 'rclone') {
+    const remote = (formData.get('remote') as string)?.trim()
+    const path   = (formData.get('path') as string)?.trim()
+    if (!remote || !path) return { error: 'Remote and path are required' }
+    config['repositoryUrl'] = `rclone:${remote}:${path}`
+  } else if (repo.backend === 'nfs') {
+    const host       = (formData.get('host') as string)?.trim()
+    const remotePath = (formData.get('remotePath') as string)?.trim()
+    const options    = (formData.get('options') as string)?.trim()
+    if (!host || !remotePath) return { error: 'Host and export path are required' }
+    const existing = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
+    config['mountConfig'] = JSON.stringify({ ...existing, type: 'nfs', host, remotePath, ...(options ? { options } : { options: undefined }) })
+  } else if (repo.backend === 'smb') {
+    const host        = (formData.get('host') as string)?.trim()
+    const remotePath  = (formData.get('remotePath') as string)?.trim()
+    const username    = (formData.get('username') as string)?.trim()
+    const smbPassword = (formData.get('smbPassword') as string)?.trim()
+    const domain      = (formData.get('domain') as string)?.trim()
+    const options     = (formData.get('options') as string)?.trim()
+    if (!host || !remotePath || !username) return { error: 'Host, share name, and username are required' }
+    const existing = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
+    config['mountConfig'] = JSON.stringify({
+      ...existing, type: 'smb', host, remotePath, username,
+      ...(smbPassword ? { password: smbPassword } : {}),
+      ...(domain  ? { domain }  : {}),
+      ...(options ? { options } : {}),
+    })
+  }
+
+  const updates: Record<string, unknown> = { name, group, config: JSON.stringify(config) }
+  if (password) updates['resticPassword'] = password
+  await db.update(repositories).set(updates).where(eq(repositories.id, id))
+  revalidatePath(`/repositories/${id}`)
+  redirect(`/repositories/${id}`)
+}
+
+export async function deleteRepository(id: string): Promise<{ error: string } | undefined> {
+  const db = getDb()
+  await db.delete(backupJobs).where(eq(backupJobs.repositoryId, id))
+  await db.delete(repositories).where(eq(repositories.id, id))
+  revalidatePath('/repositories')
+  redirect('/repositories')
+}
+
 export interface ReplicaEntry {
   label:   string
   backend: string
