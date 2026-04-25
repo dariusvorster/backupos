@@ -297,6 +297,8 @@ async function checkAgents(db: Db): Promise<void> {
       status: 'failed', completedAt: new Date(),
       errorMessage: 'Run timed out — no completion message received from agent',
     }).where(eq(backupRuns.id, run.id))
-    await db.update(backupJobs).set({ lastRunStatus: 'failed' }).where(eq(backupJobs.id, run.jobId))
+    if (run.jobId) {
+      await db.update(backupJobs).set({ lastRunStatus: 'failed' }).where(eq(backupJobs.id, run.jobId))
+    }
   }
 }
