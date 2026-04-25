@@ -1,3 +1,4 @@
+import { Suspense }        from 'react'
 import Link                from 'next/link'
 import { Database }        from 'lucide-react'
 import { PageHeader }      from '@/components/ui/page-header'
@@ -60,7 +61,7 @@ export default async function RepositoriesPage({
         }
       />
 
-      <GroupFilter groups={groups} />
+      <Suspense><GroupFilter groups={groups} /></Suspense>
 
       {filtered.length === 0 ? (
         <div style={{
