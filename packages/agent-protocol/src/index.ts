@@ -1,3 +1,14 @@
+export interface MountConfig {
+  type: 'nfs' | 'smb'
+  host: string
+  remotePath: string
+  mountPoint: string
+  username?: string
+  password?: string
+  domain?: string
+  options?: string
+}
+
 export interface BackupJobConfig {
   repoUrl: string
   repoPassword: string
@@ -6,6 +17,7 @@ export interface BackupJobConfig {
   tags?: string[]
   useVSS?: boolean
   envVars?: Record<string, string>
+  mountConfig?: MountConfig
 }
 
 export interface BackupStats {

@@ -9,7 +9,7 @@ const { get: httpGet } = require('node:http');
 const { get: httpsGet } = require('node:https');
 
 // ── executor ─────────────────────────────────────────────────────────────────
-const ALLOWED_COMMANDS = ['restic', 'systemctl', 'df', 'hostname', 'uname', 'docker', 'ss', 'netstat'];
+const ALLOWED_COMMANDS = ['restic', 'systemctl', 'df', 'hostname', 'uname', 'docker', 'ss', 'netstat', 'mount', 'umount'];
 
 function execAllowed(cmd, args, env, timeoutMs) {
   if (!ALLOWED_COMMANDS.includes(cmd)) {
@@ -341,12 +341,61 @@ async function detectResources() {
   return resources;
 }
 
+async function mountShare(cfg) {
+  mkdirSync(cfg.mountPoint, { recursive: true });
+  if (cfg.type === 'nfs') {
+    const args = ['-t', 'nfs', cfg.host + ':' + cfg.remotePath, cfg.mountPoint];
+    if (cfg.options) args.push('-o', cfg.options);
+    const r = await execAllowed('mount', args, {});
+    if (r.exitCode !== 0) throw new Error('NFS mount failed: ' + r.stderr.trim());
+  } else if (cfg.type === 'smb') {
+    const creds = ['username=' + (cfg.username || ''), 'password=' + (cfg.password || '')];
+    if (cfg.domain)  creds.push('domain=' + cfg.domain);
+    if (cfg.options) creds.push(cfg.options);
+    const args = ['-t', 'cifs', '//' + cfg.host + '/' + cfg.remotePath, cfg.mountPoint, '-o', creds.join(',')];
+    const r = await execAllowed('mount', args, {});
+    if (r.exitCode !== 0) throw new Error('SMB mount failed: ' + r.stderr.trim());
+  }
+}
+
+async function umountShare(mountPoint) {
+  await execAllowed('umount', [mountPoint], {}).catch(() => {});
+}
+
+async function ensureRepoInit(env) {
+  const check = await execAllowed('restic', ['snapshots', '--json'], env, 15000);
+  if (check.exitCode !== 0) {
+    const init = await execAllowed('restic', ['init'], env, 30000);
+    if (init.exitCode !== 0 && !init.stderr.includes('already initialized')) {
+      throw new Error('restic init failed: ' + init.stderr.trim());
+    }
+  }
+}
+
 async function handleBackup(jobId, jobConfig, send) {
   const env = {
     RESTIC_REPOSITORY: jobConfig.repoUrl,
     RESTIC_PASSWORD:   jobConfig.repoPassword,
     ...(jobConfig.envVars || {}),
   };
+
+  const mountCfg = jobConfig.mountConfig || null;
+  if (mountCfg) {
+    try {
+      await mountShare(mountCfg);
+    } catch (err) {
+      send({ type: 'backup_failed', jobId, error: String(err), detail: '', log: '' });
+      return;
+    }
+    try {
+      await ensureRepoInit(env);
+    } catch (err) {
+      await umountShare(mountCfg.mountPoint);
+      send({ type: 'backup_failed', jobId, error: String(err), detail: '', log: '' });
+      return;
+    }
+  }
+
   const args = ['backup', '--json', ...jobConfig.paths];
   if (jobConfig.exclude) { for (const ex of jobConfig.exclude) args.push('--exclude', ex); }
   if (jobConfig.tags)    { for (const tag of jobConfig.tags)   args.push('--tag', tag); }
@@ -355,6 +404,7 @@ async function handleBackup(jobId, jobConfig, send) {
   try {
     const result = await execAllowed('restic', args, env);
     const log = [result.stdout, result.stderr].filter(Boolean).join('\n');
+    if (mountCfg) await umountShare(mountCfg.mountPoint);
     if (result.exitCode !== 0) {
       send({ type: 'backup_failed', jobId, error: 'restic exited non-zero', detail: result.stderr, log });
       return;
@@ -376,6 +426,7 @@ async function handleBackup(jobId, jobConfig, send) {
       },
     });
   } catch (err) {
+    if (mountCfg) await umountShare(mountCfg.mountPoint);
     send({ type: 'backup_failed', jobId, error: String(err), detail: '', log: '' });
   }
 }
@@ -389,10 +440,24 @@ async function handleVerify(repoId, repoUrl, repoPassword, readData, envVars) {
 
 async function handleTestRepo(requestId, repoUrl, repoPassword, envVars, send) {
   const env = { RESTIC_REPOSITORY: repoUrl, RESTIC_PASSWORD: repoPassword, ...(envVars || {}) };
+  let mountCfg = null;
+  if (envVars && envVars['mountConfig']) {
+    try { mountCfg = JSON.parse(envVars['mountConfig']); } catch (_) {}
+  }
   try {
+    if (mountCfg) {
+      try {
+        await mountShare(mountCfg);
+      } catch (err) {
+        send({ type: 'test_repo_result', requestId, ok: false, error: String(err) });
+        return;
+      }
+      await ensureRepoInit(env);
+    }
     const result = await execAllowed('restic', ['snapshots', '--json'], env, 30000);
+    if (mountCfg) await umountShare(mountCfg.mountPoint);
     if (result.exitCode !== 0) {
-      const errMsg = result.stderr.trim() || result.stdout.trim() || 'Connection timed out — check host reachability, SSH access, and that the backupos user can log in';
+      const errMsg = result.stderr.trim() || result.stdout.trim() || 'Connection timed out — check host reachability and credentials';
       send({ type: 'test_repo_result', requestId, ok: false, error: errMsg });
       return;
     }
@@ -400,6 +465,7 @@ async function handleTestRepo(requestId, repoUrl, repoPassword, envVars, send) {
     try { snapshotCount = (JSON.parse(result.stdout) || []).length; } catch (_) {}
     send({ type: 'test_repo_result', requestId, ok: true, snapshotCount });
   } catch (e) {
+    if (mountCfg) await umountShare(mountCfg.mountPoint).catch(() => {});
     send({ type: 'test_repo_result', requestId, ok: false, error: String(e) });
   }
 }

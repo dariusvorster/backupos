@@ -5,6 +5,8 @@ import { createRepository } from '@/app/actions/repositories'
 
 const BACKENDS = [
   { value: 'local',  label: 'Local filesystem' },
+  { value: 'nfs',    label: 'NFS share' },
+  { value: 'smb',    label: 'SMB / CIFS share' },
   { value: 's3',     label: 'Amazon S3' },
   { value: 'r2',     label: 'Cloudflare R2' },
   { value: 'b2',     label: 'Backblaze B2' },
@@ -77,6 +79,62 @@ export default function NewRepositoryPage() {
               <input name="path" type="text" required placeholder="/mnt/backups/restic-repo" style={inputStyle} />
             </div>
           )}
+
+          {backend === 'nfs' && (<>
+            <div style={grid2}>
+              <div>
+                <label style={labelStyle}>NAS host / IP</label>
+                <input name="host" type="text" required placeholder="192.168.10.9" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Export path</label>
+                <input name="remotePath" type="text" required placeholder="/volume1/backups" style={inputStyle} />
+              </div>
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
+              <input name="options" type="text" placeholder="vers=3,soft" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
+                The share will be mounted on the agent at <code>/mnt/backupos/&lt;id&gt;</code>. The agent must run as root or have mount privileges.
+              </div>
+            </div>
+          </>)}
+
+          {backend === 'smb' && (<>
+            <div style={grid2}>
+              <div>
+                <label style={labelStyle}>NAS host / IP</label>
+                <input name="host" type="text" required placeholder="192.168.10.9" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Share name</label>
+                <input name="remotePath" type="text" required placeholder="backups" style={inputStyle} />
+              </div>
+            </div>
+            <div style={grid2}>
+              <div>
+                <label style={labelStyle}>Username</label>
+                <input name="username" type="text" required placeholder="backupuser" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Password</label>
+                <input name="smbPassword" type="password" required placeholder="••••••••" style={inputStyle} />
+              </div>
+            </div>
+            <div style={grid2}>
+              <div>
+                <label style={labelStyle}>Domain <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
+                <input name="domain" type="text" placeholder="WORKGROUP" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
+                <input name="options" type="text" placeholder="uid=0,gid=0" style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--fg-faint)' }}>
+              Requires <code>cifs-utils</code> on the agent host. Share will be mounted at <code>/mnt/backupos/&lt;id&gt;</code>.
+            </div>
+          </>)}
 
           {backend === 's3' && (<>
             <div style={fieldStyle}>

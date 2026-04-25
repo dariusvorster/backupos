@@ -15,6 +15,9 @@ export async function createRepository(formData: FormData): Promise<{ error: str
   if (!backend)  return { error: 'Backend is required' }
   if (!password) return { error: 'Repository password is required' }
 
+  const db = getDb()
+  const id = crypto.randomUUID()
+
   const config: Record<string, string> = {}
 
   if (backend === 'local') {
@@ -66,10 +69,34 @@ export async function createRepository(formData: FormData): Promise<{ error: str
     const path   = (formData.get('path') as string)?.trim()
     if (!remote || !path) return { error: 'Remote and path are required' }
     config['repositoryUrl'] = `rclone:${remote}:${path}`
+  } else if (backend === 'nfs') {
+    const host       = (formData.get('host') as string)?.trim()
+    const remotePath = (formData.get('remotePath') as string)?.trim()
+    const options    = (formData.get('options') as string)?.trim()
+    if (!host || !remotePath) return { error: 'Host and export path are required' }
+    const mountPoint = `/mnt/backupos/${id}`
+    config['repositoryUrl'] = mountPoint
+    config['mountConfig']   = JSON.stringify({
+      type: 'nfs', host, remotePath, mountPoint,
+      ...(options ? { options } : {}),
+    })
+  } else if (backend === 'smb') {
+    const host        = (formData.get('host') as string)?.trim()
+    const remotePath  = (formData.get('remotePath') as string)?.trim()
+    const username    = (formData.get('username') as string)?.trim()
+    const smbPassword = (formData.get('smbPassword') as string)?.trim()
+    const domain      = (formData.get('domain') as string)?.trim()
+    const options     = (formData.get('options') as string)?.trim()
+    if (!host || !remotePath || !username || !smbPassword) return { error: 'Host, share name, username, and password are required' }
+    const mountPoint = `/mnt/backupos/${id}`
+    config['repositoryUrl'] = mountPoint
+    config['mountConfig']   = JSON.stringify({
+      type: 'smb', host, remotePath, mountPoint, username, password: smbPassword,
+      ...(domain  ? { domain }  : {}),
+      ...(options ? { options } : {}),
+    })
   }
 
-  const db = getDb()
-  const id = crypto.randomUUID()
   await db.insert(repositories).values({
     id,
     name,

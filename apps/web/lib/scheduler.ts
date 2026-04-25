@@ -4,7 +4,7 @@ import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq
 import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
-import type { ServerMessage } from '@backupos/agent-protocol'
+import type { ServerMessage, MountConfig } from '@backupos/agent-protocol'
 
 interface RepoConfig {
   repositoryUrl: string
@@ -107,6 +107,7 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, job.id))
 
   const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
+  const mountConfig = cfg['mountConfig'] ? (JSON.parse(cfg['mountConfig']) as MountConfig) : undefined
 
   const msg: ServerMessage = {
     type:   'run_backup',
@@ -118,6 +119,7 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
       exclude:  srcConfig.exclude,
       tags,
       envVars:  cfg,
+      mountConfig,
     },
   }
 
