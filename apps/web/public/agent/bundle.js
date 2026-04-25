@@ -359,13 +359,18 @@ async function mountShare(cfg) {
     const cmd = cfg.mountCommand.replace(/\{mountPoint\}/g, cfg.mountPoint);
     const r = await new Promise((resolve) => {
       const child = spawn('/bin/sh', ['-c', cmd], { env: process.env, stdio: 'pipe' });
-      let stdout = '', stderr = '';
+      let stdout = '', stderr = '', done = false;
+      const timer = setTimeout(() => {
+        if (!done) { done = true; try { child.kill(); } catch (_) {} resolve({ exitCode: 1, stdout, stderr: 'Mount timed out after 30 s — check NAS reachability and try adding vers=2.0 or vers=3.0 to options' }); }
+      }, 30000);
       child.stdout.on('data', d => { stdout += d.toString(); });
       child.stderr.on('data', d => { stderr += d.toString(); });
-      child.on('close', code => resolve({ exitCode: code ?? 1, stdout, stderr }));
-      child.on('error', err => resolve({ exitCode: 1, stdout, stderr: String(err) }));
+      child.on('close', code => { if (!done) { done = true; clearTimeout(timer); resolve({ exitCode: code ?? 1, stdout, stderr }); } });
+      child.on('error', err => { if (!done) { done = true; clearTimeout(timer); resolve({ exitCode: 1, stdout, stderr: String(err) }); } });
     });
-    if (r.exitCode !== 0) throw new Error('Mount failed: ' + r.stderr.trim());
+    if (r.exitCode !== 0) {
+      throw new Error('Mount failed: ' + r.stderr.trim() + '\nCommand run: ' + cmd);
+    }
     return;
   }
 
