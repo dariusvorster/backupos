@@ -27,6 +27,7 @@ export function getDb(): Db {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   _sqlite = new Database(filePath)
   _sqlite.pragma('journal_mode = WAL')
+  _sqlite.pragma('busy_timeout = 10000')
   _sqlite.pragma('foreign_keys = ON')
 
   _db = drizzleSqlite(_sqlite, { schema })
