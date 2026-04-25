@@ -194,7 +194,8 @@ export default function NewRepositoryPage() {
               <input name="mountCommand" type="text" placeholder={'mount -t cifs //192.168.10.9/backups {mountPoint} -o username=user,password=pass,vers=3.0'} style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
                 Linux <code>mount</code> command — <strong>not</strong> the <code>smb://</code> URL your NAS shows. Use <code>{'{mountPoint}'}</code> as the mount directory.
-                Requires <code>cifs-utils</code>: <code>sudo apt-get install -y cifs-utils</code>
+                No spaces between <code>-o</code> options (use <code>user=x,pass=y</code> not <code>user=x, pass=y</code>).
+                Avoid shell special characters in passwords (<code>$</code>, <code>!</code>, <code>&amp;</code>) — wrap in single quotes if needed: <code>password='my$pass'</code>.
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
                 <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}

@@ -356,7 +356,11 @@ async function mountShare(cfg) {
         'That looks like a URL, not a mount command. Use the Linux mount format:\n' + hint
       );
     }
-    const cmd = cfg.mountCommand.replace(/\{mountPoint\}/g, cfg.mountPoint);
+    // Strip spaces around commas (mount -o options must not have spaces between values)
+    const cmd = cfg.mountCommand
+      .replace(/\{mountPoint\}/g, cfg.mountPoint)
+      .replace(/,\s+/g, ',')
+      .replace(/\s+,/g, ',');
     const r = await new Promise((resolve) => {
       const child = spawn('/bin/sh', ['-c', cmd], { env: process.env, stdio: 'pipe' });
       let stdout = '', stderr = '', done = false;

@@ -133,7 +133,8 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
               <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
               <input name="mountCommand" type="text" defaultValue={mountConfig?.['mountCommand'] ?? ''} placeholder={'mount -t cifs //192.168.10.9/backups {mountPoint} -o username=user,password=pass,vers=3.0'} style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                Use <code>{'{mountPoint}'}</code> as the mount directory. Requires <code>cifs-utils</code>: <code>sudo apt-get install -y cifs-utils</code>
+                Use <code>{'{mountPoint}'}</code> as the mount directory. No spaces between <code>-o</code> options.
+                Passwords with special characters (<code>$</code>, <code>!</code>) must be single-quoted: <code>password='my$pass'</code>.
               </div>
             </div>
           </>)}
