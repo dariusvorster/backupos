@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, index } from 'drizzle-orm/sqlite-core'
 
 // ── Agents ────────────────────────────────────────────────────────────────
 // An agent is the backupos-agent binary running on a source host
