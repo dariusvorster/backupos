@@ -7,6 +7,7 @@ export interface MountConfig {
   password?: string
   domain?: string
   options?: string
+  mountCommand?: string  // full custom command; use {mountPoint} as placeholder
 }
 
 export interface BackupJobConfig {

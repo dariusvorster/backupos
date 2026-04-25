@@ -80,16 +80,21 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
             <div style={grid2}>
               <div>
                 <label style={labelStyle}>NAS host / IP</label>
-                <input name="host" type="text" required defaultValue={mountConfig?.['host'] ?? ''} style={inputStyle} />
+                <input name="host" type="text" defaultValue={mountConfig?.['host'] ?? ''} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Export path</label>
-                <input name="remotePath" type="text" required defaultValue={mountConfig?.['remotePath'] ?? ''} style={inputStyle} />
+                <input name="remotePath" type="text" defaultValue={mountConfig?.['remotePath'] ?? ''} style={inputStyle} />
               </div>
             </div>
             <div style={fieldStyle}>
               <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
               <input name="options" type="text" defaultValue={mountConfig?.['options'] ?? ''} placeholder="vers=3,soft" style={inputStyle} />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
+              <input name="mountCommand" type="text" defaultValue={mountConfig?.['mountCommand'] ?? ''} placeholder={'mount -t nfs 192.168.10.9:/volume1/backups {mountPoint}'} style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Use <code>{'{mountPoint}'}</code> as the mount directory placeholder.</div>
             </div>
           </>)}
 
@@ -97,17 +102,17 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
             <div style={grid2}>
               <div>
                 <label style={labelStyle}>NAS host / IP</label>
-                <input name="host" type="text" required defaultValue={mountConfig?.['host'] ?? ''} style={inputStyle} />
+                <input name="host" type="text" defaultValue={mountConfig?.['host'] ?? ''} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Share name</label>
-                <input name="remotePath" type="text" required defaultValue={mountConfig?.['remotePath'] ?? ''} style={inputStyle} />
+                <input name="remotePath" type="text" defaultValue={mountConfig?.['remotePath'] ?? ''} style={inputStyle} />
               </div>
             </div>
             <div style={grid2}>
               <div>
                 <label style={labelStyle}>Username</label>
-                <input name="username" type="text" required defaultValue={mountConfig?.['username'] ?? ''} style={inputStyle} />
+                <input name="username" type="text" defaultValue={mountConfig?.['username'] ?? ''} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Password <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(leave blank to keep)</span></label>
@@ -121,7 +126,14 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
               </div>
               <div>
                 <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
-                <input name="options" type="text" defaultValue={mountConfig?.['options'] ?? ''} placeholder="uid=0,gid=0" style={inputStyle} />
+                <input name="options" type="text" defaultValue={mountConfig?.['options'] ?? ''} placeholder="vers=3.0,uid=0" style={inputStyle} />
+              </div>
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
+              <input name="mountCommand" type="text" defaultValue={mountConfig?.['mountCommand'] ?? ''} placeholder={'mount -t cifs //192.168.10.9/backups {mountPoint} -o username=user,password=pass,vers=3.0'} style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
+                Use <code>{'{mountPoint}'}</code> as the mount directory. Requires <code>cifs-utils</code>: <code>sudo apt-get install -y cifs-utils</code>
               </div>
             </div>
           </>)}

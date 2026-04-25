@@ -343,6 +343,21 @@ async function detectResources() {
 
 async function mountShare(cfg) {
   mkdirSync(cfg.mountPoint, { recursive: true });
+
+  if (cfg.mountCommand) {
+    const cmd = cfg.mountCommand.replace(/\{mountPoint\}/g, cfg.mountPoint);
+    const r = await new Promise((resolve) => {
+      const child = spawn('/bin/sh', ['-c', cmd], { env: process.env, stdio: 'pipe' });
+      let stdout = '', stderr = '';
+      child.stdout.on('data', d => { stdout += d.toString(); });
+      child.stderr.on('data', d => { stderr += d.toString(); });
+      child.on('close', code => resolve({ exitCode: code ?? 1, stdout, stderr }));
+      child.on('error', err => resolve({ exitCode: 1, stdout, stderr: String(err) }));
+    });
+    if (r.exitCode !== 0) throw new Error('Mount failed: ' + r.stderr.trim());
+    return;
+  }
+
   if (cfg.type === 'nfs') {
     const args = ['-t', 'nfs', cfg.host + ':' + cfg.remotePath, cfg.mountPoint];
     if (cfg.options) args.push('-o', cfg.options);

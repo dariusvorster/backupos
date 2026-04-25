@@ -70,30 +70,36 @@ export async function createRepository(formData: FormData): Promise<{ error: str
     if (!remote || !path) return { error: 'Remote and path are required' }
     config['repositoryUrl'] = `rclone:${remote}:${path}`
   } else if (backend === 'nfs') {
-    const host       = (formData.get('host') as string)?.trim()
-    const remotePath = (formData.get('remotePath') as string)?.trim()
-    const options    = (formData.get('options') as string)?.trim()
-    if (!host || !remotePath) return { error: 'Host and export path are required' }
+    const host         = (formData.get('host') as string)?.trim()
+    const remotePath   = (formData.get('remotePath') as string)?.trim()
+    const options      = (formData.get('options') as string)?.trim()
+    const mountCommand = (formData.get('mountCommand') as string)?.trim()
+    if (!mountCommand && (!host || !remotePath)) return { error: 'Provide either a custom mount command or both host and export path' }
     const mountPoint = `/mnt/backupos/${id}`
     config['repositoryUrl'] = mountPoint
     config['mountConfig']   = JSON.stringify({
-      type: 'nfs', host, remotePath, mountPoint,
-      ...(options ? { options } : {}),
+      type: 'nfs', host: host ?? '', remotePath: remotePath ?? '', mountPoint,
+      ...(options      ? { options }      : {}),
+      ...(mountCommand ? { mountCommand } : {}),
     })
   } else if (backend === 'smb') {
-    const host        = (formData.get('host') as string)?.trim()
-    const remotePath  = (formData.get('remotePath') as string)?.trim()
-    const username    = (formData.get('username') as string)?.trim()
-    const smbPassword = (formData.get('smbPassword') as string)?.trim()
-    const domain      = (formData.get('domain') as string)?.trim()
-    const options     = (formData.get('options') as string)?.trim()
-    if (!host || !remotePath || !username || !smbPassword) return { error: 'Host, share name, username, and password are required' }
+    const host         = (formData.get('host') as string)?.trim()
+    const remotePath   = (formData.get('remotePath') as string)?.trim()
+    const username     = (formData.get('username') as string)?.trim()
+    const smbPassword  = (formData.get('smbPassword') as string)?.trim()
+    const domain       = (formData.get('domain') as string)?.trim()
+    const options      = (formData.get('options') as string)?.trim()
+    const mountCommand = (formData.get('mountCommand') as string)?.trim()
+    if (!mountCommand && (!host || !remotePath || !username || !smbPassword)) return { error: 'Provide either a custom mount command or host, share name, username, and password' }
     const mountPoint = `/mnt/backupos/${id}`
     config['repositoryUrl'] = mountPoint
     config['mountConfig']   = JSON.stringify({
-      type: 'smb', host, remotePath, mountPoint, username, password: smbPassword,
-      ...(domain  ? { domain }  : {}),
-      ...(options ? { options } : {}),
+      type: 'smb', host: host ?? '', remotePath: remotePath ?? '', mountPoint,
+      ...(username     ? { username }     : {}),
+      ...(smbPassword  ? { password: smbPassword } : {}),
+      ...(domain       ? { domain }       : {}),
+      ...(options      ? { options }      : {}),
+      ...(mountCommand ? { mountCommand } : {}),
     })
   }
 
@@ -169,26 +175,38 @@ export async function updateRepository(id: string, formData: FormData): Promise<
     if (!remote || !path) return { error: 'Remote and path are required' }
     config['repositoryUrl'] = `rclone:${remote}:${path}`
   } else if (repo.backend === 'nfs') {
-    const host       = (formData.get('host') as string)?.trim()
-    const remotePath = (formData.get('remotePath') as string)?.trim()
-    const options    = (formData.get('options') as string)?.trim()
-    if (!host || !remotePath) return { error: 'Host and export path are required' }
-    const existing = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
-    config['mountConfig'] = JSON.stringify({ ...existing, type: 'nfs', host, remotePath, ...(options ? { options } : { options: undefined }) })
-  } else if (repo.backend === 'smb') {
-    const host        = (formData.get('host') as string)?.trim()
-    const remotePath  = (formData.get('remotePath') as string)?.trim()
-    const username    = (formData.get('username') as string)?.trim()
-    const smbPassword = (formData.get('smbPassword') as string)?.trim()
-    const domain      = (formData.get('domain') as string)?.trim()
-    const options     = (formData.get('options') as string)?.trim()
-    if (!host || !remotePath || !username) return { error: 'Host, share name, and username are required' }
+    const host         = (formData.get('host') as string)?.trim()
+    const remotePath   = (formData.get('remotePath') as string)?.trim()
+    const options      = (formData.get('options') as string)?.trim()
+    const mountCommand = (formData.get('mountCommand') as string)?.trim()
+    if (!mountCommand && (!host || !remotePath)) return { error: 'Provide either a custom mount command or both host and export path' }
     const existing = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
     config['mountConfig'] = JSON.stringify({
-      ...existing, type: 'smb', host, remotePath, username,
-      ...(smbPassword ? { password: smbPassword } : {}),
-      ...(domain  ? { domain }  : {}),
-      ...(options ? { options } : {}),
+      ...existing, type: 'nfs',
+      ...(host         ? { host }         : {}),
+      ...(remotePath   ? { remotePath }   : {}),
+      ...(options      ? { options }      : { options: undefined }),
+      ...(mountCommand ? { mountCommand } : { mountCommand: undefined }),
+    })
+  } else if (repo.backend === 'smb') {
+    const host         = (formData.get('host') as string)?.trim()
+    const remotePath   = (formData.get('remotePath') as string)?.trim()
+    const username     = (formData.get('username') as string)?.trim()
+    const smbPassword  = (formData.get('smbPassword') as string)?.trim()
+    const domain       = (formData.get('domain') as string)?.trim()
+    const options      = (formData.get('options') as string)?.trim()
+    const mountCommand = (formData.get('mountCommand') as string)?.trim()
+    if (!mountCommand && (!host || !remotePath || !username)) return { error: 'Provide either a custom mount command or host, share name, and username' }
+    const existing = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
+    config['mountConfig'] = JSON.stringify({
+      ...existing, type: 'smb',
+      ...(host         ? { host }         : {}),
+      ...(remotePath   ? { remotePath }   : {}),
+      ...(username     ? { username }     : {}),
+      ...(smbPassword  ? { password: smbPassword } : {}),
+      ...(domain       ? { domain }       : {}),
+      ...(options      ? { options }      : { options: undefined }),
+      ...(mountCommand ? { mountCommand } : { mountCommand: undefined }),
     })
   }
 

@@ -84,18 +84,22 @@ export default function NewRepositoryPage() {
             <div style={grid2}>
               <div>
                 <label style={labelStyle}>NAS host / IP</label>
-                <input name="host" type="text" required placeholder="192.168.10.9" style={inputStyle} />
+                <input name="host" type="text" placeholder="192.168.10.9" style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Export path</label>
-                <input name="remotePath" type="text" required placeholder="/volume1/backups" style={inputStyle} />
+                <input name="remotePath" type="text" placeholder="/volume1/backups" style={inputStyle} />
               </div>
             </div>
             <div style={fieldStyle}>
               <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
               <input name="options" type="text" placeholder="vers=3,soft" style={inputStyle} />
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
+              <input name="mountCommand" type="text" placeholder={'mount -t nfs 192.168.10.9:/volume1/backups {mountPoint}'} style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                The share will be mounted on the agent at <code>/mnt/backupos/&lt;id&gt;</code>. The agent must run as root or have mount privileges.
+                Paste the exact command your NAS shows. Use <code>{'{mountPoint}'}</code> where the mount directory goes. The agent must run as root.
               </div>
             </div>
           </>)}
@@ -104,21 +108,21 @@ export default function NewRepositoryPage() {
             <div style={grid2}>
               <div>
                 <label style={labelStyle}>NAS host / IP</label>
-                <input name="host" type="text" required placeholder="192.168.10.9" style={inputStyle} />
+                <input name="host" type="text" placeholder="192.168.10.9" style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Share name</label>
-                <input name="remotePath" type="text" required placeholder="backups" style={inputStyle} />
+                <input name="remotePath" type="text" placeholder="backups" style={inputStyle} />
               </div>
             </div>
             <div style={grid2}>
               <div>
                 <label style={labelStyle}>Username</label>
-                <input name="username" type="text" required placeholder="backupuser" style={inputStyle} />
+                <input name="username" type="text" placeholder="backupuser" style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Password</label>
-                <input name="smbPassword" type="password" required placeholder="••••••••" style={inputStyle} />
+                <input name="smbPassword" type="password" placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
             <div style={grid2}>
@@ -128,11 +132,15 @@ export default function NewRepositoryPage() {
               </div>
               <div>
                 <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
-                <input name="options" type="text" placeholder="uid=0,gid=0" style={inputStyle} />
+                <input name="options" type="text" placeholder="vers=3.0,uid=0" style={inputStyle} />
               </div>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--fg-faint)' }}>
-              Requires <code>cifs-utils</code> on the agent host. Share will be mounted at <code>/mnt/backupos/&lt;id&gt;</code>.
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
+              <input name="mountCommand" type="text" placeholder={'mount -t cifs //192.168.10.9/backups {mountPoint} -o username=user,password=pass,vers=3.0'} style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
+                Paste the exact command your NAS provides. Use <code>{'{mountPoint}'}</code> as the mount directory. Requires <code>cifs-utils</code> on the agent: <code>sudo apt-get install -y cifs-utils</code>
+              </div>
             </div>
           </>)}
 
