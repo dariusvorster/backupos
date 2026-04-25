@@ -30,7 +30,12 @@ export class ProxmoxPBSMonitor implements BackupMonitorAdapter {
     const { data: datastores } = await this.get<{ data: PBSDatastore[] }>(
       cfg,
       '/api2/json/status/datastore-usage',
-    )
+    ).catch((err: unknown) => {
+      const msg = err instanceof AggregateError && err.errors.length > 0
+        ? err.errors.map((e: unknown) => (e instanceof Error ? e.message : String(e))).join('; ')
+        : err instanceof Error ? err.message : String(err)
+      throw new Error(`Cannot reach PBS at ${cfg.url}: ${msg}`)
+    })
     const ds = datastores.find((d) => d.store === cfg.datastore) ?? datastores[0]
 
     // Snapshots in the configured datastore

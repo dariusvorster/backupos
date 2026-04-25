@@ -115,6 +115,14 @@ export async function syncMonitor(monitorId: string): Promise<{ ok: boolean; err
     revalidatePath(`/monitors/${monitorId}`)
     return { ok: true }
   } catch (err) {
-    return { ok: false, error: String(err) }
+    let msg: string
+    if (err instanceof AggregateError && err.errors.length > 0) {
+      msg = err.errors.map((e: unknown) => (e instanceof Error ? e.message : String(e))).join('; ')
+    } else if (err instanceof Error) {
+      msg = err.message
+    } else {
+      msg = String(err)
+    }
+    return { ok: false, error: msg || 'Sync failed' }
   }
 }
