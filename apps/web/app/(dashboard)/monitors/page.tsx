@@ -1,4 +1,5 @@
 import type { ComponentProps } from 'react'
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { Radar } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
@@ -57,7 +58,7 @@ export default async function MonitorsPage({
         }
       />
 
-      <GroupFilter groups={groups} />
+      <Suspense><GroupFilter groups={groups} /></Suspense>
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         {monitors.length === 0 ? (
