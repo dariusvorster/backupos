@@ -31,7 +31,7 @@ interface BadgeProps {
 }
 
 export function Badge({ status, label }: BadgeProps) {
-  const s = MAP[status]
+  const s = MAP[status] ?? { bg: 'var(--surf2)', color: 'var(--fg-mute)' }
   const text = label ?? status.charAt(0).toUpperCase() + status.slice(1)
 
   return (
