@@ -48,6 +48,11 @@ export function connectedAgentIds(): string[] {
   return [...connections.keys()]
 }
 
+export function broadcastRemoveMount(repoId: string): void {
+  const msg = { type: 'remove_mount', repoId, mountPoint: `/mnt/backupos/${repoId}` }
+  for (const agentId of connectedAgentIds()) dispatch(agentId, msg)
+}
+
 export function requestDetect(agentId: string): Promise<DetectedResources> {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID()

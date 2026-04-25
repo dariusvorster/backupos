@@ -209,6 +209,8 @@ function startAgent(config) {
         const sendMetrics = async () => { send({ type: 'metrics', metrics: await collectMetrics() }); };
         await sendMetrics();
         metricsTimer = setInterval(() => { sendMetrics().catch(console.error); }, METRICS_INTERVAL_MS);
+        mountAllOnStartup().catch(e => console.warn('[agent] startup mount error:', e.message));
+        startCleanupTimer();
       } else if (msg.type === 'run_backup') {
         await handleBackup(msg.jobId, msg.config, send);
       } else if (msg.type === 'list_resources') {
@@ -230,6 +232,8 @@ function startAgent(config) {
         await handleTestRepo(msg.requestId, msg.repoUrl, msg.repoPassword, msg.envVars, send);
       } else if (msg.type === 'test_mount') {
         await handleTestMount(msg.requestId, msg.mountConfig, send);
+      } else if (msg.type === 'remove_mount') {
+        await removeMount(msg.repoId, msg.mountPoint || `/mnt/backupos/${msg.repoId}`);
       } else if (msg.type === 'run_restore') {
         console.warn('[agent] run_restore not implemented for restoreId=' + msg.restoreId);
         send({ type: 'restore_complete', restoreId: msg.restoreId, success: false });
@@ -343,110 +347,124 @@ async function detectResources() {
   return resources;
 }
 
-async function mountShare(cfg) {
-  mkdirSync(cfg.mountPoint, { recursive: true });
+// ── persistent mount helpers (fstab-based, PBS-style) ─────────────────────────
+const CREDS_DIR = '/etc/backupos/creds';
 
-  if (cfg.mountCommand) {
-    if (/^(smb|nfs|cifs|afp|ftp):\/\//i.test(cfg.mountCommand.trim())) {
-      const proto = cfg.mountCommand.trim().split(':')[0].toLowerCase();
-      const hint = proto === 'nfs'
-        ? 'mount -t nfs 192.168.10.9:/volume1/share {mountPoint}'
-        : 'mount -t cifs //192.168.10.9/share {mountPoint} -o username=USER,password=PASS,vers=3.0';
-      throw new Error(
-        'That looks like a URL, not a mount command. Use the Linux mount format:\n' + hint
-      );
-    }
-    if (!cfg.mountCommand.includes('{mountPoint}')) {
-      const hint = cfg.mountCommand.trim().startsWith('mount -t nfs')
-        ? 'mount -t nfs 192.168.10.9:/volume1/Backups {mountPoint}'
-        : 'mount -t cifs //192.168.10.9/Backups {mountPoint} -o username=USER,password=PASS,vers=3.0';
-      throw new Error(
-        'Mount command is missing {mountPoint}. Add it as the mount destination, e.g.:\n' + hint + '\n\nAlso note: NFS paths use a colon before the path — server:/share (not server/share).'
-      );
-    }
-    // Strip spaces around commas (mount -o options must not have spaces between values)
-    const cmd = cfg.mountCommand
-      .replace(/\{mountPoint\}/g, cfg.mountPoint)
-      .replace(/,\s+/g, ',')
-      .replace(/\s+,/g, ',');
-    const r = await new Promise((resolve) => {
-      const child = spawn('/bin/sh', ['-c', cmd], { env: process.env, stdio: 'pipe' });
-      let stdout = '', stderr = '', done = false;
-      const timer = setTimeout(() => {
-        if (!done) { done = true; try { child.kill(); } catch (_) {} resolve({ exitCode: 1, stdout, stderr: 'Mount timed out after 30 s — check NAS reachability and try adding vers=2.0 or vers=3.0 to options' }); }
-      }, 30000);
-      child.stdout.on('data', d => { stdout += d.toString(); });
-      child.stderr.on('data', d => { stderr += d.toString(); });
-      child.on('close', code => { if (!done) { done = true; clearTimeout(timer); resolve({ exitCode: code ?? 1, stdout, stderr }); } });
-      child.on('error', err => { if (!done) { done = true; clearTimeout(timer); resolve({ exitCode: 1, stdout, stderr: String(err) }); } });
-    });
-    if (r.exitCode !== 0) {
-      let msg = r.stderr.trim() || 'Mount exited non-zero';
-      if (msg.includes('Operation now in progress')) {
-        msg += '\nHint: SMB version mismatch. Try vers=1.0, vers=2.1, or vers=3.0 in the mount options.';
-      } else if (msg.includes('Permission denied') || msg.includes('EACCES')) {
-        msg += '\nHint: Check username/password. If the password contains $ or ! wrap it in single quotes: password=\'my$pass\'.';
-      } else if (msg.includes('No such file or directory') && !msg.includes('mount point')) {
-        msg += '\nHint: Share name not found on the NAS. Check the share name exists and is accessible.';
-      }
-      throw new Error('Mount failed: ' + msg + '\nCommand run: ' + cmd);
-    }
-    return;
-  }
+function readFstab() {
+  try { return readFileSync('/etc/fstab', 'utf8'); } catch { return ''; }
+}
+function writeFstab(content) { writeFileSync('/etc/fstab', content, 'utf8'); }
+function fstabTag(repoId) { return `# backupos:${repoId}`; }
+function hasFstabEntry(repoId) { return readFstab().includes(fstabTag(repoId)); }
 
-  if (cfg.type === 'nfs') {
-    const args = ['-t', 'nfs', cfg.host + ':' + cfg.remotePath, cfg.mountPoint];
-    // Add soft+timeo so mount fails fast instead of hanging indefinitely
-    const nfsOpts = cfg.options ? cfg.options : 'soft,timeo=50';
-    args.push('-o', nfsOpts);
-    const r = await execAllowed('mount', args, {}, 25000);
-    if (r.exitCode !== 0) {
-      const msg = r.stderr.trim() || r.stdout.trim() || `mount exited with code ${r.exitCode}`;
-      throw new Error('NFS mount failed: ' + msg);
-    }
-  } else if (cfg.type === 'smb') {
-    await mountCifsWithFallback(cfg);
-  }
+function addFstabEntry(repoId, line) {
+  if (hasFstabEntry(repoId)) return;
+  const fstab = readFstab();
+  writeFstab(fstab + (fstab.endsWith('\n') ? '' : '\n') + fstabTag(repoId) + '\n' + line + '\n');
 }
 
-async function mountCifsWithFallback(cfg) {
-  const credsFile = `/tmp/.bkp-${Date.now()}`;
-  let credsContent = `username=${cfg.username || ''}\npassword=${cfg.password || ''}`;
-  if (cfg.domain) credsContent += `\ndomain=${cfg.domain}`;
-  writeFileSync(credsFile, credsContent, { mode: 0o600 });
+function removeFstabEntry(repoId) {
+  const tag = fstabTag(repoId);
+  const lines = readFstab().split('\n');
+  const out = []; let skip = false;
+  for (const l of lines) {
+    if (l === tag) { skip = true; continue; }
+    if (skip) { skip = false; continue; }
+    out.push(l);
+  }
+  writeFstab(out.join('\n'));
+}
 
-  // If the user already specified vers= in options, honour it and don't retry
-  const hasVers = cfg.options && cfg.options.includes('vers=');
-  const versToTry = hasVers ? [''] : ['3.0', '2.1', '2.0', '1.0'];
-  let lastError = '';
-
+function isMounted(mountPoint) {
   try {
-    for (const vers of versToTry) {
-      const opts = ['credentials=' + credsFile];
-      if (vers) opts.push('vers=' + vers);
-      if (cfg.options) {
-        for (const o of cfg.options.split(',')) {
-          const t = o.trim();
-          if (t && !t.startsWith('username=') && !t.startsWith('password=') && !t.startsWith('domain=') && !(vers && t.startsWith('vers='))) {
-            opts.push(t);
-          }
+    return readFileSync('/proc/mounts', 'utf8').split('\n')
+      .some(l => l.split(' ')[1] === mountPoint);
+  } catch { return false; }
+}
+
+function buildCredsFile(repoId, cfg) {
+  mkdirSync(CREDS_DIR, { recursive: true });
+  const p = `${CREDS_DIR}/${repoId}`;
+  let content = `username=${cfg.username || ''}\npassword=${cfg.password || ''}`;
+  if (cfg.domain) content += `\ndomain=${cfg.domain}`;
+  writeFileSync(p, content, { mode: 0o600 });
+  return p;
+}
+
+async function ensureMount(repoId, cfg) {
+  mkdirSync(cfg.mountPoint, { recursive: true });
+  if (isMounted(cfg.mountPoint)) return;
+
+  if (!hasFstabEntry(repoId)) {
+    if (cfg.type === 'nfs') {
+      addFstabEntry(repoId,
+        `${cfg.host}:${cfg.remotePath}\t${cfg.mountPoint}\tnfs\tsoft,timeo=50,_netdev\t0\t0`);
+    } else {
+      // SMB: probe versions, write winning version into fstab
+      const credsPath = buildCredsFile(repoId, cfg);
+      let mounted = false; let lastError = '';
+      for (const vers of ['3.0', '2.1', '2.0', '1.0']) {
+        const opts = `credentials=${credsPath},vers=${vers},_netdev`;
+        const r = await execAllowed('mount', ['-t', 'cifs', `//${cfg.host}/${cfg.remotePath}`, cfg.mountPoint, '-o', opts], {}, 20000);
+        if (r.exitCode === 0) {
+          addFstabEntry(repoId,
+            `//${cfg.host}/${cfg.remotePath}\t${cfg.mountPoint}\tcifs\tcredentials=${credsPath},vers=${vers},_netdev\t0\t0`);
+          mounted = true; break;
         }
+        lastError = r.stderr.trim() || r.stdout.trim() || `exit ${r.exitCode}`;
+        if (!lastError.includes('Operation now in progress') && !lastError.includes('Protocol negotiation') && !lastError.includes('No dialect')) break;
       }
-      const args = ['-t', 'cifs', '//' + cfg.host + '/' + cfg.remotePath, cfg.mountPoint, '-o', opts.join(',')];
-      const r = await execAllowed('mount', args, {}, 20000);
-      if (r.exitCode === 0) return;
-      lastError = r.stderr.trim() || r.stdout.trim() || `mount exited with code ${r.exitCode}`;
-      const isVersionError = lastError.includes('Operation now in progress') || lastError.includes('Protocol negotiation') || lastError.includes('No dialect');
-      if (!isVersionError) break;
+      if (!mounted) throw new Error('SMB mount failed: ' + lastError);
+      return;  // already mounted during probe
     }
-    throw new Error('SMB mount failed: ' + lastError);
-  } finally {
-    try { unlinkSync(credsFile); } catch (_) {}
+  }
+
+  const r = await execAllowed('mount', [cfg.mountPoint], {}, 25000);
+  if (r.exitCode !== 0) {
+    const msg = r.stderr.trim() || r.stdout.trim() || `exit ${r.exitCode}`;
+    if (!msg.toLowerCase().includes('already mounted')) throw new Error('Mount failed: ' + msg);
   }
 }
 
-async function umountShare(mountPoint) {
-  await execAllowed('umount', [mountPoint], {}).catch(() => {});
+async function removeMount(repoId, mountPoint) {
+  await execAllowed('umount', ['-l', mountPoint], {}, 10000).catch(() => {});
+  removeFstabEntry(repoId);
+  try { unlinkSync(`${CREDS_DIR}/${repoId}`); } catch (_) {}
+  try { require('node:fs').rmdirSync(mountPoint); } catch (_) {}
+}
+
+async function mountAllOnStartup() {
+  for (const line of readFstab().split('\n')) {
+    const m = line.match(/^# backupos:(.+)$/);
+    if (!m) continue;
+    const mountPoint = `/mnt/backupos/${m[1]}`;
+    if (isMounted(mountPoint)) continue;
+    mkdirSync(mountPoint, { recursive: true });
+    const r = await execAllowed('mount', [mountPoint], {}, 25000);
+    if (r.exitCode !== 0) {
+      const msg = r.stderr.trim() || r.stdout.trim();
+      if (msg && !msg.toLowerCase().includes('already mounted'))
+        console.warn(`[agent] startup mount ${mountPoint} failed: ${msg}`);
+    } else {
+      console.log(`[agent] mounted ${mountPoint} on startup`);
+    }
+  }
+}
+
+function startCleanupTimer() {
+  setInterval(async () => {
+    for (const line of readFstab().split('\n')) {
+      const m = line.match(/^# backupos:(.+)$/);
+      if (!m) continue;
+      const mountPoint = `/mnt/backupos/${m[1]}`;
+      if (isMounted(mountPoint)) continue;
+      console.log(`[agent] cleanup: remounting ${mountPoint}`);
+      mkdirSync(mountPoint, { recursive: true });
+      const r = await execAllowed('mount', [mountPoint], {}, 25000);
+      if (r.exitCode !== 0)
+        console.warn(`[agent] cleanup remount ${mountPoint} failed: ${r.stderr.trim() || r.stdout.trim()}`);
+    }
+  }, 60 * 60 * 1000);
 }
 
 async function ensureRepoInit(env) {
@@ -468,16 +486,11 @@ async function handleBackup(jobId, jobConfig, send) {
 
   const mountCfg = jobConfig.mountConfig || null;
   if (mountCfg) {
+    const repoId = require('node:path').basename(mountCfg.mountPoint);
     try {
-      await mountShare(mountCfg);
-    } catch (err) {
-      send({ type: 'backup_failed', jobId, error: String(err), detail: '', log: '' });
-      return;
-    }
-    try {
+      await ensureMount(repoId, mountCfg);
       await ensureRepoInit(env);
     } catch (err) {
-      await umountShare(mountCfg.mountPoint);
       send({ type: 'backup_failed', jobId, error: String(err), detail: '', log: '' });
       return;
     }
@@ -491,7 +504,6 @@ async function handleBackup(jobId, jobConfig, send) {
   try {
     const result = await execAllowed('restic', args, env);
     const log = [result.stdout, result.stderr].filter(Boolean).join('\n');
-    if (mountCfg) await umountShare(mountCfg.mountPoint);
     if (result.exitCode !== 0) {
       send({ type: 'backup_failed', jobId, error: 'restic exited non-zero', detail: result.stderr, log });
       return;
@@ -513,7 +525,6 @@ async function handleBackup(jobId, jobConfig, send) {
       },
     });
   } catch (err) {
-    if (mountCfg) await umountShare(mountCfg.mountPoint);
     send({ type: 'backup_failed', jobId, error: String(err), detail: '', log: '' });
   }
 }
@@ -526,12 +537,11 @@ async function handleVerify(repoId, repoUrl, repoPassword, readData, envVars) {
 }
 
 async function handleTestMount(requestId, mountCfg, send) {
+  const repoId = require('node:path').basename(mountCfg.mountPoint);
   try {
-    await mountShare(mountCfg);
-    await umountShare(mountCfg.mountPoint);
+    await ensureMount(repoId, mountCfg);
     send({ type: 'test_mount_result', requestId, ok: true });
   } catch (err) {
-    await umountShare(mountCfg.mountPoint).catch(() => {});
     send({ type: 'test_mount_result', requestId, ok: false, error: String(err) });
   }
 }
@@ -544,8 +554,9 @@ async function handleTestRepo(requestId, repoUrl, repoPassword, envVars, send) {
   }
   try {
     if (mountCfg) {
+      const repoId = require('node:path').basename(mountCfg.mountPoint);
       try {
-        await mountShare(mountCfg);
+        await ensureMount(repoId, mountCfg);
       } catch (err) {
         send({ type: 'test_repo_result', requestId, ok: false, error: String(err) });
         return;
@@ -553,7 +564,6 @@ async function handleTestRepo(requestId, repoUrl, repoPassword, envVars, send) {
       await ensureRepoInit(env);
     }
     const result = await execAllowed('restic', ['snapshots', '--json'], env, 30000);
-    if (mountCfg) await umountShare(mountCfg.mountPoint);
     if (result.exitCode !== 0) {
       const errMsg = result.stderr.trim() || result.stdout.trim() || 'Connection timed out — check host reachability and credentials';
       send({ type: 'test_repo_result', requestId, ok: false, error: errMsg });
@@ -563,7 +573,6 @@ async function handleTestRepo(requestId, repoUrl, repoPassword, envVars, send) {
     try { snapshotCount = (JSON.parse(result.stdout) || []).length; } catch (_) {}
     send({ type: 'test_repo_result', requestId, ok: true, snapshotCount });
   } catch (e) {
-    if (mountCfg) await umountShare(mountCfg.mountPoint).catch(() => {});
     send({ type: 'test_repo_result', requestId, ok: false, error: String(e) });
   }
 }

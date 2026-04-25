@@ -212,6 +212,10 @@ export async function deleteRepository(id: string): Promise<{ error: string } | 
   const db = getDb()
   await db.delete(backupJobs).where(eq(backupJobs.repositoryId, id))
   await db.delete(repositories).where(eq(repositories.id, id))
+  try {
+    const { broadcastRemoveMount } = await import('@/lib/ws-state')
+    broadcastRemoveMount(id)
+  } catch (_) {}
   revalidatePath('/repositories')
   redirect('/repositories')
 }
