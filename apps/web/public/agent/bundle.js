@@ -400,7 +400,10 @@ async function mountShare(cfg) {
     const nfsOpts = cfg.options ? cfg.options : 'soft,timeo=50';
     args.push('-o', nfsOpts);
     const r = await execAllowed('mount', args, {}, 25000);
-    if (r.exitCode !== 0) throw new Error('NFS mount failed: ' + r.stderr.trim());
+    if (r.exitCode !== 0) {
+      const msg = r.stderr.trim() || r.stdout.trim() || `mount exited with code ${r.exitCode}`;
+      throw new Error('NFS mount failed: ' + msg);
+    }
   } else if (cfg.type === 'smb') {
     await mountCifsWithFallback(cfg);
   }
@@ -432,7 +435,7 @@ async function mountCifsWithFallback(cfg) {
       const args = ['-t', 'cifs', '//' + cfg.host + '/' + cfg.remotePath, cfg.mountPoint, '-o', opts.join(',')];
       const r = await execAllowed('mount', args, {}, 20000);
       if (r.exitCode === 0) return;
-      lastError = r.stderr.trim();
+      lastError = r.stderr.trim() || r.stdout.trim() || `mount exited with code ${r.exitCode}`;
       const isVersionError = lastError.includes('Operation now in progress') || lastError.includes('Protocol negotiation') || lastError.includes('No dialect');
       if (!isVersionError) break;
     }
