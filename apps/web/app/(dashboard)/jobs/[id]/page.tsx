@@ -10,7 +10,7 @@ import { fmtLimit } from '@/lib/bandwidth'
 import { PreflightButton } from '@/components/preflight-modal'
 import { togglePreflight } from '@/app/actions/preflight'
 import { PreflightToggle } from '@/components/preflight-toggle'
-import { triggerJob, saveJobRetention, cancelJob } from '@/app/actions/jobs'
+import { triggerJob, saveJobRetention, cancelJob, retryRun } from '@/app/actions/jobs'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -51,6 +51,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const boundSetJobProfile  = setJobProfile.bind(null, job.id)
   const boundTrigger        = triggerJob.bind(null, job.id)
   const boundSaveRetention  = saveJobRetention.bind(null, job.id)
+  const boundRetry          = retryRun.bind(null, job.id)
+
+  const activeRun = runs.find(r => r.status === 'running')
 
   const fieldStyle: React.CSSProperties = {
     backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
@@ -75,16 +78,18 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         <form action={boundTrigger}>
           <button
             type="submit"
+            disabled={!!activeRun}
             style={{
-              padding: '6px 16px', fontSize: 13, cursor: 'pointer',
+              padding: '6px 16px', fontSize: 13, cursor: activeRun ? 'not-allowed' : 'pointer',
               borderRadius: 'var(--radius-sm)', border: 'none',
-              background: 'var(--accent)', color: '#fff',
+              background: activeRun ? 'var(--surf2)' : 'var(--accent)',
+              color: activeRun ? 'var(--fg-mute)' : '#fff',
             }}
           >
             Run now
           </button>
         </form>
-        {runs.some(r => r.status === 'running') && (
+        {activeRun && (
           <form action={cancelJob.bind(null, job.id)}>
             <button
               type="submit"
@@ -94,7 +99,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 background: 'transparent', color: 'var(--err)',
               }}
             >
-              Cancel run
+              Stop run
             </button>
           </form>
         )}
@@ -109,6 +114,34 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           Edit
         </Link>
       </div>
+
+      {/* Live run banner */}
+      {activeRun && (
+        <Link
+          href={`/jobs/${id}/runs/${activeRun.id}`}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            backgroundColor: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent) 40%, transparent)',
+            borderRadius: 'var(--radius)', padding: '12px 20px', marginBottom: 20,
+            textDecoration: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--accent)',
+              display: 'inline-block', animation: 'pulse 1.5s infinite',
+            }} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--accent)' }}>
+              Backup in progress
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>
+              · Started {activeRun.startedAt ? activeRun.startedAt.toISOString().slice(11, 19) : '—'}
+            </span>
+          </div>
+          <span style={{ fontSize: 12, color: 'var(--accent)' }}>View live logs →</span>
+        </Link>
+      )}
 
       {job.lastPreflightStatus && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20, fontSize: 12, color: 'var(--fg-mute)' }}>
@@ -271,6 +304,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 <th style={th}>Started</th>
                 <th style={{ ...th, textAlign: 'right' }}>Duration</th>
                 <th style={{ ...th, textAlign: 'right' }}>Data added</th>
+                <th style={{ ...th, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -294,6 +328,23 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   </td>
                   <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                     {fmtBytes(run.dataAdded)}
+                  </td>
+                  <td style={{ padding: '12px 20px', textAlign: 'right' }}>
+                    {run.status === 'running' ? (
+                      <Link href={`/jobs/${id}/runs/${run.id}`} style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none' }}>
+                        View logs →
+                      </Link>
+                    ) : (run.status === 'failed' || run.status === 'cancelled') ? (
+                      <form action={boundRetry} style={{ display: 'inline' }}>
+                        <button type="submit" style={{
+                          fontSize: 11, padding: '3px 10px', cursor: 'pointer',
+                          borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                          background: 'var(--surf2)', color: 'var(--fg)',
+                        }}>
+                          Retry
+                        </button>
+                      </form>
+                    ) : null}
                   </td>
                 </tr>
               ))}

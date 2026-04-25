@@ -202,6 +202,51 @@ export async function updateJob(id: string, formData: FormData): Promise<void> {
   redirect(`/jobs/${id}`)
 }
 
+export async function retryRun(jobId: string): Promise<void> {
+  const db  = getDb()
+  const now = new Date()
+
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (!job || !job.repositoryId) { redirect(`/jobs/${jobId}`) }
+
+  const bandwidthLimitKbps = await resolveBandwidthLimitKbps(db, jobId)
+  const runId = crypto.randomUUID()
+
+  await db.insert(backupRuns).values({
+    id:           runId,
+    jobId,
+    repositoryId: job.repositoryId,
+    agentId:      job.agentId ?? null,
+    status:       'running',
+    trigger:      'manual',
+    startedAt:    now,
+    bandwidthLimitKbps,
+  })
+  await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, jobId))
+
+  if (job.agentId && connectedAgentIds().includes(job.agentId)) {
+    const [repo] = await db.select().from(repositories)
+      .where(eq(repositories.id, job.repositoryId!)).limit(1)
+    if (repo) {
+      const repoConfig = JSON.parse(decryptField(repo.config)) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
+      const srcConfig  = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
+      const tags       = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
+      const paths = job.sourceType === 'docker_volume'
+        ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
+        : (srcConfig.paths ?? [])
+      dispatch(job.agentId, {
+        type:   'run_backup',
+        jobId,
+        config: { repoUrl: repoConfig.repositoryUrl, repoPassword: repoConfig.password, paths, exclude: srcConfig.exclude, tags, envVars: repoConfig.envVars },
+      })
+    }
+  } else {
+    void import('@/lib/scheduler').then(({ executeRun }) => executeRun(jobId, runId))
+  }
+
+  redirect(`/jobs/${jobId}`)
+}
+
 export async function cancelJob(jobId: string): Promise<void> {
   const db = getDb()
   const [run] = await db
