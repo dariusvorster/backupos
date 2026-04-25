@@ -373,7 +373,15 @@ async function mountShare(cfg) {
       child.on('error', err => { if (!done) { done = true; clearTimeout(timer); resolve({ exitCode: 1, stdout, stderr: String(err) }); } });
     });
     if (r.exitCode !== 0) {
-      throw new Error('Mount failed: ' + r.stderr.trim() + '\nCommand run: ' + cmd);
+      let msg = r.stderr.trim() || 'Mount exited non-zero';
+      if (msg.includes('Operation now in progress')) {
+        msg += '\nHint: SMB version mismatch. Try vers=1.0, vers=2.1, or vers=3.0 in the mount options.';
+      } else if (msg.includes('Permission denied') || msg.includes('EACCES')) {
+        msg += '\nHint: Check username/password. If the password contains $ or ! wrap it in single quotes: password=\'my$pass\'.';
+      } else if (msg.includes('No such file or directory') && !msg.includes('mount point')) {
+        msg += '\nHint: Share name not found on the NAS. Check the share name exists and is accessible.';
+      }
+      throw new Error('Mount failed: ' + msg + '\nCommand run: ' + cmd);
     }
     return;
   }
