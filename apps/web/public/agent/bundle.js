@@ -390,9 +390,10 @@ async function handleVerify(repoId, repoUrl, repoPassword, readData, envVars) {
 async function handleTestRepo(requestId, repoUrl, repoPassword, envVars, send) {
   const env = { RESTIC_REPOSITORY: repoUrl, RESTIC_PASSWORD: repoPassword, ...(envVars || {}) };
   try {
-    const result = await execAllowed('restic', ['snapshots', '--json'], env, 20000);
+    const result = await execAllowed('restic', ['snapshots', '--json'], env, 30000);
     if (result.exitCode !== 0) {
-      send({ type: 'test_repo_result', requestId, ok: false, error: result.stderr || 'restic exited non-zero' });
+      const errMsg = result.stderr.trim() || result.stdout.trim() || 'Connection timed out — check host reachability, SSH access, and that the backupos user can log in';
+      send({ type: 'test_repo_result', requestId, ok: false, error: errMsg });
       return;
     }
     let snapshotCount = 0;
