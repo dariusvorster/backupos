@@ -388,6 +388,13 @@ async function detectResources() {
     if (dbs.length) resources.databases = dbs;
   } catch (_) {}
 
+  // Capabilities
+  resources.vssAvailable = false;  // Linux — VSS is Windows-only
+  resources.hypervisorDriver = ['qm', 'pct', 'virsh', 'xl'].some(cmd => {
+    try { return spawnSync('which', [cmd], { encoding: 'utf-8' }).status === 0; } catch { return false; }
+  });
+  resources.appHooksAvailable = true;  // agent always supports hook scripts on Linux
+
   return resources;
 }
 

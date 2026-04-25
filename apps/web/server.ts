@@ -181,14 +181,32 @@ void app.prepare().then(() => {
           agentId = agent.id
           registerAgent(agentId, ws)
 
+          const osInfo = msg.osInfo as { os?: string; arch?: string; kernel?: string } | undefined
           await db.update(agents).set({
-            status:     'connected',
-            lastSeenAt: new Date(),
-            ...(msg.hostname ? { hostname: msg.hostname } : {}),
+            status:       'connected',
+            lastSeenAt:   new Date(),
+            ...(msg.hostname     ? { hostname:     msg.hostname }           : {}),
+            ...(msg.ip           ? { ip:           msg.ip }                 : {}),
+            ...(msg.platform     ? { platform:     msg.platform }           : {}),
+            ...(msg.agentVersion ? { agentVersion: msg.agentVersion }       : {}),
+            ...(osInfo?.arch     ? { arch:         osInfo.arch }            : {}),
+            ...(osInfo           ? { osInfo:       JSON.stringify(osInfo) } : {}),
           }).where(eq(agents.id, agentId))
 
           const welcome: ServerMessage = { type: 'welcome', agentId, serverVersion: '0.1.0', bundleHash: BUNDLE_HASH || undefined }
           ws.send(JSON.stringify(welcome))
+
+          // Auto-detect capabilities on every connect so the UI is always up to date
+          const detectReqId = crypto.randomUUID()
+          ws.send(JSON.stringify({ type: 'list_resources', requestId: detectReqId }))
+          requestDetect(agentId).then(async (resources) => {
+            const r = resources as { vssAvailable?: boolean; hypervisorDriver?: boolean; appHooksAvailable?: boolean }
+            await db.update(agents).set({
+              ...(r.vssAvailable      != null ? { vssAvailable:      r.vssAvailable }      : {}),
+              ...(r.hypervisorDriver  != null ? { hypervisorDriver:  r.hypervisorDriver }  : {}),
+              ...(r.appHooksAvailable != null ? { appHooksAvailable: r.appHooksAvailable } : {}),
+            }).where(eq(agents.id, agentId!))
+          }).catch(() => { /* best-effort */ })
 
           await db.insert(auditLog).values({
             id: crypto.randomUUID(), action: 'agent_connected',
@@ -348,6 +366,14 @@ void app.prepare().then(() => {
         } else if (msg.type === 'resources_result') {
           console.log('[detect] resources_result requestId=%s resources=%j', msg.requestId, msg.resources)
           resolveDetect(msg.requestId, msg.resources)
+          if (agentId && msg.resources) {
+            const r = msg.resources as { vssAvailable?: boolean; hypervisorDriver?: boolean; appHooksAvailable?: boolean }
+            await db.update(agents).set({
+              ...(r.vssAvailable      != null ? { vssAvailable:      r.vssAvailable }      : {}),
+              ...(r.hypervisorDriver  != null ? { hypervisorDriver:  r.hypervisorDriver }  : {}),
+              ...(r.appHooksAvailable != null ? { appHooksAvailable: r.appHooksAvailable } : {}),
+            }).where(eq(agents.id, agentId))
+          }
 
         } else if (msg.type === 'test_repo_result') {
           resolveTestRepo(msg.requestId, { ok: msg.ok, error: msg.error, snapshotCount: msg.snapshotCount })
