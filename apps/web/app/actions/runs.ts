@@ -26,6 +26,11 @@ export interface RunDetail {
   phases:       PhaseData | null
   errorMessage: string | null
   jobId:        string | null
+  progressPct:  number | null
+  bytesDone:    number | null
+  bytesTotal:   number | null
+  filesDone:    number | null
+  filesTotal:   number | null
 }
 
 export async function getRunDetail(runId: string): Promise<RunDetail | null> {
@@ -39,6 +44,11 @@ export async function getRunDetail(runId: string): Promise<RunDetail | null> {
     phases:       backupRuns.phases,
     errorMessage: backupRuns.errorMessage,
     jobId:        backupRuns.jobId,
+    progressPct:  backupRuns.progressPct,
+    bytesDone:    backupRuns.bytesDone,
+    bytesTotal:   backupRuns.bytesTotal,
+    filesDone:    backupRuns.filesDone,
+    filesTotal:   backupRuns.filesTotal,
   }).from(backupRuns).where(eq(backupRuns.id, runId)).get()
 
   if (!row) return null

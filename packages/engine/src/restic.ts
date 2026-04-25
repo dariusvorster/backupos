@@ -10,6 +10,7 @@ import type {
   ResticForgetJson,
   ResticSnapshotJson,
   ResticStatsJson,
+  ResticStatusJson,
   RepoStats,
   RestoreResult,
   RetentionPolicy,
@@ -48,7 +49,26 @@ export class ResticEngine {
       if (opts.oneFileSystem) args.push('--one-file-system')
       if (opts.useVSS)        args.push('--use-fs-snapshot')
 
-      const result = await this.run(args)
+      const result = await this.runStreaming(args, opts.onProgress
+        ? (line) => {
+            try {
+              const obj = JSON.parse(line) as { message_type: string }
+              if (obj.message_type === 'status') {
+                const s = obj as unknown as ResticStatusJson
+                opts.onProgress!({
+                  pct:              s.percent_done,
+                  bytesDone:        s.bytes_done,
+                  bytesTotal:       s.total_bytes,
+                  filesDone:        s.files_done,
+                  filesTotal:       s.total_files,
+                  secondsElapsed:   s.seconds_elapsed,
+                  secondsRemaining: s.seconds_remaining,
+                })
+              }
+            } catch { /* not JSON */ }
+          }
+        : undefined,
+      )
       if (result.exitCode !== 0) throw new ResticError('backup', result)
 
       const summary = this.parseSummaryLine(result.stdout)
@@ -207,18 +227,41 @@ export class ResticEngine {
     args: string[],
     extraEnv?: Record<string, string>,
   ): Promise<ExecResult> {
+    return this.runStreaming(args, undefined, extraEnv)
+  }
+
+  // Like run() but calls onLine for each stdout line as it arrives
+  private runStreaming(
+    args: string[],
+    onLine?: (line: string) => void,
+    extraEnv?: Record<string, string>,
+  ): Promise<ExecResult> {
     return new Promise((resolve) => {
       const proc = spawn(this.binary, args, { env: this.buildEnv(extraEnv) })
 
-      const out: Buffer[] = []
+      const outLines: string[] = []
       const err: Buffer[] = []
+      let partial = ''
 
-      proc.stdout.on('data', (chunk: Buffer) => out.push(chunk))
+      proc.stdout.on('data', (chunk: Buffer) => {
+        const text = partial + chunk.toString('utf8')
+        const parts = text.split('\n')
+        partial = parts.pop() ?? ''
+        for (const line of parts) {
+          outLines.push(line)
+          if (onLine) onLine(line)
+        }
+      })
+
       proc.stderr.on('data', (chunk: Buffer) => err.push(chunk))
 
       proc.on('close', (code) => {
+        if (partial) {
+          outLines.push(partial)
+          if (onLine) onLine(partial)
+        }
         resolve({
-          stdout:   Buffer.concat(out).toString('utf8'),
+          stdout:   outLines.join('\n'),
           stderr:   Buffer.concat(err).toString('utf8'),
           exitCode: code ?? 1,
         })

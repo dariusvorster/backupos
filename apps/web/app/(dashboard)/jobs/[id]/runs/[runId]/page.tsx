@@ -3,6 +3,7 @@ import { getDb, backupRuns, backupJobs, eq } from '@backupos/db'
 import { LogViewer }       from '@/components/log-viewer'
 import { PhaseTimeline }   from '@/components/phase-timeline'
 import { CopyCommandButton } from '@/components/copy-command-button'
+import { AutoRefresh }     from '@/components/ui/auto-refresh'
 import type { PhaseData }  from '@/app/actions/runs'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -44,12 +45,18 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
     phases,
     errorMessage: run.errorMessage ?? null,
     jobId,
+    progressPct:  run.progressPct  ?? null,
+    bytesDone:    run.bytesDone    ?? null,
+    bytesTotal:   run.bytesTotal   ?? null,
+    filesDone:    run.filesDone    ?? null,
+    filesTotal:   run.filesTotal   ?? null,
   }
 
   const statusColor = STATUS_COLORS[run.status] ?? 'var(--fg-mute)'
 
   return (
     <div style={{ maxWidth: 900 }}>
+      {run.status === 'running' && <AutoRefresh intervalMs={3000} />}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
         <div>

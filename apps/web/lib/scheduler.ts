@@ -159,17 +159,50 @@ async function runJob(db: Db, job: Job): Promise<void> {
   await runJobCore(db, job, runId)
 }
 
+function fmtBytes(b: number): string {
+  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`
+  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`
+  return `${(b / 1024 ** 3).toFixed(2)} GB`
+}
+
 // Core local backup execution — updates an existing backupRun row identified by runId.
 async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
-  if (!job.repositoryId) return
+  if (!job.repositoryId) {
+    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage: 'Job has no repository configured' }).where(eq(backupRuns.id, runId))
+    return
+  }
 
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, job.repositoryId)).limit(1)
-  if (!repo) return
+  if (!repo) {
+    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage: 'Repository not found' }).where(eq(backupRuns.id, runId))
+    return
+  }
 
   const cfg       = JSON.parse(decryptField(repo.config)) as Record<string, string>
   const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
   const paths     = resolveBackupPaths(job.sourceType, srcConfig)
-  if (paths.length === 0) return
+  if (paths.length === 0) {
+    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage: 'No backup paths configured' }).where(eq(backupRuns.id, runId))
+    return
+  }
+
+  // Accumulate log lines + latest progress for periodic DB flush
+  const logLines: string[] = []
+  let lastProgress: { pct: number; bytesDone: number; bytesTotal: number; filesDone: number; filesTotal: number } | null = null
+
+  const flushToDB = async () => {
+    const update: Record<string, unknown> = { log: logLines.join('\n') }
+    if (lastProgress) {
+      update['progressPct']  = lastProgress.pct
+      update['bytesDone']    = lastProgress.bytesDone
+      update['bytesTotal']   = lastProgress.bytesTotal
+      update['filesDone']    = lastProgress.filesDone
+      update['filesTotal']   = lastProgress.filesTotal
+    }
+    await db.update(backupRuns).set(update).where(eq(backupRuns.id, runId))
+  }
+
+  const flushInterval = setInterval(() => { void flushToDB() }, 2000)
 
   try {
     const engine = new ResticEngine({
@@ -180,7 +213,19 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
     })
 
     const tags   = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
-    const result = await engine.backup({ paths, exclude: srcConfig.exclude, tags })
+    const result = await engine.backup({
+      paths,
+      exclude: srcConfig.exclude,
+      tags,
+      onProgress: (s) => {
+        lastProgress = s
+        const pctStr  = (s.pct * 100).toFixed(1)
+        const eta     = s.secondsRemaining != null ? ` ETA ${s.secondsRemaining}s` : ''
+        logLines.push(`[${new Date().toISOString().slice(11, 19)}] ${pctStr}% — ${fmtBytes(s.bytesDone)} / ${fmtBytes(s.bytesTotal)} · ${s.filesDone}/${s.filesTotal} files${eta}`)
+      },
+    })
+
+    clearInterval(flushInterval)
 
     await db.update(backupRuns).set({
       status:          'success',
@@ -192,6 +237,10 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
       dataAdded:       result.dataAdded,
       totalSize:       result.totalSize,
       duration:        result.duration,
+      log:             logLines.join('\n'),
+      progressPct:     1,
+      bytesDone:       result.totalSize,
+      bytesTotal:      result.totalSize,
     }).where(eq(backupRuns.id, runId))
 
     const jobHasRetention = job.keepLast || job.keepDaily || job.keepWeekly || job.keepMonthly || job.keepYearly
@@ -231,8 +280,9 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
       .where(eq(backupJobs.id, job.id))
 
   } catch (err) {
+    clearInterval(flushInterval)
     const errorMessage = String(err)
-    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage })
+    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage, log: logLines.join('\n') || null })
       .where(eq(backupRuns.id, runId))
     const nextRun = nextRunDate(job.schedule)
     await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'failed', ...(nextRun ? { nextRunAt: nextRun } : {}) })

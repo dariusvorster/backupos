@@ -139,6 +139,13 @@ export const backupRuns = sqliteTable('backup_runs', {
   log:    text('log'),
   phases: text('phases'),
 
+  // Live progress (updated every ~2s during local execution)
+  progressPct:  real('progress_pct'),
+  bytesDone:    integer('bytes_done'),
+  bytesTotal:   integer('bytes_total'),
+  filesDone:    integer('files_done'),
+  filesTotal:   integer('files_total'),
+
   // Retention (set after forget runs; null means no retention policy was configured)
   snapshotsRemoved: integer('snapshots_removed'),
   snapshotsKept:    integer('snapshots_kept'),

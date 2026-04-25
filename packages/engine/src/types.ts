@@ -5,6 +5,16 @@ export interface ResticConfig {
   binaryPath?: string              // defaults to 'restic' in PATH
 }
 
+export interface BackupProgressStatus {
+  pct:              number  // 0–1
+  bytesDone:        number
+  bytesTotal:       number
+  filesDone:        number
+  filesTotal:       number
+  secondsElapsed:   number
+  secondsRemaining: number | undefined
+}
+
 export interface BackupOptions {
   paths: string[]
   tags?: string[]
@@ -14,6 +24,18 @@ export interface BackupOptions {
   useVSS?: boolean         // Windows: maps to --use-fs-snapshot
   preHook?: () => Promise<void>
   postHook?: () => Promise<void>
+  onProgress?: (status: BackupProgressStatus) => void
+}
+
+export interface ResticStatusJson {
+  message_type:      'status'
+  percent_done:      number
+  bytes_done:        number
+  total_bytes:       number
+  files_done:        number
+  total_files:       number
+  seconds_elapsed:   number
+  seconds_remaining?: number
 }
 
 export interface BackupResult {

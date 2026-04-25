@@ -71,8 +71,49 @@ export function LogViewer({ initialRun, onPhaseUpdate }: LogViewerProps) {
     userScrolled.current = true
   }, [errorIdx])
 
+  const pct        = run.progressPct ?? null
+  const bytesDone  = run.bytesDone  ?? null
+  const bytesTotal = run.bytesTotal ?? null
+  const filesDone  = run.filesDone  ?? null
+  const filesTotal = run.filesTotal ?? null
+
+  function fmtB(b: number): string {
+    if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`
+    if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`
+    return `${(b / 1024 ** 3).toFixed(2)} GB`
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+      {/* Progress bar — only during running */}
+      {isLive && (
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', backgroundColor: 'var(--surf2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--fg-mute)', marginBottom: 6 }}>
+            <span>
+              {pct != null ? `${(pct * 100).toFixed(1)}%` : 'Scanning…'}
+              {filesDone != null && filesTotal != null && filesTotal > 0
+                ? ` · ${filesDone.toLocaleString()} / ${filesTotal.toLocaleString()} files`
+                : ''}
+            </span>
+            <span>
+              {bytesDone != null && bytesTotal != null && bytesTotal > 0
+                ? `${fmtB(bytesDone)} / ${fmtB(bytesTotal)}`
+                : ''}
+            </span>
+          </div>
+          <div style={{ height: 6, borderRadius: 3, backgroundColor: 'var(--border)', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              borderRadius: 3,
+              backgroundColor: 'var(--accent)',
+              width: pct != null ? `${Math.min(pct * 100, 100)}%` : '0%',
+              transition: 'width 0.4s ease',
+            }} />
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
