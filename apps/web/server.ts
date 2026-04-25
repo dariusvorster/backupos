@@ -9,7 +9,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch } from './lib/ws-state'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
 
@@ -52,6 +52,15 @@ void app.prepare().then(() => {
     const parsed = parse(req.url!, true)
 
     // Handle agent-detect directly so it shares the same ws-state singleton as the WS handler
+    const forceUpdateMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/force-update$/)
+    if (req.method === 'POST' && forceUpdateMatch) {
+      const agentId = forceUpdateMatch[1]!
+      const sent = dispatch(agentId, { type: 'force_update' })
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(sent ? { ok: true } : { ok: false, error: 'Agent not connected' }))
+      return
+    }
+
     const detectMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/detect$/)
     if (req.method === 'POST' && detectMatch) {
       const agentId = detectMatch[1]!

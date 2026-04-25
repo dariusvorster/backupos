@@ -42,10 +42,10 @@ export async function setAgentChannelFromForm(agentId: string, formData: FormDat
 
 export async function forceUpdateAgent(agentId: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const { dispatch } = await import('@/lib/ws-state')
-    const sent = dispatch(agentId, { type: 'force_update' })
-    if (!sent) return { ok: false, error: 'Agent is not connected' }
-    return { ok: true }
+    const port = process.env['PORT'] ?? '3000'
+    const res  = await fetch(`http://127.0.0.1:${port}/api/agents/${agentId}/force-update`, { method: 'POST' })
+    const body = await res.json() as { ok: boolean; error?: string }
+    return body
   } catch (e) {
     return { ok: false, error: String(e) }
   }
