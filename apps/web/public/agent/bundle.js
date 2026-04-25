@@ -228,6 +228,8 @@ function startAgent(config) {
         await handleVerify(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars);
       } else if (msg.type === 'test_repo') {
         await handleTestRepo(msg.requestId, msg.repoUrl, msg.repoPassword, msg.envVars, send);
+      } else if (msg.type === 'test_mount') {
+        await handleTestMount(msg.requestId, msg.mountConfig, send);
       } else if (msg.type === 'run_restore') {
         console.warn('[agent] run_restore not implemented for restoreId=' + msg.restoreId);
         send({ type: 'restore_complete', restoreId: msg.restoreId, success: false });
@@ -451,6 +453,17 @@ async function handleVerify(repoId, repoUrl, repoPassword, readData, envVars) {
   const result = await execAllowed('restic', ['check', ...(readData ? ['--read-data'] : [])], env);
   console.log('[agent] verify_repo ' + repoId + ': exit=' + result.exitCode);
   if (result.exitCode !== 0) console.error('[agent] verify_repo stderr:', result.stderr);
+}
+
+async function handleTestMount(requestId, mountCfg, send) {
+  try {
+    await mountShare(mountCfg);
+    await umountShare(mountCfg.mountPoint);
+    send({ type: 'test_mount_result', requestId, ok: true });
+  } catch (err) {
+    await umountShare(mountCfg.mountPoint).catch(() => {});
+    send({ type: 'test_mount_result', requestId, ok: false, error: String(err) });
+  }
 }
 
 async function handleTestRepo(requestId, repoUrl, repoPassword, envVars, send) {

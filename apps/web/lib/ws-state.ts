@@ -1,8 +1,9 @@
 import type { WebSocket } from 'ws'
-import type { DetectedResources } from '@backupos/agent-protocol'
+import type { DetectedResources, MountConfig } from '@backupos/agent-protocol'
 export type { DetectedResources }
 
-export interface RepoTestResult { ok: boolean; error?: string; snapshotCount?: number }
+export interface RepoTestResult  { ok: boolean; error?: string; snapshotCount?: number }
+export interface MountTestResult { ok: boolean; error?: string }
 
 declare global {
   // eslint-disable-next-line no-var
@@ -11,6 +12,8 @@ declare global {
   var __bkp_pending_detects: Map<string, (r: DetectedResources) => void> | undefined
   // eslint-disable-next-line no-var
   var __bkp_pending_repo_tests: Map<string, (r: RepoTestResult) => void> | undefined
+  // eslint-disable-next-line no-var
+  var __bkp_pending_mount_tests: Map<string, (r: MountTestResult) => void> | undefined
 }
 
 const connections: Map<string, WebSocket> =
@@ -21,6 +24,9 @@ const pendingDetects: Map<string, (r: DetectedResources) => void> =
 
 const pendingRepoTests: Map<string, (r: RepoTestResult) => void> =
   (globalThis.__bkp_pending_repo_tests ??= new Map())
+
+const pendingMountTests: Map<string, (r: MountTestResult) => void> =
+  (globalThis.__bkp_pending_mount_tests ??= new Map())
 
 export function registerAgent(agentId: string, ws: WebSocket): void {
   connections.set(agentId, ws)
@@ -95,4 +101,29 @@ export function requestTestRepo(
 
 export function resolveTestRepo(requestId: string, result: RepoTestResult): void {
   pendingRepoTests.get(requestId)?.(result)
+}
+
+export function requestTestMount(agentId: string, mountConfig: MountConfig): Promise<MountTestResult> {
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID()
+    const timer = setTimeout(() => {
+      pendingMountTests.delete(requestId)
+      reject(new Error('Agent did not respond in time'))
+    }, 30_000)
+    pendingMountTests.set(requestId, (result) => {
+      clearTimeout(timer)
+      pendingMountTests.delete(requestId)
+      resolve(result)
+    })
+    const sent = dispatch(agentId, { type: 'test_mount', requestId, mountConfig })
+    if (!sent) {
+      clearTimeout(timer)
+      pendingMountTests.delete(requestId)
+      reject(new Error('Agent not connected'))
+    }
+  })
+}
+
+export function resolveTestMount(requestId: string, result: MountTestResult): void {
+  pendingMountTests.get(requestId)?.(result)
 }

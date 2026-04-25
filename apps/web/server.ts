@@ -9,9 +9,9 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, connectedAgentIds } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds } from './lib/ws-state'
 import { sendAlert } from './lib/alerts'
-import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
+import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
 
 const dev  = process.env.NODE_ENV !== 'production'
 const port = parseInt(process.env.PORT ?? '3000', 10)
@@ -88,6 +88,28 @@ void app.prepare().then(() => {
         requestTestRepo(agentId, repoCfg['repositoryUrl'] ?? '', repo.resticPassword, repoCfg)
           .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
           .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
+      })()
+      return
+    }
+
+    // Test NAS mount via agent
+    const testMountMatch = parsed.pathname?.match(/^\/api\/repos\/([^/]+)\/test-mount$/)
+    if (req.method === 'POST' && testMountMatch) {
+      const repoId = testMountMatch[1]!
+      void (async () => {
+        const db2 = getDb()
+        const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
+        if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
+        const cfg = JSON.parse(repo.config) as Record<string, string>
+        if (!cfg['mountConfig']) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository has no mount config' })); return }
+        const connected = connectedAgentIds()
+        const jobs2 = await db2.select({ agentId: backupJobs.agentId }).from(backupJobs).where(eq(backupJobs.repositoryId, repoId)).all()
+        const agentId = jobs2.map(j => j.agentId).find(aid => aid && connected.includes(aid)) ?? connected[0] ?? null
+        if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent. Connect a BackupOS agent first.' })); return }
+        const mountConfig = JSON.parse(cfg['mountConfig']) as MountConfig
+        requestTestMount(agentId, mountConfig)
+          .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
+          .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Mount test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
       })()
       return
     }
@@ -283,6 +305,9 @@ void app.prepare().then(() => {
 
         } else if (msg.type === 'test_repo_result') {
           resolveTestRepo(msg.requestId, { ok: msg.ok, error: msg.error, snapshotCount: msg.snapshotCount })
+
+        } else if (msg.type === 'test_mount_result') {
+          resolveTestMount(msg.requestId, { ok: msg.ok, error: msg.error })
 
         } else if (msg.type === 'restore_complete' && agentId) {
           await db.update(restoreRuns).set({
