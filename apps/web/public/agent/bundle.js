@@ -1,6 +1,6 @@
 'use strict';
 const { parseArgs } = require('node:util');
-const { readFileSync, writeFileSync, mkdirSync, renameSync } = require('node:fs');
+const { readFileSync, writeFileSync, unlinkSync, mkdirSync, renameSync } = require('node:fs');
 const { spawnSync, spawn } = require('node:child_process');
 const { hostname, networkInterfaces, release, homedir } = require('node:os');
 const { join } = require('node:path');
@@ -356,6 +356,14 @@ async function mountShare(cfg) {
         'That looks like a URL, not a mount command. Use the Linux mount format:\n' + hint
       );
     }
+    if (!cfg.mountCommand.includes('{mountPoint}')) {
+      const hint = cfg.mountCommand.trim().startsWith('mount -t nfs')
+        ? 'mount -t nfs 192.168.10.9:/volume1/Backups {mountPoint}'
+        : 'mount -t cifs //192.168.10.9/Backups {mountPoint} -o username=USER,password=PASS,vers=3.0';
+      throw new Error(
+        'Mount command is missing {mountPoint}. Add it as the mount destination, e.g.:\n' + hint + '\n\nAlso note: NFS paths use a colon before the path — server:/share (not server/share).'
+      );
+    }
     // Strip spaces around commas (mount -o options must not have spaces between values)
     const cmd = cfg.mountCommand
       .replace(/\{mountPoint\}/g, cfg.mountPoint)
@@ -388,16 +396,49 @@ async function mountShare(cfg) {
 
   if (cfg.type === 'nfs') {
     const args = ['-t', 'nfs', cfg.host + ':' + cfg.remotePath, cfg.mountPoint];
-    if (cfg.options) args.push('-o', cfg.options);
-    const r = await execAllowed('mount', args, {});
+    // Add soft+timeo so mount fails fast instead of hanging indefinitely
+    const nfsOpts = cfg.options ? cfg.options : 'soft,timeo=50';
+    args.push('-o', nfsOpts);
+    const r = await execAllowed('mount', args, {}, 25000);
     if (r.exitCode !== 0) throw new Error('NFS mount failed: ' + r.stderr.trim());
   } else if (cfg.type === 'smb') {
-    const creds = ['username=' + (cfg.username || ''), 'password=' + (cfg.password || '')];
-    if (cfg.domain)  creds.push('domain=' + cfg.domain);
-    if (cfg.options) creds.push(cfg.options);
-    const args = ['-t', 'cifs', '//' + cfg.host + '/' + cfg.remotePath, cfg.mountPoint, '-o', creds.join(',')];
-    const r = await execAllowed('mount', args, {});
-    if (r.exitCode !== 0) throw new Error('SMB mount failed: ' + r.stderr.trim());
+    await mountCifsWithFallback(cfg);
+  }
+}
+
+async function mountCifsWithFallback(cfg) {
+  const credsFile = `/tmp/.bkp-${Date.now()}`;
+  let credsContent = `username=${cfg.username || ''}\npassword=${cfg.password || ''}`;
+  if (cfg.domain) credsContent += `\ndomain=${cfg.domain}`;
+  writeFileSync(credsFile, credsContent, { mode: 0o600 });
+
+  // If the user already specified vers= in options, honour it and don't retry
+  const hasVers = cfg.options && cfg.options.includes('vers=');
+  const versToTry = hasVers ? [''] : ['3.0', '2.1', '2.0', '1.0'];
+  let lastError = '';
+
+  try {
+    for (const vers of versToTry) {
+      const opts = ['credentials=' + credsFile];
+      if (vers) opts.push('vers=' + vers);
+      if (cfg.options) {
+        for (const o of cfg.options.split(',')) {
+          const t = o.trim();
+          if (t && !t.startsWith('username=') && !t.startsWith('password=') && !t.startsWith('domain=') && !(vers && t.startsWith('vers='))) {
+            opts.push(t);
+          }
+        }
+      }
+      const args = ['-t', 'cifs', '//' + cfg.host + '/' + cfg.remotePath, cfg.mountPoint, '-o', opts.join(',')];
+      const r = await execAllowed('mount', args, {}, 20000);
+      if (r.exitCode === 0) return;
+      lastError = r.stderr.trim();
+      const isVersionError = lastError.includes('Operation now in progress') || lastError.includes('Protocol negotiation') || lastError.includes('No dialect');
+      if (!isVersionError) break;
+    }
+    throw new Error('SMB mount failed: ' + lastError);
+  } finally {
+    try { unlinkSync(credsFile); } catch (_) {}
   }
 }
 

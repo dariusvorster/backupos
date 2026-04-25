@@ -109,7 +109,7 @@ export function requestTestMount(agentId: string, mountConfig: MountConfig): Pro
     const timer = setTimeout(() => {
       pendingMountTests.delete(requestId)
       reject(new Error('Agent did not respond in time'))
-    }, 30_000)
+    }, 60_000)
     pendingMountTests.set(requestId, (result) => {
       clearTimeout(timer)
       pendingMountTests.delete(requestId)

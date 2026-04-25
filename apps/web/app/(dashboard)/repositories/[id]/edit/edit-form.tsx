@@ -76,65 +76,34 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
             </div>
           )}
 
-          {backend === 'nfs' && (<>
-            <div style={grid2}>
-              <div>
-                <label style={labelStyle}>NAS host / IP</label>
-                <input name="host" type="text" defaultValue={mountConfig?.['host'] ?? ''} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Export path</label>
-                <input name="remotePath" type="text" defaultValue={mountConfig?.['remotePath'] ?? ''} style={inputStyle} />
-              </div>
-            </div>
+          {backend === 'nfs' && (
             <div style={fieldStyle}>
-              <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
-              <input name="options" type="text" defaultValue={mountConfig?.['options'] ?? ''} placeholder="vers=3,soft" style={inputStyle} />
+              <label style={labelStyle}>NFS path</label>
+              <input name="nfsPath" type="text" required
+                defaultValue={mountConfig ? `${mountConfig['host'] ?? ''}:${mountConfig['remotePath'] ?? ''}` : ''}
+                placeholder="192.168.10.9:/volume1/Backups" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Format: <code>host:/export/path</code></div>
             </div>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
-              <input name="mountCommand" type="text" defaultValue={mountConfig?.['mountCommand'] ?? ''} placeholder={'mount -t nfs 192.168.10.9:/volume1/backups {mountPoint}'} style={inputStyle} />
-              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Use <code>{'{mountPoint}'}</code> as the mount directory placeholder.</div>
-            </div>
-          </>)}
+          )}
 
           {backend === 'smb' && (<>
-            <div style={grid2}>
-              <div>
-                <label style={labelStyle}>NAS host / IP</label>
-                <input name="host" type="text" defaultValue={mountConfig?.['host'] ?? ''} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Share name</label>
-                <input name="remotePath" type="text" defaultValue={mountConfig?.['remotePath'] ?? ''} style={inputStyle} />
+            <div style={fieldStyle}>
+              <label style={labelStyle}>SMB share</label>
+              <input name="smbShare" type="text" required
+                defaultValue={mountConfig ? `//${mountConfig['host'] ?? ''}/${mountConfig['remotePath'] ?? ''}` : ''}
+                placeholder="//192.168.10.9/Backups" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
+                Format: <code>//host/share</code> or with credentials: <code>//user:password@host/share</code>
               </div>
             </div>
             <div style={grid2}>
               <div>
-                <label style={labelStyle}>Username</label>
+                <label style={labelStyle}>Username <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(if not in path)</span></label>
                 <input name="username" type="text" defaultValue={mountConfig?.['username'] ?? ''} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Password <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(leave blank to keep)</span></label>
                 <input name="smbPassword" type="password" placeholder="••••••••" style={inputStyle} />
-              </div>
-            </div>
-            <div style={grid2}>
-              <div>
-                <label style={labelStyle}>Domain <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
-                <input name="domain" type="text" defaultValue={mountConfig?.['domain'] ?? ''} placeholder="WORKGROUP" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
-                <input name="options" type="text" defaultValue={mountConfig?.['options'] ?? ''} placeholder="vers=3.0,uid=0" style={inputStyle} />
-              </div>
-            </div>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
-              <input name="mountCommand" type="text" defaultValue={mountConfig?.['mountCommand'] ?? ''} placeholder={'mount -t cifs //192.168.10.9/backups {mountPoint} -o username=user,password=pass,vers=3.0'} style={inputStyle} />
-              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                Use <code>{'{mountPoint}'}</code> as the mount directory. No spaces between <code>-o</code> options.
-                Passwords with special characters (<code>$</code>, <code>!</code>) must be single-quoted: <code>password='my$pass'</code>.
               </div>
             </div>
           </>)}

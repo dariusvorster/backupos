@@ -3,6 +3,21 @@
 import { useState, useTransition, useRef } from 'react'
 import { createRepository } from '@/app/actions/repositories'
 
+function parseSmbShare(raw: string): { host: string; remotePath: string; username: string; password: string } | { error: string } {
+  // Accept //user:pass@host/share, //user@host/share, //host/share, \\host\share
+  let s = raw.replace(/\\/g, '/')
+  if (!s.startsWith('//')) s = '//' + s
+  try {
+    const u = new URL('smb:' + s)
+    const host = u.hostname
+    const remotePath = u.pathname.replace(/^\//, '')
+    if (!host || !remotePath) return { error: 'SMB share must be //host/share' }
+    return { host, remotePath, username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) }
+  } catch {
+    return { error: 'Invalid SMB share format — use //host/share or //user:pass@host/share' }
+  }
+}
+
 const BACKENDS = [
   { value: 'local',  label: 'Local filesystem' },
   { value: 'nfs',    label: 'NFS share' },
@@ -45,30 +60,34 @@ export default function NewRepositoryPage() {
 
   async function handleTestMount() {
     if (!formRef.current) return
-    const fd = new FormData(formRef.current)
-    const mountCommand = (fd.get('mountCommand') as string)?.trim()
-    const host         = (fd.get('host') as string)?.trim()
-    const remotePath   = (fd.get('remotePath') as string)?.trim()
-    const options      = (fd.get('options') as string)?.trim()
-    const username     = (fd.get('username') as string)?.trim()
-    const smbPassword  = (fd.get('smbPassword') as string)?.trim()
-    const domain       = (fd.get('domain') as string)?.trim()
-    const mountPoint   = `/mnt/backupos/test-${Date.now()}`
+    const fd          = new FormData(formRef.current)
+    const mountPoint  = `/mnt/backupos/test-${Date.now()}`
+    let host = '', remotePath = '', username = '', password = '', domain = ''
 
-    if (!mountCommand && (!host || !remotePath)) {
-      setMountState('error')
-      setMountDetail('Fill in host and export/share path, or provide a custom mount command')
-      return
+    if (backend === 'nfs') {
+      const nfsPath = (fd.get('nfsPath') as string)?.trim() ?? ''
+      const colonIdx = nfsPath.indexOf(':')
+      if (!nfsPath || colonIdx === -1) {
+        setMountState('error'); setMountDetail('Enter NFS path as host:/export/path'); return
+      }
+      host = nfsPath.slice(0, colonIdx); remotePath = nfsPath.slice(colonIdx + 1)
+    } else {
+      const raw = (fd.get('smbShare') as string)?.trim() ?? ''
+      if (!raw) { setMountState('error'); setMountDetail('Enter SMB share path'); return }
+      const parsed = parseSmbShare(raw)
+      if ('error' in parsed) { setMountState('error'); setMountDetail(parsed.error); return }
+      host = parsed.host; remotePath = parsed.remotePath
+      username = parsed.username || ((fd.get('username') as string)?.trim() ?? '')
+      password = parsed.password || ((fd.get('smbPassword') as string)?.trim() ?? '')
+      domain   = (fd.get('domain') as string)?.trim() ?? ''
     }
 
     const mountConfig = {
       type: backend as 'nfs' | 'smb',
-      host: host ?? '', remotePath: remotePath ?? '', mountPoint,
-      ...(options      ? { options }                  : {}),
-      ...(username     ? { username }                 : {}),
-      ...(smbPassword  ? { password: smbPassword }    : {}),
-      ...(domain       ? { domain }                   : {}),
-      ...(mountCommand ? { mountCommand }              : {}),
+      host, remotePath, mountPoint,
+      ...(username ? { username } : {}),
+      ...(password ? { password } : {}),
+      ...(domain   ? { domain }   : {}),
     }
 
     setMountState('testing')
@@ -124,90 +143,52 @@ export default function NewRepositoryPage() {
           )}
 
           {backend === 'nfs' && (<>
-            <div style={grid2}>
-              <div>
-                <label style={labelStyle}>NAS host / IP</label>
-                <input name="host" type="text" placeholder="192.168.10.9" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Export path</label>
-                <input name="remotePath" type="text" placeholder="/volume1/backups" style={inputStyle} />
-              </div>
-            </div>
             <div style={fieldStyle}>
-              <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
-              <input name="options" type="text" placeholder="vers=3,soft" style={inputStyle} />
+              <label style={labelStyle}>NFS path</label>
+              <input name="nfsPath" type="text" required placeholder="192.168.10.9:/volume1/Backups" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Format: <code>host:/export/path</code></div>
             </div>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
-              <input name="mountCommand" type="text" placeholder={'mount -t nfs 192.168.10.9:/volume1/backups {mountPoint}'} style={inputStyle} />
-              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                Paste the exact command your NAS shows. Use <code>{'{mountPoint}'}</code> where the mount directory goes. The agent must run as root.
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-                <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
-                  style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
-                  {mountState === 'testing' ? 'Testing…' : 'Test mount'}
-                </button>
-                {mountDetail && (
-                  <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
-                    {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
-                  </span>
-                )}
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
+                style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
+                {mountState === 'testing' ? 'Testing…' : 'Test mount'}
+              </button>
+              {mountDetail && (
+                <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
+                  {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
+                </span>
+              )}
             </div>
           </>)}
 
           {backend === 'smb' && (<>
-            <div style={grid2}>
-              <div>
-                <label style={labelStyle}>NAS host / IP</label>
-                <input name="host" type="text" placeholder="192.168.10.9" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Share name</label>
-                <input name="remotePath" type="text" placeholder="backups" style={inputStyle} />
+            <div style={fieldStyle}>
+              <label style={labelStyle}>SMB share</label>
+              <input name="smbShare" type="text" required placeholder="//192.168.10.9/Backups" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
+                Format: <code>//host/share</code> or with credentials: <code>//user:password@host/share</code>
               </div>
             </div>
             <div style={grid2}>
               <div>
-                <label style={labelStyle}>Username</label>
+                <label style={labelStyle}>Username <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(if not in path)</span></label>
                 <input name="username" type="text" placeholder="backupuser" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>Password</label>
+                <label style={labelStyle}>Password <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(if not in path)</span></label>
                 <input name="smbPassword" type="password" placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
-            <div style={grid2}>
-              <div>
-                <label style={labelStyle}>Domain <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
-                <input name="domain" type="text" placeholder="WORKGROUP" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Mount options <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
-                <input name="options" type="text" placeholder="vers=3.0,uid=0" style={inputStyle} />
-              </div>
-            </div>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
-              <input name="mountCommand" type="text" placeholder={'mount -t cifs //192.168.10.9/backups {mountPoint} -o username=user,password=pass,vers=3.0'} style={inputStyle} />
-              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                Linux <code>mount</code> command — <strong>not</strong> the <code>smb://</code> URL your NAS shows. Use <code>{'{mountPoint}'}</code> as the mount directory.
-                No spaces between <code>-o</code> options (use <code>user=x,pass=y</code> not <code>user=x, pass=y</code>).
-                Avoid shell special characters in passwords (<code>$</code>, <code>!</code>, <code>&amp;</code>) — wrap in single quotes if needed: <code>password='my$pass'</code>.
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-                <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
-                  style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
-                  {mountState === 'testing' ? 'Testing…' : 'Test mount'}
-                </button>
-                {mountDetail && (
-                  <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
-                    {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
-                  </span>
-                )}
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
+                style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
+                {mountState === 'testing' ? 'Testing…' : 'Test mount'}
+              </button>
+              {mountDetail && (
+                <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
+                  {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
+                </span>
+              )}
             </div>
           </>)}
 
