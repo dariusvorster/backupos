@@ -1,6 +1,7 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
 import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq, and, lt } from '@backupos/db'
+import { decryptField } from './repo-crypto'
 import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
@@ -91,7 +92,7 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
     .where(eq(repositories.id, job.repositoryId)).limit(1)
   if (!repo) return false
 
-  const cfg       = JSON.parse(repo.config) as Record<string, string>
+  const cfg       = JSON.parse(decryptField(repo.config)) as Record<string, string>
   const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
   const paths     = resolveBackupPaths(job.sourceType, srcConfig)
   if (paths.length === 0) return false
@@ -114,7 +115,7 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
     jobId:  job.id,
     config: {
       repoUrl:      cfg['repositoryUrl'] ?? '',
-      repoPassword: repo.resticPassword,
+      repoPassword: decryptField(repo.resticPassword),
       paths,
       exclude:  srcConfig.exclude,
       tags,
@@ -165,7 +166,7 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, job.repositoryId)).limit(1)
   if (!repo) return
 
-  const cfg       = JSON.parse(repo.config) as Record<string, string>
+  const cfg       = JSON.parse(decryptField(repo.config)) as Record<string, string>
   const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
   const paths     = resolveBackupPaths(job.sourceType, srcConfig)
   if (paths.length === 0) return
@@ -173,7 +174,7 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
   try {
     const engine = new ResticEngine({
       repositoryUrl: cfg['repositoryUrl'] ?? '',
-      password:      repo.resticPassword,
+      password:      decryptField(repo.resticPassword),
       envVars:       cfg,
       binaryPath:    process.env['RESTIC_BINARY_PATH'],
     })

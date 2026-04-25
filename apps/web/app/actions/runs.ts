@@ -2,6 +2,7 @@
 
 import { getDb, backupRuns, backupJobs, repositories } from '@backupos/db'
 import { eq } from '@backupos/db'
+import { decryptField } from '@/lib/repo-crypto'
 
 export interface PhaseEntry {
   startMs:    number
@@ -76,7 +77,7 @@ export async function getResticCommand(runId: string): Promise<string> {
 
   const repoPath = (() => {
     try {
-      const cfg = JSON.parse(repo?.config ?? '{}') as { bucket?: string; path?: string }
+      const cfg = JSON.parse(decryptField(repo?.config ?? '{}')) as { bucket?: string; path?: string }
       return cfg.bucket ? `${repo?.backend ?? 's3'}:${cfg.bucket}` : cfg.path ?? '/backup'
     } catch { return '/backup' }
   })()

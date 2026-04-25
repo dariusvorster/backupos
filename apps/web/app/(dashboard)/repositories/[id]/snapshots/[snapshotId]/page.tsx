@@ -3,6 +3,7 @@ import { eq } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ResticEngine } from '@backupos/engine'
+import { decryptField } from '@/lib/repo-crypto'
 import { EmptyState } from '@/components/ui/empty-state'
 
 function bytes(n: number | undefined | null): string {
@@ -65,7 +66,7 @@ export default async function SnapshotFilesPage({
   const [snap] = await db.select().from(snapshots).where(eq(snapshots.id, snapshotId)).limit(1)
   if (!snap) notFound()
 
-  const repoConfig = JSON.parse(repo.config) as RepoConfig
+  const repoConfig = JSON.parse(decryptField(repo.config)) as RepoConfig
   const engine = new ResticEngine({
     repositoryUrl: repoConfig.repositoryUrl,
     password:      repoConfig.password,

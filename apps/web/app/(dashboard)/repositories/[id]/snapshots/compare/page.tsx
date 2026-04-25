@@ -3,6 +3,7 @@ import { eq, desc } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ResticEngine } from '@backupos/engine'
+import { decryptField } from '@/lib/repo-crypto'
 
 function bytes(n: number | undefined | null): string {
   if (n == null) return '—'
@@ -75,7 +76,7 @@ export default async function SnapshotComparePage({
     .orderBy(desc(snapshots.createdAt))
     .all()
 
-  const repoConfig = JSON.parse(repo.config) as RepoConfig
+  const repoConfig = JSON.parse(decryptField(repo.config)) as RepoConfig
   const engine = new ResticEngine({
     repositoryUrl: repoConfig.repositoryUrl,
     password:      repoConfig.password,

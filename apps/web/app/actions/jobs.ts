@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, backupJobs, backupRuns, repositories, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
+import { decryptField } from '@/lib/repo-crypto'
 import { dispatch, connectedAgentIds } from '@/lib/ws-state'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
@@ -149,7 +150,7 @@ export async function triggerJob(id: string): Promise<void> {
       .where(eq(repositories.id, job.repositoryId!)).limit(1)
 
     if (repo) {
-      const repoConfig = JSON.parse(repo.config) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
+      const repoConfig = JSON.parse(decryptField(repo.config)) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
       const srcConfig  = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
       const tags       = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${id}`]
 
