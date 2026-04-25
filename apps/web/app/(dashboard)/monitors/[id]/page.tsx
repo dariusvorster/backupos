@@ -38,7 +38,17 @@ export default async function MonitorDetailPage({ params }: { params: Promise<{ 
         <Link href="/monitors" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Monitors</Link>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)' }}>{monitor.name}</h1>
-          <SyncButton monitorId={id} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Link href={`/monitors/${id}/edit`} style={{
+              padding: '7px 16px', fontSize: 13, fontWeight: 500,
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+              background: 'var(--surf2)', color: 'var(--fg)', textDecoration: 'none',
+              display: 'inline-block',
+            }}>
+              Edit
+            </Link>
+            <SyncButton monitorId={id} />
+          </div>
         </div>
       </div>
 

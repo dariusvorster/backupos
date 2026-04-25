@@ -85,6 +85,39 @@ export async function testMonitorConnection(url: string): Promise<{ ok: boolean;
   }
 }
 
+export async function updateMonitor(id: string, formData: FormData): Promise<{ error: string } | void> {
+  const name   = (formData.get('name')   as string)?.trim()
+  const url    = (formData.get('url')    as string)?.trim()
+  const apiKey = (formData.get('apiKey') as string)?.trim() || null
+  const group  = (formData.get('group')  as string)?.trim() || null
+
+  if (!name || !url) return { error: 'Name and URL are required' }
+
+  const db = getDb()
+  const [monitor] = await db.select().from(backupMonitors).where(eq(backupMonitors.id, id)).limit(1)
+  if (!monitor) return { error: 'Monitor not found' }
+
+  const existingConfig = JSON.parse(monitor.config) as Record<string, string | null>
+  const newConfig = {
+    ...existingConfig,
+    url,
+    apiKey: apiKey ?? existingConfig['apiKey'] ?? null,
+  }
+
+  await db.update(backupMonitors)
+    .set({ name, group, config: JSON.stringify(newConfig) })
+    .where(eq(backupMonitors.id, id))
+
+  revalidatePath(`/monitors/${id}`)
+  redirect(`/monitors/${id}`)
+}
+
+export async function deleteMonitor(id: string): Promise<void> {
+  const db = getDb()
+  await db.delete(backupMonitors).where(eq(backupMonitors.id, id))
+  redirect('/monitors')
+}
+
 export async function syncMonitor(monitorId: string): Promise<{ ok: boolean; error?: string }> {
   const db      = getDb()
   const [monitor] = await db.select().from(backupMonitors).where(eq(backupMonitors.id, monitorId)).limit(1)
