@@ -78,8 +78,12 @@ void app.prepare().then(() => {
         const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
         if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
         const jobs2 = await db2.select({ agentId: backupJobs.agentId }).from(backupJobs).where(eq(backupJobs.repositoryId, repoId)).all()
-        const agentId = jobs2.map(j => j.agentId).find(aid => aid && connectedAgentIds().includes(aid)) ?? null
-        if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent found for this repository' })); return }
+        const connected = connectedAgentIds()
+        // Prefer an agent already linked to this repo; fall back to any connected agent
+        const agentId = jobs2.map(j => j.agentId).find(aid => aid && connected.includes(aid))
+          ?? connected[0]
+          ?? null
+        if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent. Install the BackupOS agent on a machine that can reach the NAS, then try again.' })); return }
         const repoCfg = JSON.parse(repo.config) as Record<string, string>
         requestTestRepo(agentId, repoCfg['repositoryUrl'] ?? '', repo.resticPassword, repoCfg)
           .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
