@@ -197,6 +197,7 @@ pnpm --filter @backupos/hypervisors build
 pnpm --filter @backupos/monitors    build
 pnpm --filter @backupos/restore     build
 pnpm --filter @backupos/agent-protocol build
+pnpm --filter @backupos/agent       build
 pnpm --filter @backupos/api         build
 pnpm --filter @backupos/docs-content build
 
