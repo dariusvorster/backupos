@@ -204,7 +204,24 @@ void app.prepare().then(() => {
           ws.send(JSON.stringify(pong))
 
         } else if (msg.type === 'metrics' && agentId) {
-          await db.update(agents).set({ lastSeenAt: new Date() }).where(eq(agents.id, agentId))
+          const m = (msg.metrics ?? {}) as {
+            cpuPercent?: number; memUsedBytes?: number
+            diskReadBps?: number; diskWriteBps?: number
+          }
+          const [cur] = await db.select({ resourceHistory: agents.resourceHistory })
+            .from(agents).where(eq(agents.id, agentId)).limit(1)
+          const history: Array<{ ts: number; cpuPct: number; ramBytes: number }> =
+            JSON.parse(cur?.resourceHistory ?? '[]')
+          history.push({ ts: Date.now(), cpuPct: m.cpuPercent ?? 0, ramBytes: m.memUsedBytes ?? 0 })
+          if (history.length > 288) history.splice(0, history.length - 288)
+          await db.update(agents).set({
+            lastSeenAt:      new Date(),
+            cpuPct:          m.cpuPercent  ?? null,
+            ramBytes:        m.memUsedBytes ?? null,
+            diskReadBps:     m.diskReadBps  ?? null,
+            diskWriteBps:    m.diskWriteBps ?? null,
+            resourceHistory: JSON.stringify(history),
+          }).where(eq(agents.id, agentId))
 
         } else if (msg.type === 'backup_start' && agentId) {
           await db.insert(auditLog).values({

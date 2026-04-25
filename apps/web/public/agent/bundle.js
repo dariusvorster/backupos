@@ -89,7 +89,41 @@ function getUptimeSeconds() {
   }
 }
 
+let _lastDiskStats = null;
+let _lastDiskStatsTs = 0;
+
+function readRawDiskStats() {
+  try {
+    let readSectors = 0, writeSectors = 0;
+    for (const line of readFileSync('/proc/diskstats', 'utf-8').split('\n')) {
+      const p = line.trim().split(/\s+/);
+      if (p.length < 14) continue;
+      const dev = p[2] || '';
+      // Only count whole disks (sda, nvme0n1, vda etc.), skip partitions
+      if (!/^(sd[a-z]|vd[a-z]|xvd[a-z]|nvme\d+n\d+|mmcblk\d+)$/.test(dev)) continue;
+      readSectors  += parseInt(p[5]  || '0', 10);
+      writeSectors += parseInt(p[9]  || '0', 10);
+    }
+    return { readBytes: readSectors * 512, writeBytes: writeSectors * 512 };
+  } catch { return null; }
+}
+
+function getDiskIoBps() {
+  const now = Date.now();
+  const cur = readRawDiskStats();
+  if (!cur || !_lastDiskStats || _lastDiskStatsTs === 0) {
+    _lastDiskStats = cur; _lastDiskStatsTs = now;
+    return { readBps: 0, writeBps: 0 };
+  }
+  const elapsed = (now - _lastDiskStatsTs) / 1000;
+  const readBps  = elapsed > 0 ? Math.max(0, Math.round((cur.readBytes  - _lastDiskStats.readBytes)  / elapsed)) : 0;
+  const writeBps = elapsed > 0 ? Math.max(0, Math.round((cur.writeBytes - _lastDiskStats.writeBytes) / elapsed)) : 0;
+  _lastDiskStats = cur; _lastDiskStatsTs = now;
+  return { readBps, writeBps };
+}
+
 async function collectMetrics() {
+  const diskIo = getDiskIoBps();
   const [cpuPercent, mem, disk] = await Promise.all([
     getCpuPercent(),
     Promise.resolve(getMemInfo()),
@@ -102,6 +136,8 @@ async function collectMetrics() {
     diskUsedBytes:  disk.usedBytes,
     diskTotalBytes: disk.totalBytes,
     uptimeSeconds:  getUptimeSeconds(),
+    diskReadBps:    diskIo.readBps,
+    diskWriteBps:   diskIo.writeBps,
   };
 }
 
