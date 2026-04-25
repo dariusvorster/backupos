@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { updateRepository } from '@/app/actions/repositories'
+import { useState, useTransition, useRef } from 'react'
+import { updateRepository, testCloudConnection } from '@/app/actions/repositories'
+import type { MountConfig } from '@backupos/agent-protocol'
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 12px', boxSizing: 'border-box',
@@ -24,8 +25,13 @@ interface Props {
 }
 
 export function EditRepositoryForm({ id, name, backend, group, config, mountConfig }: Props) {
-  const [error, setError]  = useState('')
-  const [isPending, start] = useTransition()
+  const [error, setError]                     = useState('')
+  const [isPending, start]                    = useTransition()
+  const [mountState, setMountState]           = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
+  const [mountDetail, setMountDetail]         = useState<string | null>(null)
+  const [cloudTestState, setCloudTestState]   = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
+  const [cloudTestDetail, setCloudTestDetail] = useState<string | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -37,6 +43,89 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
     })
   }
 
+  async function handleTestMount() {
+    if (!formRef.current) return
+    const fd         = new FormData(formRef.current)
+    const mountPoint = `/mnt/backupos/test-${Date.now()}`
+    let host = '', remotePath = '', username = '', password = ''
+
+    if (backend === 'nfs') {
+      const nfsPath  = (fd.get('nfsPath') as string)?.trim() ?? ''
+      const colonIdx = nfsPath.indexOf(':')
+      if (!nfsPath || colonIdx === -1) { setMountState('error'); setMountDetail('Enter NFS path as host:/export/path'); return }
+      host = nfsPath.slice(0, colonIdx); remotePath = nfsPath.slice(colonIdx + 1)
+    } else {
+      const raw = (fd.get('smbShare') as string)?.trim() ?? ''
+      if (!raw) { setMountState('error'); setMountDetail('Enter SMB share path'); return }
+      const s = raw.replace(/\\/g, '/').replace(/^\/\//, '')
+      if (s.includes(':')) { setMountState('error'); setMountDetail('Remove the colon — use //host/share'); return }
+      const idx = s.indexOf('/')
+      if (idx === -1) { setMountState('error'); setMountDetail('Format must be //host/share'); return }
+      host = s.slice(0, idx); remotePath = s.slice(idx + 1)
+      username = (fd.get('username') as string)?.trim() ?? ''
+      password = (fd.get('smbPassword') as string)?.trim() ?? ''
+    }
+
+    const mc: MountConfig = {
+      type: backend as 'nfs' | 'smb',
+      host, remotePath, mountPoint,
+      ...(username ? { username } : {}),
+      ...(password ? { password } : {}),
+    }
+
+    setMountState('testing'); setMountDetail(null)
+    try {
+      const res  = await fetch('/api/mount/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mountConfig: mc }) })
+      const body = await res.json() as { ok?: boolean; error?: string }
+      if (!res.ok || !body.ok) { setMountState('error'); setMountDetail(body.error ?? 'Mount failed') }
+      else { setMountState('ok'); setMountDetail('Mounted successfully') }
+    } catch {
+      setMountState('error'); setMountDetail('Network error')
+    }
+  }
+
+  async function handleTestCloud() {
+    if (!formRef.current) return
+    setCloudTestState('testing'); setCloudTestDetail(null)
+    try {
+      const fd     = new FormData(formRef.current)
+      fd.set('backend', backend)
+      const result = await testCloudConnection(fd)
+      setCloudTestState(result.ok ? 'ok' : 'error')
+      setCloudTestDetail(result.message)
+    } catch (e) {
+      setCloudTestState('error'); setCloudTestDetail(String(e))
+    }
+  }
+
+  const testMountBtn = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+      <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
+        style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
+        {mountState === 'testing' ? 'Testing…' : 'Test mount'}
+      </button>
+      {mountDetail && (
+        <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
+          {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
+        </span>
+      )}
+    </div>
+  )
+
+  const cloudTestBtn = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+      <button type="button" onClick={() => { void handleTestCloud() }} disabled={cloudTestState === 'testing'}
+        style={{ padding: '5px 14px', fontSize: 12, cursor: cloudTestState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
+        {cloudTestState === 'testing' ? 'Testing…' : 'Test connection'}
+      </button>
+      {cloudTestDetail && (
+        <span style={{ fontSize: 11, color: cloudTestState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
+          {cloudTestState === 'ok' ? '✓ ' : '✗ '}{cloudTestDetail}
+        </span>
+      )}
+    </div>
+  )
+
   return (
     <div style={{ maxWidth: 600 }}>
       <a href={`/repositories/${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 20 }}>
@@ -45,7 +134,7 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 8 }}>Edit repository</h1>
       <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 24 }}>Update repository settings and credentials.</p>
 
-      <form onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit}>
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 16 }}>General</div>
 
@@ -89,6 +178,7 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
               <input name="repoPath" type="text" defaultValue={mountConfig?.['repoPath'] ?? ''} placeholder="restic-repo" style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Sub-directory inside the share. Leave blank to use the share root.</div>
             </div>
+            {testMountBtn}
           </>)}
 
           {backend === 'smb' && (<>
@@ -114,6 +204,7 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
               <input name="repoPath" type="text" defaultValue={mountConfig?.['repoPath'] ?? ''} placeholder="restic-repo" style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Sub-directory inside the share. Leave blank to use the share root.</div>
             </div>
+            {testMountBtn}
           </>)}
 
           {backend === 's3' && (<>
@@ -141,6 +232,7 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
                 <input name="secretKey" type="password" placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
+            {cloudTestBtn}
           </>)}
 
           {backend === 'r2' && (<>
@@ -162,6 +254,7 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
                 <input name="secretKey" type="password" placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
+            {cloudTestBtn}
           </>)}
 
           {backend === 'b2' && (<>
@@ -179,6 +272,7 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
                 <input name="appKey" type="password" placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
+            {cloudTestBtn}
           </>)}
 
           {backend === 'sftp' && (<>
@@ -202,6 +296,7 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
                 <input name="path" type="text" required defaultValue={(config['repositoryUrl'] ?? '').replace(/^sftp:[^:]+:/, '')} style={inputStyle} />
               </div>
             </div>
+            {cloudTestBtn}
           </>)}
 
           {backend === 'rclone' && (<>
