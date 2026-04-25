@@ -45,6 +45,7 @@ export type AgentMessage =
   | { type: 'restore_progress'; restoreId: string; step: string; status: string }
   | { type: 'restore_complete'; restoreId: string; success: boolean }
   | { type: 'resources_result'; requestId: string; resources: DetectedResources }
+  | { type: 'test_repo_result'; requestId: string; ok: boolean; error?: string; snapshotCount?: number }
 
 export interface DetectedResources {
   dockerVolumes?: string[]
@@ -60,3 +61,4 @@ export type ServerMessage =
   | { type: 'cancel_backup'; jobId: string }
   | { type: 'verify_repo'; repoId: string; repoUrl: string; repoPassword: string; readData: boolean; envVars?: Record<string, string> }
   | { type: 'list_resources'; requestId: string }
+  | { type: 'test_repo'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }

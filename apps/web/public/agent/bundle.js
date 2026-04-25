@@ -11,7 +11,7 @@ const { get: httpsGet } = require('node:https');
 // ── executor ─────────────────────────────────────────────────────────────────
 const ALLOWED_COMMANDS = ['restic', 'systemctl', 'df', 'hostname', 'uname', 'docker', 'ss', 'netstat'];
 
-function execAllowed(cmd, args, env) {
+function execAllowed(cmd, args, env, timeoutMs) {
   if (!ALLOWED_COMMANDS.includes(cmd)) {
     return Promise.reject(new Error('Command not in allowlist: ' + cmd));
   }
@@ -19,10 +19,13 @@ function execAllowed(cmd, args, env) {
     const child = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: 'pipe' });
     let stdout = '';
     let stderr = '';
+    let done = false;
+    const finish = (code) => { if (!done) { done = true; resolve({ exitCode: code != null ? code : 1, stdout, stderr }); } };
+    const timer = timeoutMs ? setTimeout(() => { try { child.kill(); } catch (_) {} finish(1); }, timeoutMs) : null;
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
-    child.on('close', code => resolve({ exitCode: code != null ? code : 1, stdout, stderr }));
-    child.on('error', reject);
+    child.on('close', (code) => { if (timer) clearTimeout(timer); finish(code); });
+    child.on('error', (e) => { if (timer) clearTimeout(timer); done ? undefined : reject(e); });
   });
 }
 
@@ -223,6 +226,8 @@ function startAgent(config) {
         console.warn('[agent] cancel_backup not implemented for jobId=' + msg.jobId);
       } else if (msg.type === 'verify_repo') {
         await handleVerify(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars);
+      } else if (msg.type === 'test_repo') {
+        await handleTestRepo(msg.requestId, msg.repoUrl, msg.repoPassword, msg.envVars, send);
       } else if (msg.type === 'run_restore') {
         console.warn('[agent] run_restore not implemented for restoreId=' + msg.restoreId);
         send({ type: 'restore_complete', restoreId: msg.restoreId, success: false });
@@ -380,6 +385,22 @@ async function handleVerify(repoId, repoUrl, repoPassword, readData, envVars) {
   const result = await execAllowed('restic', ['check', ...(readData ? ['--read-data'] : [])], env);
   console.log('[agent] verify_repo ' + repoId + ': exit=' + result.exitCode);
   if (result.exitCode !== 0) console.error('[agent] verify_repo stderr:', result.stderr);
+}
+
+async function handleTestRepo(requestId, repoUrl, repoPassword, envVars, send) {
+  const env = { RESTIC_REPOSITORY: repoUrl, RESTIC_PASSWORD: repoPassword, ...(envVars || {}) };
+  try {
+    const result = await execAllowed('restic', ['snapshots', '--json'], env, 20000);
+    if (result.exitCode !== 0) {
+      send({ type: 'test_repo_result', requestId, ok: false, error: result.stderr || 'restic exited non-zero' });
+      return;
+    }
+    let snapshotCount = 0;
+    try { snapshotCount = (JSON.parse(result.stdout) || []).length; } catch (_) {}
+    send({ type: 'test_repo_result', requestId, ok: true, snapshotCount });
+  } catch (e) {
+    send({ type: 'test_repo_result', requestId, ok: false, error: String(e) });
+  }
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────

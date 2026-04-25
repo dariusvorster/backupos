@@ -9,7 +9,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, connectedAgentIds } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, connectedAgentIds } from './lib/ws-state'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
 
@@ -66,6 +66,24 @@ void app.prepare().then(() => {
           res.writeHead(503, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ error: message }))
         })
+      return
+    }
+
+    // Test repo connection via agent
+    const testRepoMatch = parsed.pathname?.match(/^\/api\/repos\/([^/]+)\/test$/)
+    if (req.method === 'POST' && testRepoMatch) {
+      const repoId = testRepoMatch[1]!
+      const db2 = getDb()
+      const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
+      if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
+      // Find a connected agent from jobs using this repo
+      const jobs2 = await db2.select({ agentId: backupJobs.agentId }).from(backupJobs).where(eq(backupJobs.repositoryId, repoId)).all()
+      const agentId = jobs2.map(j => j.agentId).find(aid => aid && connectedAgentIds().includes(aid)) ?? null
+      if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent found for this repository' })); return }
+      const repoCfg = JSON.parse(repo.config) as Record<string, string>
+      requestTestRepo(agentId, repoCfg['repositoryUrl'] ?? '', repo.resticPassword, repoCfg)
+        .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
+        .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
       return
     }
 
@@ -257,6 +275,9 @@ void app.prepare().then(() => {
         } else if (msg.type === 'resources_result') {
           console.log('[detect] resources_result requestId=%s resources=%j', msg.requestId, msg.resources)
           resolveDetect(msg.requestId, msg.resources)
+
+        } else if (msg.type === 'test_repo_result') {
+          resolveTestRepo(msg.requestId, { ok: msg.ok, error: msg.error, snapshotCount: msg.snapshotCount })
 
         } else if (msg.type === 'restore_complete' && agentId) {
           await db.update(restoreRuns).set({
