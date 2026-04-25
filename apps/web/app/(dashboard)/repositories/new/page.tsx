@@ -193,7 +193,8 @@ export default function NewRepositoryPage() {
               <label style={labelStyle}>Custom mount command <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional — overrides fields above)</span></label>
               <input name="mountCommand" type="text" placeholder={'mount -t cifs //192.168.10.9/backups {mountPoint} -o username=user,password=pass,vers=3.0'} style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                Paste the exact command your NAS provides. Use <code>{'{mountPoint}'}</code> as the mount directory. Requires <code>cifs-utils</code>: <code>sudo apt-get install -y cifs-utils</code>
+                Linux <code>mount</code> command — <strong>not</strong> the <code>smb://</code> URL your NAS shows. Use <code>{'{mountPoint}'}</code> as the mount directory.
+                Requires <code>cifs-utils</code>: <code>sudo apt-get install -y cifs-utils</code>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
                 <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}

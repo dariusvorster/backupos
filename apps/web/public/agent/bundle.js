@@ -347,6 +347,15 @@ async function mountShare(cfg) {
   mkdirSync(cfg.mountPoint, { recursive: true });
 
   if (cfg.mountCommand) {
+    if (/^(smb|nfs|cifs|afp|ftp):\/\//i.test(cfg.mountCommand.trim())) {
+      const proto = cfg.mountCommand.trim().split(':')[0].toLowerCase();
+      const hint = proto === 'nfs'
+        ? 'mount -t nfs 192.168.10.9:/volume1/share {mountPoint}'
+        : 'mount -t cifs //192.168.10.9/share {mountPoint} -o username=USER,password=PASS,vers=3.0';
+      throw new Error(
+        'That looks like a URL, not a mount command. Use the Linux mount format:\n' + hint
+      );
+    }
     const cmd = cfg.mountCommand.replace(/\{mountPoint\}/g, cfg.mountPoint);
     const r = await new Promise((resolve) => {
       const child = spawn('/bin/sh', ['-c', cmd], { env: process.env, stdio: 'pipe' });
