@@ -10,6 +10,7 @@ import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, res
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch } from './lib/ws-state'
+import { decryptField } from './lib/repo-crypto'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
 
@@ -94,8 +95,8 @@ void app.prepare().then(() => {
           ?? connected[0]
           ?? null
         if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent. Install the BackupOS agent on a machine that can reach the NAS, then try again.' })); return }
-        const repoCfg = JSON.parse(repo.config) as Record<string, string>
-        requestTestRepo(agentId, repoCfg['repositoryUrl'] ?? '', repo.resticPassword, repoCfg)
+        const repoCfg = JSON.parse(decryptField(repo.config)) as Record<string, string>
+        requestTestRepo(agentId, repoCfg['repositoryUrl'] ?? '', decryptField(repo.resticPassword), repoCfg)
           .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
           .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
       })()
@@ -129,7 +130,7 @@ void app.prepare().then(() => {
         const db2 = getDb()
         const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
         if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
-        const cfg = JSON.parse(repo.config) as Record<string, string>
+        const cfg = JSON.parse(decryptField(repo.config)) as Record<string, string>
         if (!cfg['mountConfig']) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository has no mount config' })); return }
         const connected = connectedAgentIds()
         const jobs2 = await db2.select({ agentId: backupJobs.agentId }).from(backupJobs).where(eq(backupJobs.repositoryId, repoId)).all()
@@ -317,10 +318,10 @@ void app.prepare().then(() => {
                 .where(eq(repositories.id, job.repositoryId)).limit(1)
               if (!repo) return
 
-              const repoCfg = JSON.parse(repo.config) as Record<string, string>
+              const repoCfg = JSON.parse(decryptField(repo.config)) as Record<string, string>
               const engine = new ResticEngine({
                 repositoryUrl: repoCfg['repositoryUrl'] ?? '',
-                password:      repo.resticPassword,
+                password:      decryptField(repo.resticPassword),
                 envVars:       repoCfg,
                 binaryPath:    process.env['RESTIC_BINARY_PATH'],
               })
