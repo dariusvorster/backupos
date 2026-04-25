@@ -76,15 +76,20 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
             </div>
           )}
 
-          {backend === 'nfs' && (
+          {backend === 'nfs' && (<>
             <div style={fieldStyle}>
-              <label style={labelStyle}>NFS path</label>
+              <label style={labelStyle}>NFS share</label>
               <input name="nfsPath" type="text" required
                 defaultValue={mountConfig ? `${mountConfig['host'] ?? ''}:${mountConfig['remotePath'] ?? ''}` : ''}
                 placeholder="192.168.10.9:/volume1/Backups" style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Format: <code>host:/export/path</code></div>
             </div>
-          )}
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Repository path within share <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
+              <input name="repoPath" type="text" defaultValue={mountConfig?.['repoPath'] ?? ''} placeholder="restic-repo" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Sub-directory inside the share. Leave blank to use the share root.</div>
+            </div>
+          </>)}
 
           {backend === 'smb' && (<>
             <div style={fieldStyle}>
@@ -92,19 +97,22 @@ export function EditRepositoryForm({ id, name, backend, group, config, mountConf
               <input name="smbShare" type="text" required
                 defaultValue={mountConfig ? `//${mountConfig['host'] ?? ''}/${mountConfig['remotePath'] ?? ''}` : ''}
                 placeholder="//192.168.10.9/Backups" style={inputStyle} />
-              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                Format: <code>//host/share</code> or with credentials: <code>//user:password@host/share</code>
-              </div>
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Format: <code>//host/share</code></div>
             </div>
             <div style={grid2}>
               <div>
-                <label style={labelStyle}>Username <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(if not in path)</span></label>
-                <input name="username" type="text" defaultValue={mountConfig?.['username'] ?? ''} style={inputStyle} />
+                <label style={labelStyle}>Username</label>
+                <input name="username" type="text" required defaultValue={mountConfig?.['username'] ?? ''} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Password <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(leave blank to keep)</span></label>
                 <input name="smbPassword" type="password" placeholder="••••••••" style={inputStyle} />
               </div>
+            </div>
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Repository path within share <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
+              <input name="repoPath" type="text" defaultValue={mountConfig?.['repoPath'] ?? ''} placeholder="restic-repo" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Sub-directory inside the share. Leave blank to use the share root.</div>
             </div>
           </>)}
 

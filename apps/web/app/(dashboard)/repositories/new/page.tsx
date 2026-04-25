@@ -1,22 +1,7 @@
 'use client'
 
 import { useState, useTransition, useRef } from 'react'
-import { createRepository } from '@/app/actions/repositories'
-
-function parseSmbShare(raw: string): { host: string; remotePath: string; username: string; password: string } | { error: string } {
-  // Accept //user:pass@host/share, //user@host/share, //host/share, \\host\share
-  let s = raw.replace(/\\/g, '/')
-  if (!s.startsWith('//')) s = '//' + s
-  try {
-    const u = new URL('smb:' + s)
-    const host = u.hostname
-    const remotePath = u.pathname.replace(/^\//, '')
-    if (!host || !remotePath) return { error: 'SMB share must be //host/share' }
-    return { host, remotePath, username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) }
-  } catch {
-    return { error: 'Invalid SMB share format — use //host/share or //user:pass@host/share' }
-  }
-}
+import { createRepository, testCloudConnection } from '@/app/actions/repositories'
 
 const BACKENDS = [
   { value: 'local',  label: 'Local filesystem' },
@@ -41,12 +26,14 @@ const fieldStyle: React.CSSProperties = { marginBottom: 16 }
 const grid2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }
 
 export default function NewRepositoryPage() {
-  const [backend, setBackend]           = useState('local')
-  const [error, setError]               = useState('')
-  const [isPending, start]              = useTransition()
-  const [mountState, setMountState]     = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
-  const [mountDetail, setMountDetail]   = useState<string | null>(null)
-  const formRef                         = useRef<HTMLFormElement>(null)
+  const [backend, setBackend]               = useState('local')
+  const [error, setError]                   = useState('')
+  const [isPending, start]                  = useTransition()
+  const [mountState, setMountState]         = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
+  const [mountDetail, setMountDetail]       = useState<string | null>(null)
+  const [cloudTestState, setCloudTestState] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
+  const [cloudTestDetail, setCloudTestDetail] = useState<string | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -60,12 +47,12 @@ export default function NewRepositoryPage() {
 
   async function handleTestMount() {
     if (!formRef.current) return
-    const fd          = new FormData(formRef.current)
-    const mountPoint  = `/mnt/backupos/test-${Date.now()}`
+    const fd         = new FormData(formRef.current)
+    const mountPoint = `/mnt/backupos/test-${Date.now()}`
     let host = '', remotePath = '', username = '', password = '', domain = ''
 
     if (backend === 'nfs') {
-      const nfsPath = (fd.get('nfsPath') as string)?.trim() ?? ''
+      const nfsPath  = (fd.get('nfsPath') as string)?.trim() ?? ''
       const colonIdx = nfsPath.indexOf(':')
       if (!nfsPath || colonIdx === -1) {
         setMountState('error'); setMountDetail('Enter NFS path as host:/export/path'); return
@@ -74,11 +61,12 @@ export default function NewRepositoryPage() {
     } else {
       const raw = (fd.get('smbShare') as string)?.trim() ?? ''
       if (!raw) { setMountState('error'); setMountDetail('Enter SMB share path'); return }
-      const parsed = parseSmbShare(raw)
-      if ('error' in parsed) { setMountState('error'); setMountDetail(parsed.error); return }
-      host = parsed.host; remotePath = parsed.remotePath
-      username = parsed.username || ((fd.get('username') as string)?.trim() ?? '')
-      password = parsed.password || ((fd.get('smbPassword') as string)?.trim() ?? '')
+      const s   = raw.replace(/\\/g, '/').replace(/^\/\//, '')
+      const idx = s.indexOf('/')
+      if (idx === -1) { setMountState('error'); setMountDetail('Format must be //host/share'); return }
+      host = s.slice(0, idx); remotePath = s.slice(idx + 1)
+      username = (fd.get('username') as string)?.trim() ?? ''
+      password = (fd.get('smbPassword') as string)?.trim() ?? ''
       domain   = (fd.get('domain') as string)?.trim() ?? ''
     }
 
@@ -90,17 +78,57 @@ export default function NewRepositoryPage() {
       ...(domain   ? { domain }   : {}),
     }
 
-    setMountState('testing')
-    setMountDetail(null)
+    setMountState('testing'); setMountDetail(null)
     try {
       const res  = await fetch('/api/mount/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mountConfig }) })
       const body = await res.json() as { ok?: boolean; error?: string }
       if (!res.ok || !body.ok) { setMountState('error'); setMountDetail(body.error ?? 'Mount failed') }
-      else { setMountState('ok'); setMountDetail('Mounted and unmounted successfully') }
+      else { setMountState('ok'); setMountDetail('Mounted successfully') }
     } catch {
       setMountState('error'); setMountDetail('Network error')
     }
   }
+
+  async function handleTestCloud() {
+    if (!formRef.current) return
+    setCloudTestState('testing'); setCloudTestDetail(null)
+    try {
+      const fd     = new FormData(formRef.current)
+      const result = await testCloudConnection(fd)
+      setCloudTestState(result.ok ? 'ok' : 'error')
+      setCloudTestDetail(result.message)
+    } catch (e) {
+      setCloudTestState('error'); setCloudTestDetail(String(e))
+    }
+  }
+
+  const testBtn = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+      <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
+        style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
+        {mountState === 'testing' ? 'Testing…' : 'Test mount'}
+      </button>
+      {mountDetail && (
+        <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
+          {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
+        </span>
+      )}
+    </div>
+  )
+
+  const cloudTestBtn = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+      <button type="button" onClick={() => { void handleTestCloud() }} disabled={cloudTestState === 'testing'}
+        style={{ padding: '5px 14px', fontSize: 12, cursor: cloudTestState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
+        {cloudTestState === 'testing' ? 'Testing…' : 'Test connection'}
+      </button>
+      {cloudTestDetail && (
+        <span style={{ fontSize: 11, color: cloudTestState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
+          {cloudTestState === 'ok' ? '✓ ' : '✗ '}{cloudTestDetail}
+        </span>
+      )}
+    </div>
+  )
 
   return (
     <div style={{ maxWidth: 600 }}>
@@ -120,7 +148,7 @@ export default function NewRepositoryPage() {
           <div style={grid2}>
             <div>
               <label style={labelStyle}>Backend</label>
-              <select name="backend" value={backend} onChange={e => setBackend(e.target.value)} style={inputStyle}>
+              <select name="backend" value={backend} onChange={e => { setBackend(e.target.value); setCloudTestState('idle'); setCloudTestDetail(null) }} style={inputStyle}>
                 {BACKENDS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
               </select>
             </div>
@@ -144,52 +172,40 @@ export default function NewRepositoryPage() {
 
           {backend === 'nfs' && (<>
             <div style={fieldStyle}>
-              <label style={labelStyle}>NFS path</label>
+              <label style={labelStyle}>NFS share</label>
               <input name="nfsPath" type="text" required placeholder="192.168.10.9:/volume1/Backups" style={inputStyle} />
               <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Format: <code>host:/export/path</code></div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-              <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
-                style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
-                {mountState === 'testing' ? 'Testing…' : 'Test mount'}
-              </button>
-              {mountDetail && (
-                <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
-                  {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
-                </span>
-              )}
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Repository path within share <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
+              <input name="repoPath" type="text" placeholder="restic-repo" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Sub-directory inside the share where the Restic repo lives. Leave blank to use the share root.</div>
             </div>
+            {testBtn}
           </>)}
 
           {backend === 'smb' && (<>
             <div style={fieldStyle}>
               <label style={labelStyle}>SMB share</label>
               <input name="smbShare" type="text" required placeholder="//192.168.10.9/Backups" style={inputStyle} />
-              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-                Format: <code>//host/share</code> or with credentials: <code>//user:password@host/share</code>
-              </div>
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Format: <code>//host/share</code></div>
             </div>
             <div style={grid2}>
               <div>
-                <label style={labelStyle}>Username <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(if not in path)</span></label>
-                <input name="username" type="text" placeholder="backupuser" style={inputStyle} />
+                <label style={labelStyle}>Username</label>
+                <input name="username" type="text" required placeholder="backupuser" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>Password <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(if not in path)</span></label>
-                <input name="smbPassword" type="password" placeholder="••••••••" style={inputStyle} />
+                <label style={labelStyle}>Password</label>
+                <input name="smbPassword" type="password" required placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-              <button type="button" onClick={() => { void handleTestMount() }} disabled={mountState === 'testing'}
-                style={{ padding: '5px 14px', fontSize: 12, cursor: mountState === 'testing' ? 'wait' : 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf2)', color: 'var(--fg)' }}>
-                {mountState === 'testing' ? 'Testing…' : 'Test mount'}
-              </button>
-              {mountDetail && (
-                <span style={{ fontSize: 11, color: mountState === 'ok' ? 'var(--ok)' : 'var(--err)' }}>
-                  {mountState === 'ok' ? '✓ ' : '✗ '}{mountDetail}
-                </span>
-              )}
+            <div style={fieldStyle}>
+              <label style={labelStyle}>Repository path within share <span style={{ color: 'var(--fg-faint)', fontWeight: 400 }}>(optional)</span></label>
+              <input name="repoPath" type="text" placeholder="restic-repo" style={inputStyle} />
+              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>Sub-directory inside the share where the Restic repo lives. Leave blank to use the share root.</div>
             </div>
+            {testBtn}
           </>)}
 
           {backend === 's3' && (<>
@@ -217,6 +233,7 @@ export default function NewRepositoryPage() {
                 <input name="secretKey" type="password" required placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
+            {cloudTestBtn}
           </>)}
 
           {backend === 'r2' && (<>
@@ -238,6 +255,7 @@ export default function NewRepositoryPage() {
                 <input name="secretKey" type="password" required placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
+            {cloudTestBtn}
           </>)}
 
           {backend === 'b2' && (<>
@@ -255,6 +273,7 @@ export default function NewRepositoryPage() {
                 <input name="appKey" type="password" required placeholder="••••••••" style={inputStyle} />
               </div>
             </div>
+            {cloudTestBtn}
           </>)}
 
           {backend === 'sftp' && (<>
@@ -278,6 +297,7 @@ export default function NewRepositoryPage() {
                 <input name="path" type="text" required placeholder="/home/backupuser/restic" style={inputStyle} />
               </div>
             </div>
+            {cloudTestBtn}
           </>)}
 
           {backend === 'rclone' && (<>

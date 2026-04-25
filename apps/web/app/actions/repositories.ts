@@ -4,19 +4,19 @@ import { revalidatePath }           from 'next/cache'
 import { redirect }                 from 'next/navigation'
 import { getDb, repositories, backupJobs, backupDefaults, eq, and } from '@backupos/db'
 import { ResticEngine }             from '@backupos/engine'
+import { encryptField, decryptField } from '@/lib/repo-crypto'
 
-function parseSmbShareUrl(raw: string): { host: string; remotePath: string; username: string; password: string } | { error: string } {
-  let s = raw.replace(/\\/g, '/')
-  if (!s.startsWith('//')) s = '//' + s
-  try {
-    const u = new URL('smb:' + s)
-    const host = u.hostname
-    const remotePath = u.pathname.replace(/^\//, '')
-    if (!host || !remotePath) return { error: 'SMB share must be //host/share or //user:pass@host/share' }
-    return { host, remotePath, username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) }
-  } catch {
-    return { error: 'Invalid SMB share format — use //host/share or //user:pass@host/share' }
+function parseRepoConfig(raw: string): Record<string, string> {
+  return JSON.parse(decryptField(raw)) as Record<string, string>
+}
+
+function parseSmbSharePath(raw: string): { host: string; remotePath: string } | { error: string } {
+  const s = raw.replace(/\\/g, '/').replace(/^\/\//, '')
+  const idx = s.indexOf('/')
+  if (idx === -1 || !s.slice(0, idx) || !s.slice(idx + 1)) {
+    return { error: 'SMB share must be in format //host/share' }
   }
+  return { host: s.slice(0, idx), remotePath: s.slice(idx + 1) }
 }
 
 export async function createRepository(formData: FormData): Promise<{ error: string } | never> {
@@ -37,7 +37,7 @@ export async function createRepository(formData: FormData): Promise<{ error: str
   if (backend === 'local') {
     const path = (formData.get('path') as string)?.trim()
     if (!path) return { error: 'Path is required' }
-    config['repositoryUrl'] = `${path}`
+    config['repositoryUrl'] = path
     config['path'] = path
   } else if (backend === 's3') {
     const bucket   = (formData.get('bucket') as string)?.trim()
@@ -46,7 +46,7 @@ export async function createRepository(formData: FormData): Promise<{ error: str
     const key      = (formData.get('accessKey') as string)?.trim()
     const secret   = (formData.get('secretKey') as string)?.trim()
     if (!bucket || !key || !secret) return { error: 'Bucket, access key, and secret key are required' }
-    config['repositoryUrl'] = endpoint ? `s3:${endpoint}/${bucket}` : `s3:s3.amazonaws.com/${bucket}`
+    config['repositoryUrl']         = endpoint ? `s3:${endpoint}/${bucket}` : `s3:s3.amazonaws.com/${bucket}`
     config['AWS_ACCESS_KEY_ID']     = key
     config['AWS_SECRET_ACCESS_KEY'] = secret
     config['AWS_DEFAULT_REGION']    = region
@@ -57,7 +57,7 @@ export async function createRepository(formData: FormData): Promise<{ error: str
     const key       = (formData.get('accessKey') as string)?.trim()
     const secret    = (formData.get('secretKey') as string)?.trim()
     if (!accountId || !bucket || !key || !secret) return { error: 'Account ID, bucket, access key, and secret key are required' }
-    config['repositoryUrl'] = `s3:https://${accountId}.r2.cloudflarestorage.com/${bucket}`
+    config['repositoryUrl']         = `s3:https://${accountId}.r2.cloudflarestorage.com/${bucket}`
     config['AWS_ACCESS_KEY_ID']     = key
     config['AWS_SECRET_ACCESS_KEY'] = secret
   } else if (backend === 'b2') {
@@ -65,9 +65,9 @@ export async function createRepository(formData: FormData): Promise<{ error: str
     const keyId  = (formData.get('keyId') as string)?.trim()
     const appKey = (formData.get('appKey') as string)?.trim()
     if (!bucket || !keyId || !appKey) return { error: 'Bucket, key ID, and application key are required' }
-    config['repositoryUrl']   = `b2:${bucket}`
-    config['B2_ACCOUNT_ID']   = keyId
-    config['B2_ACCOUNT_KEY']  = appKey
+    config['repositoryUrl']  = `b2:${bucket}`
+    config['B2_ACCOUNT_ID']  = keyId
+    config['B2_ACCOUNT_KEY'] = appKey
   } else if (backend === 'sftp') {
     const host = (formData.get('host') as string)?.trim()
     const port = (formData.get('port') as string)?.trim() || '22'
@@ -84,36 +84,36 @@ export async function createRepository(formData: FormData): Promise<{ error: str
     if (!remote || !path) return { error: 'Remote and path are required' }
     config['repositoryUrl'] = `rclone:${remote}:${path}`
   } else if (backend === 'nfs') {
-    const nfsPath = (formData.get('nfsPath') as string)?.trim()
+    const nfsPath  = (formData.get('nfsPath') as string)?.trim()
+    const repoPath = (formData.get('repoPath') as string)?.trim().replace(/^\/+/, '')
     if (!nfsPath) return { error: 'NFS path is required' }
     const colonIdx = nfsPath.indexOf(':')
     if (colonIdx === -1) return { error: 'NFS path must be in format host:/export/path (e.g. 192.168.10.9:/volume1/Backups)' }
-    const host = nfsPath.slice(0, colonIdx)
+    const host       = nfsPath.slice(0, colonIdx)
     const remotePath = nfsPath.slice(colonIdx + 1)
     const mountPoint = `/mnt/backupos/${id}`
-    config['repositoryUrl'] = mountPoint
-    config['mountConfig']   = JSON.stringify({ type: 'nfs', host, remotePath, mountPoint })
+    config['repositoryUrl'] = repoPath ? `${mountPoint}/${repoPath}` : mountPoint
+    config['mountConfig']   = JSON.stringify({ type: 'nfs', host, remotePath, mountPoint, repoPath: repoPath || '' })
   } else if (backend === 'smb') {
-    const smbShare    = (formData.get('smbShare') as string)?.trim()
-    const fieldUser   = (formData.get('username') as string)?.trim()
-    const fieldPass   = (formData.get('smbPassword') as string)?.trim()
+    const smbShare = (formData.get('smbShare') as string)?.trim()
+    const username = (formData.get('username') as string)?.trim()
+    const password = (formData.get('smbPassword') as string)?.trim()
+    const repoPath = (formData.get('repoPath') as string)?.trim().replace(/^\/+/, '')
     if (!smbShare) return { error: 'SMB share path is required' }
-    const parsed = parseSmbShareUrl(smbShare)
+    const parsed = parseSmbSharePath(smbShare)
     if ('error' in parsed) return { error: parsed.error }
-    const username = parsed.username || fieldUser
-    const password = parsed.password || fieldPass
-    if (!username || !password) return { error: 'Username and password are required (add them to the path as //user:pass@host/share or enter them in the fields)' }
+    if (!username || !password) return { error: 'Username and password are required' }
     const mountPoint = `/mnt/backupos/${id}`
-    config['repositoryUrl'] = mountPoint
-    config['mountConfig']   = JSON.stringify({ type: 'smb', host: parsed.host, remotePath: parsed.remotePath, mountPoint, username, password })
+    config['repositoryUrl'] = repoPath ? `${mountPoint}/${repoPath}` : mountPoint
+    config['mountConfig']   = JSON.stringify({ type: 'smb', host: parsed.host, remotePath: parsed.remotePath, mountPoint, username, password, repoPath: repoPath || '' })
   }
 
   await db.insert(repositories).values({
     id,
     name,
     backend,
-    config:         JSON.stringify(config),
-    resticPassword: password,
+    config:         encryptField(JSON.stringify(config)),
+    resticPassword: encryptField(password),
     group,
     createdAt:      new Date(),
   })
@@ -126,11 +126,11 @@ export async function updateRepository(id: string, formData: FormData): Promise<
   const group    = (formData.get('group') as string)?.trim() || null
   if (!name) return { error: 'Name is required' }
 
-  const db   = getDb()
+  const db     = getDb()
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1)
   if (!repo) return { error: 'Repository not found' }
 
-  const config: Record<string, string> = JSON.parse(repo.config) as Record<string, string>
+  const config: Record<string, string> = parseRepoConfig(repo.config)
 
   if (repo.backend === 'local') {
     const path = (formData.get('path') as string)?.trim()
@@ -180,29 +180,36 @@ export async function updateRepository(id: string, formData: FormData): Promise<
     if (!remote || !path) return { error: 'Remote and path are required' }
     config['repositoryUrl'] = `rclone:${remote}:${path}`
   } else if (repo.backend === 'nfs') {
-    const nfsPath = (formData.get('nfsPath') as string)?.trim()
+    const nfsPath  = (formData.get('nfsPath') as string)?.trim()
+    const repoPath = (formData.get('repoPath') as string)?.trim().replace(/^\/+/, '')
     if (!nfsPath) return { error: 'NFS path is required' }
     const colonIdx = nfsPath.indexOf(':')
     if (colonIdx === -1) return { error: 'NFS path must be in format host:/export/path' }
-    const host = nfsPath.slice(0, colonIdx)
+    const host       = nfsPath.slice(0, colonIdx)
     const remotePath = nfsPath.slice(colonIdx + 1)
-    const existing = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
-    config['mountConfig'] = JSON.stringify({ ...existing, type: 'nfs', host, remotePath })
+    const existing   = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
+    const mountPoint = (existing['mountPoint'] as string) || `/mnt/backupos/${id}`
+    config['repositoryUrl'] = repoPath ? `${mountPoint}/${repoPath}` : mountPoint
+    config['mountConfig']   = JSON.stringify({ ...existing, type: 'nfs', host, remotePath, mountPoint, repoPath: repoPath || '' })
   } else if (repo.backend === 'smb') {
     const smbShare  = (formData.get('smbShare') as string)?.trim()
-    const fieldUser = (formData.get('username') as string)?.trim()
-    const fieldPass = (formData.get('smbPassword') as string)?.trim()
+    const username  = (formData.get('username') as string)?.trim()
+    const newPass   = (formData.get('smbPassword') as string)?.trim()
+    const repoPath  = (formData.get('repoPath') as string)?.trim().replace(/^\/+/, '')
     if (!smbShare) return { error: 'SMB share path is required' }
-    const parsed = parseSmbShareUrl(smbShare)
+    const parsed = parseSmbSharePath(smbShare)
     if ('error' in parsed) return { error: parsed.error }
-    const existing = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
-    const username = parsed.username || fieldUser || existing['username'] || ''
-    const password = parsed.password || fieldPass || existing['password'] || ''
-    config['mountConfig'] = JSON.stringify({ ...existing, type: 'smb', host: parsed.host, remotePath: parsed.remotePath, username, password })
+    const existing   = config['mountConfig'] ? (JSON.parse(config['mountConfig']) as Record<string, string>) : {}
+    const mountPoint = (existing['mountPoint'] as string) || `/mnt/backupos/${id}`
+    const password   = newPass || (existing['password'] as string) || ''
+    const user       = username || (existing['username'] as string) || ''
+    if (!user || !password) return { error: 'Username and password are required' }
+    config['repositoryUrl'] = repoPath ? `${mountPoint}/${repoPath}` : mountPoint
+    config['mountConfig']   = JSON.stringify({ ...existing, type: 'smb', host: parsed.host, remotePath: parsed.remotePath, mountPoint, username: user, password, repoPath: repoPath || '' })
   }
 
-  const updates: Record<string, unknown> = { name, group, config: JSON.stringify(config) }
-  if (password) updates['resticPassword'] = password
+  const updates: Record<string, unknown> = { name, group, config: encryptField(JSON.stringify(config)) }
+  if (password) updates['resticPassword'] = encryptField(password)
   await db.update(repositories).set(updates).where(eq(repositories.id, id))
   revalidatePath(`/repositories/${id}`)
   redirect(`/repositories/${id}`)
@@ -218,6 +225,74 @@ export async function deleteRepository(id: string): Promise<{ error: string } | 
   } catch (_) {}
   revalidatePath('/repositories')
   redirect('/repositories')
+}
+
+export async function testCloudConnection(formData: FormData): Promise<{ ok: boolean; message: string }> {
+  const backend  = formData.get('backend') as string
+  const password = (formData.get('password') as string)?.trim() || 'placeholder'
+  const config: Record<string, string> = {}
+
+  if (backend === 's3') {
+    const bucket = (formData.get('bucket') as string)?.trim()
+    const ep     = (formData.get('endpoint') as string)?.trim()
+    const region = (formData.get('region') as string)?.trim() || 'us-east-1'
+    const key    = (formData.get('accessKey') as string)?.trim()
+    const secret = (formData.get('secretKey') as string)?.trim()
+    if (!bucket || !key || !secret) return { ok: false, message: 'Fill in bucket, access key, and secret key first' }
+    config['repositoryUrl']         = ep ? `s3:${ep}/${bucket}` : `s3:s3.amazonaws.com/${bucket}`
+    config['AWS_ACCESS_KEY_ID']     = key
+    config['AWS_SECRET_ACCESS_KEY'] = secret
+    config['AWS_DEFAULT_REGION']    = region
+  } else if (backend === 'r2') {
+    const accountId = (formData.get('accountId') as string)?.trim()
+    const bucket    = (formData.get('bucket') as string)?.trim()
+    const key       = (formData.get('accessKey') as string)?.trim()
+    const secret    = (formData.get('secretKey') as string)?.trim()
+    if (!accountId || !bucket || !key || !secret) return { ok: false, message: 'Fill in all fields first' }
+    config['repositoryUrl']         = `s3:https://${accountId}.r2.cloudflarestorage.com/${bucket}`
+    config['AWS_ACCESS_KEY_ID']     = key
+    config['AWS_SECRET_ACCESS_KEY'] = secret
+  } else if (backend === 'b2') {
+    const bucket = (formData.get('bucket') as string)?.trim()
+    const keyId  = (formData.get('keyId') as string)?.trim()
+    const appKey = (formData.get('appKey') as string)?.trim()
+    if (!bucket || !keyId || !appKey) return { ok: false, message: 'Fill in all fields first' }
+    config['repositoryUrl']  = `b2:${bucket}`
+    config['B2_ACCOUNT_ID']  = keyId
+    config['B2_ACCOUNT_KEY'] = appKey
+  } else if (backend === 'sftp') {
+    const host = (formData.get('host') as string)?.trim()
+    const user = (formData.get('user') as string)?.trim()
+    const path = (formData.get('path') as string)?.trim()
+    if (!host || !user || !path) return { ok: false, message: 'Fill in host, user, and path first' }
+    config['repositoryUrl'] = `sftp:${user}@${host}:${path}`
+  } else {
+    return { ok: false, message: 'Connection test not available for this backend' }
+  }
+
+  try {
+    const engine = new ResticEngine({
+      repositoryUrl: config['repositoryUrl']!,
+      password,
+      envVars:    config,
+      binaryPath: process.env['RESTIC_BINARY_PATH'],
+    })
+    await engine.snapshots()
+    return { ok: true, message: 'Connected — repository is accessible' }
+  } catch (err) {
+    const msg = String(err).toLowerCase()
+    if (
+      msg.includes('unable to open config') ||
+      msg.includes('is not a restic repository') ||
+      msg.includes('wrong password') ||
+      msg.includes('no key found')
+    ) {
+      return { ok: true, message: 'Credentials valid — repository will be initialized on first backup' }
+    }
+    const lines  = String(err).split('\n').map(l => l.trim()).filter(Boolean)
+    const useful = lines.find(l => /error|denied|failed|refused|invalid/i.test(l)) ?? lines[0] ?? 'Connection failed'
+    return { ok: false, message: useful }
+  }
 }
 
 export interface ReplicaEntry {
@@ -271,10 +346,10 @@ export async function runCheck(repoId: string): Promise<{ ok: boolean; error?: s
   if (!repo) return { ok: false, error: 'Repository not found' }
 
   try {
-    const cfg    = JSON.parse(repo.config) as Record<string, string>
+    const cfg    = parseRepoConfig(repo.config)
     const engine = new ResticEngine({
       repositoryUrl: cfg['repositoryUrl'] ?? repoId,
-      password:      repo.resticPassword,
+      password:      decryptField(repo.resticPassword),
       envVars:       cfg,
       binaryPath:    process.env['RESTIC_BINARY_PATH'],
     })
@@ -349,10 +424,10 @@ export async function pruneRepository(repoId: string): Promise<{
       }
     }
 
-    const cfg = JSON.parse(repo.config) as Record<string, string>
+    const cfg    = parseRepoConfig(repo.config)
     const engine = new ResticEngine({
       repositoryUrl: cfg['repositoryUrl'] ?? repoId,
-      password:      repo.resticPassword,
+      password:      decryptField(repo.resticPassword),
       envVars:       cfg,
       binaryPath:    process.env['RESTIC_BINARY_PATH'],
     })
