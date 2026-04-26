@@ -6,6 +6,7 @@ import { spawn as spawnProcess } from 'child_process'
 import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage, BackupJobConfig } from '@backupos/agent-protocol'
 import { getSystemUptimeSeconds } from './system-uptime'
+import { detectCapabilities } from './capabilities'
 
 function requireEnv(name: string): string {
   const v = process.env[name]
@@ -105,11 +106,11 @@ async function queryResticVersion(): Promise<string> {
   })
 }
 
-function buildCapabilities(): string[] {
-  const caps: string[] = ['backup', 'restore']
-  if (process.platform === 'win32') caps.push('vss')
-  return caps
-}
+let detectedCapabilities: string[] = ['backup', 'restore']
+void detectCapabilities().then(caps => {
+  detectedCapabilities = ['backup', 'restore', ...caps]
+  console.log('[agent] Capabilities:', detectedCapabilities.join(', '))
+})
 
 let RESTIC_VERSION = ''
 void queryResticVersion().then(v => { RESTIC_VERSION = v })
@@ -351,7 +352,8 @@ function connect(): void {
       agentVersion:    VERSION,
       protocolVersion: PROTOCOL_VERSION,
       resticVersion:   RESTIC_VERSION || undefined,
-      capabilities:    buildCapabilities(),
+      capabilities:    detectedCapabilities,
+      bundleHash:      SELF_HASH || undefined,
       platform:        process.platform === 'win32' ? 'windows' : 'linux',
       osInfo: {
         os:     process.platform,

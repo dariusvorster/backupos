@@ -2225,7 +2225,7 @@ var require_websocket = __commonJS({
     "use strict";
     var EventEmitter = require("events");
     var https = require("https");
-    var http = require("http");
+    var http2 = require("http");
     var net = require("net");
     var tls = require("tls");
     var { randomBytes, createHash: createHash2 } = require("crypto");
@@ -2759,7 +2759,7 @@ var require_websocket = __commonJS({
       }
       const defaultPort = isSecure ? 443 : 80;
       const key = randomBytes(16).toString("base64");
-      const request = isSecure ? https.request : http.request;
+      const request2 = isSecure ? https.request : http2.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
       opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
@@ -2836,12 +2836,12 @@ var require_websocket = __commonJS({
         if (opts.auth && !options.headers.authorization) {
           options.headers.authorization = "Basic " + Buffer.from(opts.auth).toString("base64");
         }
-        req = websocket._req = request(opts);
+        req = websocket._req = request2(opts);
         if (websocket._redirects) {
           websocket.emit("redirect", websocket.url, req);
         }
       } else {
-        req = websocket._req = request(opts);
+        req = websocket._req = request2(opts);
       }
       if (opts.timeout) {
         req.on("timeout", () => {
@@ -3253,7 +3253,7 @@ var require_websocket_server = __commonJS({
   "../../node_modules/.pnpm/ws@8.20.0/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
     var EventEmitter = require("events");
-    var http = require("http");
+    var http2 = require("http");
     var { Duplex } = require("stream");
     var { createHash: createHash2 } = require("crypto");
     var extension2 = require_extension();
@@ -3328,8 +3328,8 @@ var require_websocket_server = __commonJS({
           );
         }
         if (options.port != null) {
-          this._server = http.createServer((req, res) => {
-            const body = http.STATUS_CODES[426];
+          this._server = http2.createServer((req, res) => {
+            const body = http2.STATUS_CODES[426];
             res.writeHead(426, {
               "Content-Length": body.length,
               "Content-Type": "text/plain"
@@ -3616,7 +3616,7 @@ var require_websocket_server = __commonJS({
       this.destroy();
     }
     function abortHandshake(socket, code, message, headers) {
-      message = message || http.STATUS_CODES[code];
+      message = message || http2.STATUS_CODES[code];
       headers = {
         Connection: "close",
         "Content-Type": "text/html",
@@ -3625,7 +3625,7 @@ var require_websocket_server = __commonJS({
       };
       socket.once("finish", socket.destroy);
       socket.end(
-        `HTTP/1.1 ${code} ${http.STATUS_CODES[code]}\r
+        `HTTP/1.1 ${code} ${http2.STATUS_CODES[code]}\r
 ` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join("\r\n") + "\r\n\r\n" + message
       );
     }
@@ -3655,8 +3655,8 @@ var wrapper_default = import_websocket.default;
 // src/agent.ts
 var os = __toESM(require("os"));
 var import_crypto = require("crypto");
-var import_fs = require("fs");
-var import_child_process2 = require("child_process");
+var import_fs2 = require("fs");
+var import_child_process3 = require("child_process");
 
 // ../engine/dist/restic.js
 var import_child_process = require("child_process");
@@ -3998,6 +3998,99 @@ var ResticError = class extends Error {
   }
 };
 
+// src/system-uptime.ts
+var import_node_fs = require("node:fs");
+function getSystemUptimeSeconds() {
+  if (process.platform !== "linux") return Math.floor(process.uptime());
+  try {
+    const content = (0, import_node_fs.readFileSync)("/proc/uptime", "utf8");
+    return Math.floor(parseFloat(content.split(" ")[0]));
+  } catch {
+    return Math.floor(process.uptime());
+  }
+}
+
+// src/capabilities.ts
+var import_child_process2 = require("child_process");
+var import_util = require("util");
+var import_fs = require("fs");
+var http = __toESM(require("http"));
+var execFileAsync = (0, import_util.promisify)(import_child_process2.execFile);
+async function binaryExists(name) {
+  try {
+    await execFileAsync(name, ["--version"], { timeout: 2e3 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function dockerRequest(dockerHost, path) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("timeout")), 5e3);
+    const done = () => clearTimeout(timeout);
+    const handler = (res) => {
+      res.resume();
+      res.on("end", () => {
+        done();
+        resolve();
+      });
+    };
+    if (dockerHost.startsWith("unix://")) {
+      const req = http.request(
+        { socketPath: dockerHost.slice("unix://".length), path, method: "GET" },
+        handler
+      );
+      req.on("error", (e) => {
+        done();
+        reject(e);
+      });
+      req.end();
+    } else if (dockerHost.startsWith("tcp://")) {
+      const u = new URL(dockerHost);
+      const req = http.request(
+        { host: u.hostname, port: parseInt(u.port || "2375"), path, method: "GET" },
+        handler
+      );
+      req.on("error", (e) => {
+        done();
+        reject(e);
+      });
+      req.end();
+    } else {
+      done();
+      reject(new Error(`Unsupported DOCKER_HOST: ${dockerHost}`));
+    }
+  });
+}
+async function canReachDocker() {
+  const dockerHost = process.env["DOCKER_HOST"] ?? "unix:///var/run/docker.sock";
+  try {
+    await dockerRequest(dockerHost, "/v1.41/_ping");
+    return true;
+  } catch {
+    return false;
+  }
+}
+function canReadFilesystem() {
+  try {
+    (0, import_fs.readdirSync)("/");
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function detectCapabilities() {
+  const caps = [];
+  if (canReadFilesystem()) caps.push("filesystem");
+  if (await canReachDocker()) caps.push("docker");
+  if (process.platform === "win32") caps.push("vss");
+  if (await binaryExists("pg_dump")) caps.push("apphook:postgres");
+  if (await binaryExists("mysqldump")) caps.push("apphook:mysql");
+  if (await binaryExists("redis-cli")) caps.push("apphook:redis");
+  if (await binaryExists("sqlite3")) caps.push("apphook:sqlite");
+  return caps;
+}
+
 // src/agent.ts
 function requireEnv(name) {
   const v = process.env[name];
@@ -4022,7 +4115,7 @@ function getHttpBase() {
 }
 function computeSelfHash() {
   try {
-    const buf = (0, import_fs.readFileSync)(process.argv[1]);
+    const buf = (0, import_fs2.readFileSync)(process.argv[1]);
     return (0, import_crypto.createHash)("sha256").update(buf).digest("hex");
   } catch {
     return "";
@@ -4043,10 +4136,10 @@ async function selfUpdate() {
     if (!res.ok) throw new Error(`bundle download failed: ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     const tmp = `${scriptPath}.tmp`;
-    (0, import_fs.writeFileSync)(tmp, buf);
-    (0, import_fs.renameSync)(tmp, scriptPath);
+    (0, import_fs2.writeFileSync)(tmp, buf);
+    (0, import_fs2.renameSync)(tmp, scriptPath);
     console.log("[agent] Bundle updated \u2014 restarting \u2026");
-    (0, import_child_process2.spawn)(process.execPath, process.argv.slice(1), {
+    (0, import_child_process3.spawn)(process.execPath, process.argv.slice(1), {
       env: process.env,
       detached: true,
       stdio: "inherit"
@@ -4084,7 +4177,7 @@ var VERSION = "0.1.0";
 var PROTOCOL_VERSION = "1";
 async function queryResticVersion() {
   return new Promise((resolve) => {
-    const proc = (0, import_child_process2.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
+    const proc = (0, import_child_process3.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     proc.stdout?.on("data", (d) => {
       out += d.toString();
@@ -4100,11 +4193,11 @@ async function queryResticVersion() {
     }, 1e4);
   });
 }
-function buildCapabilities() {
-  const caps = ["backup", "restore"];
-  if (process.platform === "win32") caps.push("vss");
-  return caps;
-}
+var detectedCapabilities = ["backup", "restore"];
+void detectCapabilities().then((caps) => {
+  detectedCapabilities = ["backup", "restore", ...caps];
+  console.log("[agent] Capabilities:", detectedCapabilities.join(", "));
+});
 var RESTIC_VERSION = "";
 void queryResticVersion().then((v) => {
   RESTIC_VERSION = v;
@@ -4162,7 +4255,7 @@ function startHeartbeat() {
         memTotalBytes: memTotal,
         diskUsedBytes: {},
         diskTotalBytes: {},
-        uptimeSeconds: Math.floor(process.uptime())
+        uptimeSeconds: getSystemUptimeSeconds()
       }
     });
   }, 3e4);
@@ -4308,7 +4401,8 @@ function connect() {
       agentVersion: VERSION,
       protocolVersion: PROTOCOL_VERSION,
       resticVersion: RESTIC_VERSION || void 0,
-      capabilities: buildCapabilities(),
+      capabilities: detectedCapabilities,
+      bundleHash: SELF_HASH || void 0,
       platform: process.platform === "win32" ? "windows" : "linux",
       osInfo: {
         os: process.platform,

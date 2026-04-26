@@ -303,6 +303,11 @@ void app.prepare().then(() => {
           const welcome: ServerMessage = { type: 'welcome', agentId, serverVersion: '0.1.0', bundleHash: BUNDLE_HASH || undefined }
           ws.send(JSON.stringify(welcome))
 
+          if (msg.bundleHash && BUNDLE_HASH && msg.bundleHash !== BUNDLE_HASH) {
+            console.log(`[server] Agent ${agentId} bundle mismatch — sending force_update`)
+            ws.send(JSON.stringify({ type: 'force_update' } satisfies ServerMessage))
+          }
+
           // Auto-detect capabilities on every connect so the UI is always up to date
           const detectReqId = crypto.randomUUID()
           ws.send(JSON.stringify({ type: 'list_resources', requestId: detectReqId }))
