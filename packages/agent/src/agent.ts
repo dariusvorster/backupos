@@ -131,7 +131,7 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let shuttingDown = false
 
 type BackupPhase = 'starting' | 'scanning' | 'uploading' | 'finalizing'
-interface ActiveJob { ctrl: AbortController; runId: string; phase: BackupPhase; lastResticEventAt: number }
+interface ActiveJob { ctrl: AbortController; runId: string; phase: BackupPhase; lastResticEventAt: number; cancelled: boolean }
 
 // Active jobs — keyed by jobId
 const activeJobs = new Map<string, ActiveJob>()
@@ -212,7 +212,15 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
 
   } else if (msg.type === 'cancel_backup') {
     const job = activeJobs.get(msg.jobId)
-    if (job) { job.ctrl.abort(); console.log(`[agent] Cancelled job ${msg.jobId}`) }
+    if (!job) {
+      console.warn(`[agent] cancel_backup: no active backup for jobId=${msg.jobId}`)
+      send({ type: 'backup_cancelled', jobId: msg.jobId, runId: msg.runId, reason: 'not_running' })
+    } else {
+      console.log(`[agent] cancel_backup jobId=${msg.jobId} runId=${job.runId} — aborting`)
+      job.cancelled = true
+      job.ctrl.abort()
+      send({ type: 'backup_cancelled', jobId: msg.jobId, runId: job.runId, reason: 'user_requested' })
+    }
 
   } else if (msg.type === 'verify_repo') {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars)
@@ -226,7 +234,7 @@ async function runBackup(jobId: string, runId: string, config: BackupJobConfig):
   }
 
   const ctrl = new AbortController()
-  activeJobs.set(jobId, { ctrl, runId, phase: 'starting', lastResticEventAt: Date.now() })
+  activeJobs.set(jobId, { ctrl, runId, phase: 'starting', lastResticEventAt: Date.now(), cancelled: false })
 
   send({ type: 'backup_start', jobId, config })
   console.log(`[agent] Starting backup for job ${jobId} — paths: ${config.paths.join(', ')}`)
@@ -251,6 +259,7 @@ async function runBackup(jobId: string, runId: string, config: BackupJobConfig):
       paths:   config.paths,
       exclude: config.exclude,
       tags:    config.tags,
+      signal:  ctrl.signal,
       onProgress: (s) => {
         const active = activeJobs.get(jobId)
         if (active) {
@@ -290,10 +299,14 @@ async function runBackup(jobId: string, runId: string, config: BackupJobConfig):
     console.log(`[agent] Backup complete — snapshot ${result.snapshotId}`)
 
   } catch (err) {
-    const error  = err instanceof Error ? err.message : String(err)
-    const detail = err instanceof Error && err.stack ? err.stack : ''
-    send({ type: 'backup_failed', jobId, error, detail, log: runLog || undefined })
-    console.error(`[agent] Backup failed for job ${jobId}:`, error)
+    if (ctrl.signal.aborted) {
+      console.log(`[agent] Backup for job ${jobId} exited due to cancel signal — skipping backup_failed`)
+    } else {
+      const error  = err instanceof Error ? err.message : String(err)
+      const detail = err instanceof Error && err.stack ? err.stack : ''
+      send({ type: 'backup_failed', jobId, error, detail, log: runLog || undefined })
+      console.error(`[agent] Backup failed for job ${jobId}:`, error)
+    }
 
   } finally {
     activeJobs.delete(jobId)

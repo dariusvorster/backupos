@@ -56,6 +56,7 @@ export type AgentMessage =
   | { type: 'backup_progress'; jobId: string; pct: number; filesProcessed: number; bytesProcessed: number; filesTotal: number; bytesTotal: number; secondsRemaining?: number }
   | { type: 'backup_complete'; jobId: string; snapshotId: string; stats: BackupStats; log?: string }
   | { type: 'backup_failed'; jobId: string; error: string; detail: string; log?: string }
+  | { type: 'backup_cancelled'; jobId: string; runId: string; reason: 'user_requested' | 'not_running' | 'agent_disconnect' }
   | { type: 'restore_start'; restoreId: string; specId: string }
   | { type: 'restore_progress'; restoreId: string; step: string; status: string }
   | { type: 'restore_complete'; restoreId: string; success: boolean }
@@ -74,7 +75,7 @@ export type ServerMessage =
   | { type: 'pong' }
   | { type: 'run_backup'; jobId: string; runId: string; config: BackupJobConfig }
   | { type: 'run_restore'; restoreId: string; specYaml: string; snapshotId: string }
-  | { type: 'cancel_backup'; jobId: string }
+  | { type: 'cancel_backup'; jobId: string; runId: string }
   | { type: 'verify_repo'; repoId: string; repoUrl: string; repoPassword: string; readData: boolean; envVars?: Record<string, string> }
   | { type: 'list_resources'; requestId: string }
   | { type: 'test_repo'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }

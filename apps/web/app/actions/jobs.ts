@@ -219,12 +219,23 @@ export async function cancelJob(jobId: string): Promise<void> {
 
   if (!run) { revalidatePath(`/jobs/${jobId}`); return }
 
-  await db.update(backupRuns).set({ status: 'cancelled', completedAt: new Date() }).where(eq(backupRuns.id, run.id))
-  await db.update(backupJobs).set({ lastRunStatus: 'cancelled' }).where(eq(backupJobs.id, jobId))
+  if (!run.agentId) {
+    // Local run (no agent) — cancel directly
+    await db.update(backupRuns).set({ status: 'cancelled', completedAt: new Date() }).where(eq(backupRuns.id, run.id))
+    await db.update(backupJobs).set({ lastRunStatus: 'cancelled' }).where(eq(backupJobs.id, jobId))
+    revalidatePath(`/jobs/${jobId}`)
+    return
+  }
 
-  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
-  if (job?.agentId) {
-    void dispatchToAgent(job.agentId, { type: 'cancel_backup', jobId })
+  // Agent run: dispatch cancel and let the agent's backup_cancelled response update the DB
+  const result = await dispatchToAgent(run.agentId, { type: 'cancel_backup', jobId, runId: run.id })
+  if (!result.ok) {
+    // Agent unreachable — honour the cancel immediately
+    await db.update(backupRuns).set({
+      status: 'cancelled', completedAt: new Date(),
+      errorMessage: `cancel: agent unreachable (${result.reason ?? 'unknown'})`,
+    }).where(eq(backupRuns.id, run.id))
+    await db.update(backupJobs).set({ lastRunStatus: 'cancelled' }).where(eq(backupJobs.id, jobId))
   }
 
   revalidatePath(`/jobs/${jobId}`)

@@ -183,6 +183,38 @@ void app.prepare().then(() => {
       return
     }
 
+    // Cancel a run by runId — testing / admin use
+    const cancelRunMatch = parsed.pathname?.match(/^\/internal\/cancel-run\/([^/]+)$/)
+    if (req.method === 'POST' && cancelRunMatch) {
+      void (async () => {
+        const auth = req.headers['x-internal-token']
+        if (auth !== process.env['BACKUPOS_INTERNAL_TOKEN']) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, reason: 'unauthorized' }))
+          return
+        }
+        const runId = cancelRunMatch[1]!
+        const db2   = getDb()
+        const [run] = await db2.select().from(backupRuns).where(eq(backupRuns.id, runId)).limit(1)
+        if (!run || run.status !== 'running') {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true, note: 'run not active' }))
+          return
+        }
+        if (run.agentId) {
+          const sent = dispatch(run.agentId, { type: 'cancel_backup', jobId: run.jobId!, runId: run.id })
+          if (!sent) {
+            await db2.update(backupRuns).set({ status: 'cancelled', completedAt: new Date(), errorMessage: 'cancel: agent unreachable' }).where(eq(backupRuns.id, runId))
+          }
+        } else {
+          await db2.update(backupRuns).set({ status: 'cancelled', completedAt: new Date() }).where(eq(backupRuns.id, runId))
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true }))
+      })()
+      return
+    }
+
     // Repository init-state — used by agent to check/set initializedAt (Fix A)
     if (req.method === 'GET' && /^\/internal\/repository\/[^/]+\/state$/.test(parsed.pathname ?? '')) {
       void (async () => {
@@ -446,6 +478,14 @@ void app.prepare().then(() => {
           const [job] = await db.select({ name: backupJobs.name }).from(backupJobs)
             .where(eq(backupJobs.id, msg.jobId)).limit(1)
           await sendAlert('backup_failed', { jobId: msg.jobId, jobName: job?.name ?? 'unknown', error: msg.error })
+
+        } else if (msg.type === 'backup_cancelled' && agentId) {
+          await db.update(backupRuns).set({
+            status:       'cancelled',
+            completedAt:  new Date(),
+            errorMessage: msg.reason === 'user_requested' ? null : `cancel: ${msg.reason}`,
+          }).where(and(eq(backupRuns.id, msg.runId), eq(backupRuns.status, 'running')))
+          console.log(`[server] backup_cancelled jobId=${msg.jobId} runId=${msg.runId} reason=${msg.reason}`)
 
         } else if (msg.type === 'backup_heartbeat' && agentId) {
           await db.update(backupRuns).set({
