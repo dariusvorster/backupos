@@ -3,8 +3,9 @@
 import { useState, useCallback } from 'react'
 
 const SOURCE_TYPES = [
-  { value: 'filesystem',     label: 'Filesystem',      desc: 'Directories and files on the agent host' },
-  { value: 'docker_volume',  label: 'Docker volume',   desc: 'Named Docker volume' },
+  { value: 'filesystem',      label: 'Filesystem',       desc: 'Directories and files on the agent host' },
+  { value: 'compose_project', label: 'Compose project',  desc: 'Docker Compose stack — volumes, app-hooks, full stack backup' },
+  { value: 'docker_volume',   label: 'Docker volume',    desc: 'Named Docker volume (deprecated — use Compose project)' },
   { value: 'database',       label: 'Database',        desc: 'PostgreSQL, MySQL, SQLite, Redis' },
   { value: 'proxmox_vm',     label: 'Proxmox VM',      desc: 'Virtual machine via Proxmox API' },
   { value: 'proxmox_lxc',    label: 'Proxmox LXC',     desc: 'Container via Proxmox API' },
@@ -27,6 +28,7 @@ const hintStyle: React.CSSProperties = {
 }
 
 import type { DetectedResources } from '@backupos/agent-protocol'
+import { ComposeProjectFields } from './compose-project-fields'
 
 type Cfg = Record<string, unknown>
 
@@ -401,8 +403,9 @@ export function SourceConfigSection({
         {detectError && (
           <div style={{ fontSize: 11, color: 'var(--err)', marginTop: 4 }}>{detectError}</div>
         )}
-        {selected === 'filesystem'     && <FilesystemFields cfg={cfg} detected={detected} />}
-        {selected === 'docker_volume'  && <DockerVolumeFields cfg={cfg} detected={detected} />}
+        {selected === 'filesystem'      && <FilesystemFields cfg={cfg} detected={detected} />}
+        {selected === 'compose_project' && <ComposeProjectFields />}
+        {selected === 'docker_volume'   && <DockerVolumeFields cfg={cfg} detected={detected} />}
         {selected === 'database'       && <DatabaseFields cfg={cfg} detected={detected} />}
         {selected === 'proxmox_vm'     && <ProxmoxFields label="VM" cfg={cfg} />}
         {selected === 'proxmox_lxc'    && <ProxmoxFields label="LXC" cfg={cfg} />}

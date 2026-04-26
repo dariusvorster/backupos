@@ -44,6 +44,9 @@ function parseSourceConfig(sourceType: string, fd: FormData): string {
       username:  str('shareUsername'),
       password:  str('sharePassword'),
     }
+  } else if (sourceType === 'compose_project') {
+    const raw = str('composeConfig')
+    cfg = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
   }
 
   return JSON.stringify(cfg)
