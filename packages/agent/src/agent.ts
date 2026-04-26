@@ -144,6 +144,10 @@ async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> 
   console.log(`[agent] Starting backup for job ${jobId} — paths: ${config.paths.join(', ')}`)
 
   try {
+    if (!config.repoPassword) {
+      throw new Error('runBackup: repoPassword is missing from dispatch payload. Server-side dispatch is broken — check that decryptField(repo.resticPassword) is being included in the WS message.')
+    }
+
     const engine = new ResticEngine({
       repositoryUrl: config.repoUrl,
       password:      config.repoPassword,
