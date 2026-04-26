@@ -19,9 +19,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Typecheck agent-linux
-        run: bun run --filter @backupos/agent-linux typecheck
-
       - name: Typecheck agent-windows
         run: bun run --filter @backupos/agent-windows typecheck
 
@@ -33,18 +30,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - package: agent-linux
-            script: build:x64
-            artifact: backupos-agent-linux-x64
-          - package: agent-linux
-            script: build:arm64
-            artifact: backupos-agent-linux-arm64
-          - package: agent-linux
-            script: build:darwin-x64
-            artifact: backupos-agent-darwin-x64
-          - package: agent-linux
-            script: build:darwin-arm64
-            artifact: backupos-agent-darwin-arm64
           - package: agent-windows
             script: build:x64
             artifact: backupos-agent-windows-x64.exe
@@ -100,10 +85,6 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/backupos-agent-linux-x64
-            dist/backupos-agent-linux-arm64
-            dist/backupos-agent-darwin-x64
-            dist/backupos-agent-darwin-arm64
             dist/backupos-agent-windows-x64.exe
             dist/backupos-agent-windows-arm64.exe
             dist/SHA256SUMS.txt
