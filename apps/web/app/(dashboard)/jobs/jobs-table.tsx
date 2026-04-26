@@ -6,6 +6,7 @@ import type { ComponentProps }         from 'react'
 import { Badge }                       from '@/components/ui/badge'
 import { PageHeader }                  from '@/components/ui/page-header'
 import { pauseJobs, resumeJobs, deleteJobs } from '@/app/actions/jobs'
+import { validateCron }                from '@/lib/cron-validate'
 import type { RunDot }                 from './page'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
@@ -155,8 +156,15 @@ export function JobsTable({
                       {job.name}
                     </Link>
                   </td>
-                  <td style={{ ...td, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg-mute)' }}>
-                    {job.schedule}
+                  <td style={{ ...td, fontSize: 12 }}>
+                    {(() => {
+                      const check = validateCron(job.schedule)
+                      return check.valid ? (
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--fg-mute)' }}>{job.schedule}</span>
+                      ) : (
+                        <span style={{ color: 'var(--err)' }} title={check.error}>⚠ {job.schedule}</span>
+                      )
+                    })()}
                   </td>
                   <td style={td}>
                     <Badge status={job.enabled === true ? 'healthy' : 'paused'} label={job.enabled === true ? 'Enabled' : 'Disabled'} />
