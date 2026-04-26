@@ -4,9 +4,17 @@ import { getDb, backupJobs, repositories, agents, eq } from '@backupos/db'
 import { Button } from '@/components/ui/button'
 import { SourceConfigSection } from '@/components/source-config-section'
 import { updateJob } from '@/app/actions/jobs'
+import { CronInput } from '@/components/cron-input'
 
-export default async function EditJobPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+export default async function EditJobPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ cronError?: string }>
+}) {
+  const { id }      = await params
+  const { cronError } = await searchParams
   const db = getDb()
 
   const [[job], repos, agentList] = await Promise.all([
@@ -81,16 +89,13 @@ export default async function EditJobPage({ params }: { params: Promise<{ id: st
             <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
               Schedule (cron)
             </label>
-            <input
+            <CronInput
               name="schedule"
-              type="text"
               required
               defaultValue={job.schedule}
+              serverError={cronError}
               style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
             />
-            <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 4 }}>
-              e.g. <code>0 2 * * *</code> = daily at 02:00
-            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>

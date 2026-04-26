@@ -2,16 +2,18 @@ import { getDb, repositories, agents } from '@backupos/db'
 import { Button } from '@/components/ui/button'
 import { createJob } from '@/app/actions/jobs'
 import { SourceConfigSection } from '@/components/source-config-section'
+import { CronInput } from '@/components/cron-input'
 
 export default async function NewJobPage({
   searchParams,
 }: {
-  searchParams: Promise<{ name?: string; sourceType?: string; infraServiceId?: string }>
+  searchParams: Promise<{ name?: string; sourceType?: string; infraServiceId?: string; cronError?: string }>
 }) {
   const params              = await searchParams
   const prefillName         = params.name           ?? ''
   const prefillSourceType   = params.sourceType     ?? ''
   const prefillInfraService = params.infraServiceId ?? ''
+  const cronError           = params.cronError
 
   const db      = getDb()
   const [repos, agentList] = await Promise.all([
@@ -98,11 +100,11 @@ export default async function NewJobPage({
             <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
               Schedule (cron)
             </label>
-            <input
+            <CronInput
               name="schedule"
-              type="text"
               required
-              placeholder="0 2 * * *"
+              defaultValue=""
+              serverError={cronError}
               style={{
                 width: '100%', padding: '8px 12px',
                 backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
@@ -110,9 +112,6 @@ export default async function NewJobPage({
                 fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box',
               }}
             />
-            <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 4 }}>
-              Standard cron expression. e.g. <code>0 2 * * *</code> = daily at 02:00
-            </div>
           </div>
 
           {prefillInfraService && (

@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { getDb, backupJobs, backupRuns, repositories, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
 import { decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
+import { validateCron } from '@/lib/cron-validate'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
   const str = (k: string) => (fd.get(k) as string | null)?.trim() || undefined
@@ -61,6 +62,11 @@ export async function createJob(formData: FormData): Promise<void> {
   const infraServiceId = (formData.get('infraServiceId') as string) || null
 
   if (!name || !sourceType || !schedule) return
+
+  const cronCheck = validateCron(schedule)
+  if (!cronCheck.valid) {
+    redirect(`/jobs/new?cronError=${encodeURIComponent(`Invalid cron expression "${schedule}". ${cronCheck.error}. Examples: "0 2 * * *" (daily 2am), "*/15 * * * *" (every 15min).`)}`)
+  }
 
   const db = getDb()
   const id = crypto.randomUUID()
@@ -146,6 +152,11 @@ export async function updateJob(id: string, formData: FormData): Promise<void> {
   const schedule     = (formData.get('schedule')     as string)?.trim()
 
   if (!name || !sourceType || !schedule) return
+
+  const cronCheck = validateCron(schedule)
+  if (!cronCheck.valid) {
+    redirect(`/jobs/${id}/edit?cronError=${encodeURIComponent(`Invalid cron expression "${schedule}". ${cronCheck.error}. Examples: "0 2 * * *" (daily 2am), "*/15 * * * *" (every 15min).`)}`)
+  }
 
   const db = getDb()
   await db.update(backupJobs).set({

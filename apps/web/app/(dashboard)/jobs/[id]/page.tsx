@@ -11,6 +11,7 @@ import { PreflightButton } from '@/components/preflight-modal'
 import { togglePreflight } from '@/app/actions/preflight'
 import { PreflightToggle } from '@/components/preflight-toggle'
 import { triggerJob, saveJobRetention, cancelJob, retryRun } from '@/app/actions/jobs'
+import { validateCron } from '@/lib/cron-validate'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -166,7 +167,17 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </div>
         <div style={fieldStyle}>
           <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 6 }}>Schedule</div>
-          <div style={{ fontSize: 14, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{job.schedule}</div>
+          {(() => {
+            const check = validateCron(job.schedule)
+            return check.valid ? (
+              <div style={{ fontSize: 14, color: 'var(--fg)', fontFamily: 'var(--font-mono)' }}>{job.schedule}</div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 14, fontFamily: 'var(--font-mono)', color: 'var(--err)' }}>⚠ {job.schedule}</div>
+                <div style={{ fontSize: 11, color: 'var(--err)', marginTop: 4 }}>{check.error} — <Link href={`/jobs/${id}/edit`} style={{ color: 'var(--err)' }}>Fix schedule</Link></div>
+              </div>
+            )
+          })()}
         </div>
         <div style={fieldStyle}>
           <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 8 }}>Status</div>
