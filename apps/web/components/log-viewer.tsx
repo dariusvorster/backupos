@@ -90,26 +90,44 @@ export function LogViewer({ initialRun, onPhaseUpdate }: LogViewerProps) {
       {isLive && (
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', backgroundColor: 'var(--surf2)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--fg-mute)', marginBottom: 6 }}>
-            <span>
-              {pct != null ? `${(pct * 100).toFixed(1)}%` : 'Scanning…'}
-              {filesDone != null && filesTotal != null && filesTotal > 0
-                ? ` · ${filesDone.toLocaleString()} / ${filesTotal.toLocaleString()} files`
-                : ''}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {bytesDone == null ? (
+                <>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'var(--accent)', display: 'inline-block', animation: 'pulse-dot 1.5s ease-in-out infinite' }} />
+                  Starting backup…
+                </>
+              ) : (
+                <>
+                  {pct != null && bytesTotal != null && bytesTotal > 0
+                    ? `${(pct * 100).toFixed(1)}%`
+                    : filesDone != null ? `${filesDone.toLocaleString()} files` : ''}
+                  {filesDone != null && filesTotal != null && filesTotal > 0
+                    ? ` · ${filesDone.toLocaleString()} / ${filesTotal.toLocaleString()} files`
+                    : filesDone != null ? ` files backed up` : ''}
+                </>
+              )}
             </span>
             <span>
-              {bytesDone != null && bytesTotal != null && bytesTotal > 0
-                ? `${fmtB(bytesDone)} / ${fmtB(bytesTotal)}`
+              {bytesDone != null
+                ? bytesTotal != null && bytesTotal > 0
+                  ? `${fmtB(bytesDone)} / ${fmtB(bytesTotal)}`
+                  : `${fmtB(bytesDone)} transferred`
                 : ''}
             </span>
           </div>
           <div style={{ height: 6, borderRadius: 3, backgroundColor: 'var(--border)', overflow: 'hidden' }}>
-            <div style={{
-              height: '100%',
-              borderRadius: 3,
-              backgroundColor: 'var(--accent)',
-              width: pct != null ? `${Math.min(pct * 100, 100)}%` : '0%',
-              transition: 'width 0.4s ease',
-            }} />
+            {pct != null && bytesTotal != null && bytesTotal > 0 ? (
+              <div style={{
+                height: '100%', borderRadius: 3, backgroundColor: 'var(--accent)',
+                width: `${Math.min(pct * 100, 100)}%`, transition: 'width 0.4s ease',
+              }} />
+            ) : bytesDone != null ? (
+              // Indeterminate pulse when no total is known
+              <div style={{
+                height: '100%', borderRadius: 3, backgroundColor: 'var(--accent)',
+                width: '30%', animation: 'progress-slide 1.8s ease-in-out infinite',
+              }} />
+            ) : null}
           </div>
         </div>
       )}
@@ -199,6 +217,11 @@ export function LogViewer({ initialRun, onPhaseUpdate }: LogViewerProps) {
         @keyframes pulse-dot {
           0%, 100% { opacity: 1; }
           50%       { opacity: 0.3; }
+        }
+        @keyframes progress-slide {
+          0%   { transform: translateX(-100%); }
+          50%  { transform: translateX(200%); }
+          100% { transform: translateX(200%); }
         }
       `}</style>
     </div>

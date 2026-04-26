@@ -40,7 +40,7 @@ export class ResticEngine {
     let backupResult: BackupResult | undefined
 
     try {
-      const args: string[] = ['backup', '--json']
+      const args: string[] = ['backup', '--json', '--no-scan']
 
       for (const path of opts.paths) args.push(path)
       if (opts.tags)        for (const t of opts.tags)    args.push('--tag',          t)
