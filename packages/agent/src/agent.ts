@@ -132,8 +132,8 @@ let ws: WebSocket | null = null
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let shuttingDown = false
 
-type BackupPhase = 'starting' | 'scanning' | 'uploading' | 'finalizing'
-interface ActiveJob { ctrl: AbortController; runId: string; phase: BackupPhase; lastResticEventAt: number; cancelled: boolean }
+type BackupPhase = 'starting' | 'scanning' | 'uploading' | 'finalizing' | 'quiescing' | 'resuming'
+interface ActiveJob { ctrl: AbortController; runId: string; phase: string; lastResticEventAt: number; cancelled: boolean }
 
 // Active jobs — keyed by jobId
 const activeJobs = new Map<string, ActiveJob>()
@@ -145,7 +145,7 @@ setInterval(() => {
       type:              'backup_heartbeat',
       jobId,
       runId:             job.runId,
-      phase:             job.phase,
+      phase:             (job.phase as BackupPhase) ?? 'starting',
       lastResticEventAt: job.lastResticEventAt,
     })
   }
@@ -228,7 +228,10 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars)
 
   } else if (msg.type === 'run_compose_backup') {
-    send({ type: 'backup_failed', jobId: msg.jobId, error: 'compose backup execution not implemented yet (Task 7)', detail: '' })
+    void (async () => {
+      const { runComposeBackup } = await import('./handlers/composeBackup')
+      await runComposeBackup(msg, send, activeJobs, BINARY, ensureRepoInitialized)
+    })()
 
   } else if (msg.type === 'list_compose_project') {
     void (async () => {
