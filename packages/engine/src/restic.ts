@@ -27,7 +27,7 @@ export class ResticEngine {
   }
 
   async init(): Promise<void> {
-    const result = await this.run(['init'])
+    const result = await this.run(['init'], undefined, 60_000)
     if (result.exitCode !== 0) {
       throw new ResticError('init', result)
     }
@@ -49,25 +49,29 @@ export class ResticEngine {
       if (opts.oneFileSystem) args.push('--one-file-system')
       if (opts.useVSS)        args.push('--use-fs-snapshot')
 
-      const result = await this.runStreaming(args, opts.onProgress
-        ? (line) => {
-            try {
-              const obj = JSON.parse(line) as { message_type: string }
-              if (obj.message_type === 'status') {
-                const s = obj as unknown as ResticStatusJson
-                opts.onProgress!({
-                  pct:              s.percent_done,
-                  bytesDone:        s.bytes_done,
-                  bytesTotal:       s.total_bytes,
-                  filesDone:        s.files_done,
-                  filesTotal:       s.total_files,
-                  secondsElapsed:   s.seconds_elapsed,
-                  secondsRemaining: s.seconds_remaining,
-                })
-              }
-            } catch { /* not JSON */ }
-          }
-        : undefined,
+      const result = await this.runStreaming(
+        args,
+        opts.onProgress
+          ? (line) => {
+              try {
+                const obj = JSON.parse(line) as { message_type: string }
+                if (obj.message_type === 'status') {
+                  const s = obj as unknown as ResticStatusJson
+                  opts.onProgress!({
+                    pct:              s.percent_done,
+                    bytesDone:        s.bytes_done,
+                    bytesTotal:       s.total_bytes,
+                    filesDone:        s.files_done,
+                    filesTotal:       s.total_files,
+                    secondsElapsed:   s.seconds_elapsed,
+                    secondsRemaining: s.seconds_remaining,
+                  })
+                }
+              } catch { /* not JSON */ }
+            }
+          : undefined,
+        undefined,
+        14_400_000,
       )
       if (result.exitCode !== 0) throw new ResticError('backup', result)
 
@@ -95,7 +99,7 @@ export class ResticEngine {
     const args = ['snapshots', '--json']
     if (tags) for (const t of tags) args.push('--tag', t)
 
-    const result = await this.run(args)
+    const result = await this.run(args, undefined, 30_000)
     if (result.exitCode !== 0) throw new ResticError('snapshots', result)
 
     const raw = JSON.parse(result.stdout) as ResticSnapshotJson[]
@@ -110,7 +114,7 @@ export class ResticEngine {
   }
 
   async ls(snapshotId: string): Promise<SnapshotFile[]> {
-    const result = await this.run(['ls', snapshotId, '--json'])
+    const result = await this.run(['ls', snapshotId, '--json'], undefined, 30_000)
     if (result.exitCode !== 0) throw new ResticError('ls', result)
 
     const files: SnapshotFile[] = []
@@ -134,7 +138,7 @@ export class ResticEngine {
     const args = ['check']
     if (readData) args.push('--read-data')
 
-    const result = await this.run(args)
+    const result = await this.run(args, undefined, 1_800_000)
     const ok = result.exitCode === 0
 
     const lines = result.stderr.split('\n').filter(Boolean)
@@ -154,7 +158,7 @@ export class ResticEngine {
     if (include) for (const p of include) args.push('--include', p)
 
     const before = Date.now()
-    const result = await this.run(args)
+    const result = await this.run(args, undefined, 14_400_000)
     if (result.exitCode !== 0) throw new ResticError('restore', result)
 
     const match = result.stderr.match(/(\d+) files? restored/)
@@ -176,7 +180,7 @@ export class ResticEngine {
     if (policy.keepTags)    for (const t of policy.keepTags) args.push('--keep-tag', t)
     if (prune) args.push('--prune')
 
-    const result = await this.run(args)
+    const result = await this.run(args, undefined, 1_800_000)
     if (result.exitCode !== 0) throw new ResticError('forget', result)
 
     const raw = JSON.parse(result.stdout) as ResticForgetJson[]
@@ -188,12 +192,12 @@ export class ResticEngine {
   }
 
   async prune(): Promise<void> {
-    const result = await this.run(['prune'])
+    const result = await this.run(['prune'], undefined, 1_800_000)
     if (result.exitCode !== 0) throw new ResticError('prune', result)
   }
 
   async stats(): Promise<RepoStats> {
-    const result = await this.run(['stats', '--json'])
+    const result = await this.run(['stats', '--json'], undefined, 30_000)
     if (result.exitCode !== 0) throw new ResticError('stats', result)
 
     const raw = JSON.parse(result.stdout) as ResticStatsJson
@@ -216,32 +220,47 @@ export class ResticEngine {
   }
 
   async unmount(mountPoint: string): Promise<void> {
-    const result = await this.run(['umount', mountPoint])
+    const result = await this.run(['umount', mountPoint], undefined, 30_000)
     if (result.exitCode !== 0) throw new ResticError('umount', result)
   }
 
   // ── Private ──────────────────────────────────────────────────────────────
 
-  // Uses spawn (never shell — no injection possible)
   private run(
     args: string[],
     extraEnv?: Record<string, string>,
+    timeoutMs?: number,
   ): Promise<ExecResult> {
-    return this.runStreaming(args, undefined, extraEnv)
+    return this.runStreaming(args, undefined, extraEnv, timeoutMs)
   }
 
-  // Like run() but calls onLine for each stdout line as it arrives
   private runStreaming(
     args: string[],
     onLine?: (line: string) => void,
     extraEnv?: Record<string, string>,
+    timeoutMs?: number,
   ): Promise<ExecResult> {
-    return new Promise((resolve) => {
-      const proc = spawn(this.binary, args, { env: this.buildEnv(extraEnv) })
+    return new Promise((resolve, reject) => {
+      const proc = spawn(this.binary, args, {
+        env:   this.buildEnv(extraEnv),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
 
+      let settled = false
       const outLines: string[] = []
       const err: Buffer[] = []
       let partial = ''
+
+      let timer: ReturnType<typeof setTimeout> | undefined
+      if (timeoutMs) {
+        timer = setTimeout(() => {
+          if (settled) return
+          settled = true
+          proc.kill('SIGTERM')
+          setTimeout(() => { if (!proc.killed) proc.kill('SIGKILL') }, 10_000)
+          reject(new Error(`restic timed out after ${timeoutMs}ms during ${args[0] ?? 'unknown'}`))
+        }, timeoutMs)
+      }
 
       proc.stdout.on('data', (chunk: Buffer) => {
         const text = partial + chunk.toString('utf8')
@@ -256,6 +275,9 @@ export class ResticEngine {
       proc.stderr.on('data', (chunk: Buffer) => err.push(chunk))
 
       proc.on('close', (code) => {
+        if (settled) return
+        settled = true
+        if (timer) clearTimeout(timer)
         if (partial) {
           outLines.push(partial)
           if (onLine) onLine(partial)
@@ -268,6 +290,9 @@ export class ResticEngine {
       })
 
       proc.on('error', (e) => {
+        if (settled) return
+        settled = true
+        if (timer) clearTimeout(timer)
         resolve({ stdout: '', stderr: e.message, exitCode: 1 })
       })
     })

@@ -11,6 +11,7 @@ export interface MountConfig {
 }
 
 export interface BackupJobConfig {
+  repoId: string
   repoUrl: string
   repoPassword: string
   paths: string[]

@@ -20,6 +20,36 @@ function requireEnv(name: string): string {
 
 const SERVER_URL = requireEnv('BACKUPOS_URL')
 const TOKEN      = requireEnv('BACKUPOS_TOKEN')
+
+function getHttpBase(): string {
+  const u = new URL(SERVER_URL)
+  const proto = u.protocol === 'wss:' ? 'https:' : 'http:'
+  return `${proto}//${u.host}`
+}
+
+async function ensureRepoInitialized(engine: ResticEngine, repoId: string): Promise<void> {
+  try {
+    const base = getHttpBase()
+    const stateRes = await fetch(`${base}/internal/repository/${repoId}/state`, {
+      headers: { 'x-agent-token': TOKEN },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!stateRes.ok) throw new Error(`state check returned ${stateRes.status}`)
+    const { initializedAt } = await stateRes.json() as { initializedAt: number | null }
+    if (initializedAt !== null) return
+
+    await engine.init()
+
+    await fetch(`${base}/internal/repository/${repoId}/initialized`, {
+      method: 'POST',
+      headers: { 'x-agent-token': TOKEN },
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch {
+    // Fallback: unconditional init (server unreachable or unknown repo)
+    try { await engine.init() } catch { /* already initialised */ }
+  }
+}
 const BINARY     = process.env['RESTIC_BINARY_PATH']
 const VERSION    = '0.1.0'
 
@@ -121,8 +151,7 @@ async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> 
       binaryPath:    BINARY,
     })
 
-    // Idempotent — succeeds even if repo already exists
-    try { await engine.init() } catch { /* already initialised */ }
+    await ensureRepoInitialized(engine, config.repoId)
 
     const result = await engine.backup({
       paths:   config.paths,

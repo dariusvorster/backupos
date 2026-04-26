@@ -2230,7 +2230,7 @@ var require_websocket = __commonJS({
     var tls = require("tls");
     var { randomBytes, createHash } = require("crypto");
     var { Duplex, Readable } = require("stream");
-    var { URL } = require("url");
+    var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
     var Receiver2 = require_receiver();
     var Sender2 = require_sender();
@@ -2723,11 +2723,11 @@ var require_websocket = __commonJS({
         );
       }
       let parsedUrl;
-      if (address instanceof URL) {
+      if (address instanceof URL2) {
         parsedUrl = address;
       } else {
         try {
-          parsedUrl = new URL(address);
+          parsedUrl = new URL2(address);
         } catch {
           throw new SyntaxError(`Invalid URL: ${address}`);
         }
@@ -2864,7 +2864,7 @@ var require_websocket = __commonJS({
           req.abort();
           let addr;
           try {
-            addr = new URL(location, address);
+            addr = new URL2(location, address);
           } catch (e) {
             const err = new SyntaxError(`Invalid URL: ${location}`);
             emitErrorAndClose(websocket, err);
@@ -3665,7 +3665,7 @@ var ResticEngine = class {
     this.binary = config.binaryPath ?? "restic";
   }
   async init() {
-    const result = await this.run(["init"]);
+    const result = await this.run(["init"], void 0, 6e4);
     if (result.exitCode !== 0) {
       throw new ResticError("init", result);
     }
@@ -3708,7 +3708,7 @@ var ResticEngine = class {
           }
         } catch {
         }
-      } : void 0);
+      } : void 0, void 0, 144e5);
       if (result.exitCode !== 0)
         throw new ResticError("backup", result);
       const summary = this.parseSummaryLine(result.stdout);
@@ -3735,7 +3735,7 @@ var ResticEngine = class {
     if (tags)
       for (const t of tags)
         args.push("--tag", t);
-    const result = await this.run(args);
+    const result = await this.run(args, void 0, 3e4);
     if (result.exitCode !== 0)
       throw new ResticError("snapshots", result);
     const raw = JSON.parse(result.stdout);
@@ -3749,7 +3749,7 @@ var ResticEngine = class {
     }));
   }
   async ls(snapshotId) {
-    const result = await this.run(["ls", snapshotId, "--json"]);
+    const result = await this.run(["ls", snapshotId, "--json"], void 0, 3e4);
     if (result.exitCode !== 0)
       throw new ResticError("ls", result);
     const files = [];
@@ -3774,7 +3774,7 @@ var ResticEngine = class {
     const args = ["check"];
     if (readData)
       args.push("--read-data");
-    const result = await this.run(args);
+    const result = await this.run(args, void 0, 18e5);
     const ok = result.exitCode === 0;
     const lines = result.stderr.split("\n").filter(Boolean);
     return {
@@ -3789,7 +3789,7 @@ var ResticEngine = class {
       for (const p of include)
         args.push("--include", p);
     const before = Date.now();
-    const result = await this.run(args);
+    const result = await this.run(args, void 0, 144e5);
     if (result.exitCode !== 0)
       throw new ResticError("restore", result);
     const match = result.stderr.match(/(\d+) files? restored/);
@@ -3816,7 +3816,7 @@ var ResticEngine = class {
         args.push("--keep-tag", t);
     if (prune)
       args.push("--prune");
-    const result = await this.run(args);
+    const result = await this.run(args, void 0, 18e5);
     if (result.exitCode !== 0)
       throw new ResticError("forget", result);
     const raw = JSON.parse(result.stdout);
@@ -3827,12 +3827,12 @@ var ResticEngine = class {
     };
   }
   async prune() {
-    const result = await this.run(["prune"]);
+    const result = await this.run(["prune"], void 0, 18e5);
     if (result.exitCode !== 0)
       throw new ResticError("prune", result);
   }
   async stats() {
-    const result = await this.run(["stats", "--json"]);
+    const result = await this.run(["stats", "--json"], void 0, 3e4);
     if (result.exitCode !== 0)
       throw new ResticError("stats", result);
     const raw = JSON.parse(result.stdout);
@@ -3853,22 +3853,38 @@ var ResticEngine = class {
     }).unref();
   }
   async unmount(mountPoint) {
-    const result = await this.run(["umount", mountPoint]);
+    const result = await this.run(["umount", mountPoint], void 0, 3e4);
     if (result.exitCode !== 0)
       throw new ResticError("umount", result);
   }
   // ── Private ──────────────────────────────────────────────────────────────
-  // Uses spawn (never shell — no injection possible)
-  run(args, extraEnv) {
-    return this.runStreaming(args, void 0, extraEnv);
+  run(args, extraEnv, timeoutMs) {
+    return this.runStreaming(args, void 0, extraEnv, timeoutMs);
   }
-  // Like run() but calls onLine for each stdout line as it arrives
-  runStreaming(args, onLine, extraEnv) {
-    return new Promise((resolve) => {
-      const proc = (0, import_child_process.spawn)(this.binary, args, { env: this.buildEnv(extraEnv) });
+  runStreaming(args, onLine, extraEnv, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const proc = (0, import_child_process.spawn)(this.binary, args, {
+        env: this.buildEnv(extraEnv),
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+      let settled = false;
       const outLines = [];
       const err = [];
       let partial = "";
+      let timer;
+      if (timeoutMs) {
+        timer = setTimeout(() => {
+          if (settled)
+            return;
+          settled = true;
+          proc.kill("SIGTERM");
+          setTimeout(() => {
+            if (!proc.killed)
+              proc.kill("SIGKILL");
+          }, 1e4);
+          reject(new Error(`restic timed out after ${timeoutMs}ms during ${args[0] ?? "unknown"}`));
+        }, timeoutMs);
+      }
       proc.stdout.on("data", (chunk) => {
         const text = partial + chunk.toString("utf8");
         const parts = text.split("\n");
@@ -3881,6 +3897,11 @@ var ResticEngine = class {
       });
       proc.stderr.on("data", (chunk) => err.push(chunk));
       proc.on("close", (code) => {
+        if (settled)
+          return;
+        settled = true;
+        if (timer)
+          clearTimeout(timer);
         if (partial) {
           outLines.push(partial);
           if (onLine)
@@ -3893,6 +3914,11 @@ var ResticEngine = class {
         });
       });
       proc.on("error", (e) => {
+        if (settled)
+          return;
+        settled = true;
+        if (timer)
+          clearTimeout(timer);
         resolve({ stdout: "", stderr: e.message, exitCode: 1 });
       });
     });
@@ -3931,18 +3957,52 @@ var ResticError = class extends Error {
 };
 
 // src/agent.ts
-var SERVER_URL = process.env["BACKUPOS_URL"] ?? "ws://localhost:3000/ws/agent";
-var TOKEN = process.env["BACKUPOS_TOKEN"] ?? "";
+function requireEnv(name) {
+  const v = process.env[name];
+  if (!v) {
+    console.error(`[agent] ${name} is required.`);
+    console.error(`[agent] If installed via systemd, ensure the unit at`);
+    console.error(`[agent]   /etc/systemd/system/backupos-agent.service`);
+    console.error(`[agent] contains: EnvironmentFile=/opt/backupos-agent/.env`);
+    console.error(`[agent] and that the .env file has ${name}=<value>.`);
+    console.error(`[agent] Run the install script in update mode to self-heal:`);
+    console.error(`[agent]   sudo bash /opt/backupos-agent/install.sh update`);
+    process.exit(1);
+  }
+  return v;
+}
+var SERVER_URL = requireEnv("BACKUPOS_URL");
+var TOKEN = requireEnv("BACKUPOS_TOKEN");
+function getHttpBase() {
+  const u = new URL(SERVER_URL);
+  const proto = u.protocol === "wss:" ? "https:" : "http:";
+  return `${proto}//${u.host}`;
+}
+async function ensureRepoInitialized(engine, repoId) {
+  try {
+    const base = getHttpBase();
+    const stateRes = await fetch(`${base}/internal/repository/${repoId}/state`, {
+      headers: { "x-agent-token": TOKEN },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!stateRes.ok) throw new Error(`state check returned ${stateRes.status}`);
+    const { initializedAt } = await stateRes.json();
+    if (initializedAt !== null) return;
+    await engine.init();
+    await fetch(`${base}/internal/repository/${repoId}/initialized`, {
+      method: "POST",
+      headers: { "x-agent-token": TOKEN },
+      signal: AbortSignal.timeout(1e4)
+    });
+  } catch {
+    try {
+      await engine.init();
+    } catch {
+    }
+  }
+}
 var BINARY = process.env["RESTIC_BINARY_PATH"];
 var VERSION = "0.1.0";
-if (!TOKEN) {
-  console.error("[agent] BACKUPOS_TOKEN is required.");
-  console.error("[agent] If installed via systemd, ensure the unit has:");
-  console.error("[agent]   EnvironmentFile=/opt/backupos-agent/.env");
-  console.error("[agent] and that /opt/backupos-agent/.env contains BACKUPOS_TOKEN=<value>.");
-  console.error("[agent] Self-heal with: curl -fsSL $SERVER_URL/install.sh | sudo bash -s update");
-  process.exit(1);
-}
 function getIp() {
   const ifaces = os.networkInterfaces();
   for (const iface of Object.values(ifaces)) {
@@ -4029,10 +4089,7 @@ async function runBackup(jobId, config) {
       envVars: config.envVars ?? {},
       binaryPath: BINARY
     });
-    try {
-      await engine.init();
-    } catch {
-    }
+    await ensureRepoInitialized(engine, config.repoId);
     const result = await engine.backup({
       paths: config.paths,
       exclude: config.exclude,

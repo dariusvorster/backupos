@@ -114,6 +114,7 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
     type:   'run_backup',
     jobId:  job.id,
     config: {
+      repoId:       job.repositoryId ?? '',
       repoUrl:      cfg['repositoryUrl'] ?? '',
       repoPassword: decryptField(repo.resticPassword),
       paths,

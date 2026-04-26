@@ -38,6 +38,7 @@ export const repositories = sqliteTable('repositories', {
   resticPassword:  text('restic_password').notNull(), // encrypted with ENCRYPTION_KEY
   sizeBytes:       integer('size_bytes'),
   snapshotCount:   integer('snapshot_count'),
+  initializedAt:   integer('initialized_at',    { mode: 'timestamp' }),
   lastCheckedAt:   integer('last_checked_at',   { mode: 'timestamp' }),
   lastCheckStatus: text('last_check_status'),   // 'ok' | 'errors' | 'unknown'
   createdAt:          integer('created_at',           { mode: 'timestamp' }).notNull(),
