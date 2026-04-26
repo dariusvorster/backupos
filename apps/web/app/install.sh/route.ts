@@ -1,15 +1,17 @@
+import { getServerPublicUrl, toWebSocketUrl } from '@/lib/server-url'
+
 export async function GET(req: Request): Promise<Response> {
-  // Prefer the configured public URL over the request origin.
-  // The request origin can be a Tailscale IP or HTTPS when the server only speaks HTTP.
-  const configuredUrl = process.env['BETTER_AUTH_URL']
-  const origin = configuredUrl ?? (() => {
-    const u = new URL(req.url)
-    return `http://${u.hostname}:${u.port || 80}`
-  })()
+  const { url: origin } = await getServerPublicUrl(req.url)
+  const wsUrl = toWebSocketUrl(origin)
+
   const script = `#!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
+
+SUBCOMMAND="\${1:-install}"
+shift 1 2>/dev/null || true
 
 SERVER_URL="${origin}"
+WS_URL="${wsUrl}"
 TOKEN="\${BACKUPOS_TOKEN:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -20,39 +22,140 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$TOKEN" ]]; then
-  echo "Usage: curl -fsSL $SERVER_URL/install.sh | BACKUPOS_TOKEN=<token> bash"
-  exit 1
+log() { echo "[backupos] $*"; }
+die() { echo "[backupos] ERROR: $*" >&2; exit 1; }
+
+INSTALL_DIR=/opt/backupos-agent
+ENV_FILE="$INSTALL_DIR/.env"
+UNIT_FILE=/etc/systemd/system/backupos-agent.service
+OVERRIDE_DIR=/etc/systemd/system/backupos-agent.service.d
+
+write_unit() {
+  cat > "$UNIT_FILE" <<'UNITEOF'
+[Unit]
+Description=BackupOS Agent
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/backupos-agent/.env
+ExecStart=/usr/bin/node /opt/backupos-agent/agent.js run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+}
+
+# ── Update / self-heal mode ──────────────────────────────────────────────────
+if [ "$SUBCOMMAND" = "update" ]; then
+  log "Running update on existing install..."
+
+  # Derive HTTP base from whatever SERVER_URL is baked into this script
+  FETCH_BASE="\${SERVER_URL/wss:\\/\\//https://}"
+  FETCH_BASE="\${FETCH_BASE/ws:\\/\\//http://}"
+  FETCH_BASE="\${FETCH_BASE%/ws/agent}"
+
+  # Re-fetch install script from server — the fresh copy has WS_URL derived from
+  # the server's current serverPublicUrl DB setting, which may differ from the
+  # stale baked-in value in this script. This is the only reliable source of truth.
+  FRESH_SCRIPT=\$(mktemp)
+  if curl -fsSL --max-time 10 "$FETCH_BASE/install.sh" -o "$FRESH_SCRIPT" 2>/dev/null; then
+    FRESH_WS_URL=\$(grep '^WS_URL=' "$FRESH_SCRIPT" | head -1 | cut -d'"' -f2)
+    if [ -n "$FRESH_WS_URL" ]; then
+      WS_URL="$FRESH_WS_URL"
+      log "Got canonical WS_URL from server: $WS_URL"
+    fi
+    cp "$FRESH_SCRIPT" "$INSTALL_DIR/install.sh"
+    chmod +x "$INSTALL_DIR/install.sh"
+    log "Install script refreshed ✓"
+  else
+    log "Warning: could not reach server at $FETCH_BASE — using baked-in WS_URL ($WS_URL)"
+  fi
+  rm -f "$FRESH_SCRIPT"
+
+  # Download fresh agent bundle
+  log "Downloading fresh agent bundle from $FETCH_BASE ..."
+  curl -fsSL "$FETCH_BASE/agent/bundle.js" -o "$INSTALL_DIR/agent.js" \\
+    && log "Agent bundle updated ✓" \\
+    || log "Warning: Could not download fresh bundle — keeping existing agent.js"
+
+  # Self-heal .env: update BACKUPOS_URL if stale
+  if [ -f "$ENV_FILE" ]; then
+    CURRENT_URL=\$(grep '^BACKUPOS_URL=' "$ENV_FILE" | cut -d= -f2-)
+    if [ -n "$WS_URL" ] && [ "$CURRENT_URL" != "$WS_URL" ]; then
+      log "Updating BACKUPOS_URL in .env: $CURRENT_URL → $WS_URL"
+      sed -i "s|^BACKUPOS_URL=.*|BACKUPOS_URL=$WS_URL|" "$ENV_FILE"
+      log ".env updated ✓"
+    else
+      log "BACKUPOS_URL in .env is correct ✓"
+    fi
+  fi
+
+  # Self-heal: rewrite unit if EnvironmentFile is missing
+  need_unit_rewrite=0
+  if [ ! -f "$UNIT_FILE" ]; then
+    need_unit_rewrite=1
+  elif ! grep -q '^EnvironmentFile=' "$UNIT_FILE"; then
+    need_unit_rewrite=1
+  fi
+
+  if [ "$need_unit_rewrite" = "1" ]; then
+    log "Rewriting systemd unit to add EnvironmentFile..."
+    write_unit
+    log "Unit rewritten ✓"
+  else
+    log "Unit file OK (EnvironmentFile present) ✓"
+  fi
+
+  # Remove malformed override.conf (missing [Service] header)
+  if [ -f "$OVERRIDE_DIR/override.conf" ]; then
+    if ! grep -q '^\\[Service\\]' "$OVERRIDE_DIR/override.conf"; then
+      log "Removing malformed override.conf..."
+      rm -f "$OVERRIDE_DIR/override.conf"
+      rmdir "$OVERRIDE_DIR" 2>/dev/null || true
+      log "override.conf removed ✓"
+    fi
+  fi
+
+  systemctl daemon-reload
+  systemctl restart backupos-agent
+  sleep 3
+  if systemctl is-active --quiet backupos-agent; then
+    log "Agent is running ✓"
+    log "Logs:   journalctl -u backupos-agent -f"
+    log "Status: systemctl status backupos-agent"
+  else
+    log "Agent failed to start. Last 30 log lines:"
+    journalctl -u backupos-agent -n 30 --no-pager
+    exit 1
+  fi
+  exit 0
 fi
 
-log() { echo "[install] $*"; }
-die() { echo "[install] ERROR: $*" >&2; exit 1; }
+# ── Fresh install ────────────────────────────────────────────────────────────
 
-# ── 1. NAS mount helpers (cifs-utils + nfs-common) ───────────────────────────
-if command -v apt-get &>/dev/null; then
-  apt-get install -y cifs-utils nfs-common 2>/dev/null || true
-elif command -v yum &>/dev/null; then
-  yum install -y cifs-utils nfs-utils 2>/dev/null || true
-fi
+[[ -z "$TOKEN" ]] && die "Usage: curl -fsSL $SERVER_URL/install.sh | sudo BACKUPOS_TOKEN=<token> bash"
 
-# ── 2. Node.js ────────────────────────────────────────────────────────────────
+# ── 1. Node.js ────────────────────────────────────────────────────────────────
 if ! command -v node &>/dev/null; then
   log "Node.js not found — installing via NodeSource..."
   if command -v apt-get &>/dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-    apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+    sudo apt-get install -y nodejs
   elif command -v yum &>/dev/null; then
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
-    yum install -y nodejs
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+    sudo yum install -y nodejs
   else
     die "Cannot install Node.js automatically. Install Node.js 18+ and re-run."
   fi
 fi
-NODE_VER="$(node --version | sed 's/v//' | cut -d. -f1)"
-[[ "$NODE_VER" -ge 18 ]] || die "Node.js 18+ required (found $(node --version))"
-log "Node.js $(node --version) ✓"
+NODE_VER="\$(node --version | sed 's/v//' | cut -d. -f1)"
+[[ "$NODE_VER" -ge 18 ]] || die "Node.js 18+ required (found \$(node --version))"
+log "Node.js \$(node --version) ✓"
 
-# ── 3. restic ─────────────────────────────────────────────────────────────────
+# ── 2. restic ─────────────────────────────────────────────────────────────────
 if ! command -v restic &>/dev/null; then
   log "Installing restic..."
   if command -v apt-get &>/dev/null; then
@@ -67,7 +170,7 @@ if ! command -v restic &>/dev/null; then
       *)       die "Unsupported arch: \$(uname -m)" ;;
     esac
     RESTIC_URL="https://github.com/restic/restic/releases/download/v\${RESTIC_VER}/\${RESTIC_PKG}"
-    curl -fsSL "\$RESTIC_URL" -o /tmp/restic.bz2 || die "Failed to download restic"
+    curl -fsSL "$RESTIC_URL" -o /tmp/restic.bz2 || die "Failed to download restic"
     if command -v bunzip2 &>/dev/null; then
       bunzip2 -k /tmp/restic.bz2 && sudo mv /tmp/restic /usr/local/bin/restic
     elif command -v bzip2 &>/dev/null; then
@@ -78,35 +181,54 @@ if ! command -v restic &>/dev/null; then
     rm -f /tmp/restic.bz2
     sudo chmod +x /usr/local/bin/restic
   fi
-  restic version &>/dev/null || die "restic installed but cannot execute"
+  restic version &>/dev/null || die "restic installed but cannot execute — check architecture"
   log "restic installed ✓"
 fi
+RESTIC_PATH="\$(command -v restic)"
 
-# ── 4. Agent bundle ───────────────────────────────────────────────────────────
-INSTALL_DIR=/opt/backupos-agent
-mkdir -p "\$INSTALL_DIR"
+# ── 3. Agent bundle ───────────────────────────────────────────────────────────
+mkdir -p "$INSTALL_DIR"
 log "Downloading agent..."
-curl -fsSL "$SERVER_URL/agent/bundle.js" -o "\$INSTALL_DIR/agent.js" || die "Failed to download agent bundle from $SERVER_URL/agent/bundle.js"
-chmod +x "\$INSTALL_DIR/agent.js"
+curl -fsSL "$SERVER_URL/agent/bundle.js" -o "$INSTALL_DIR/agent.js" \\
+  || die "Failed to download agent bundle from $SERVER_URL/agent/bundle.js"
 log "Agent downloaded ✓"
 
-# ── 5. Enroll ─────────────────────────────────────────────────────────────────
-node "\$INSTALL_DIR/agent.js" enroll --url "$SERVER_URL" --token "\$TOKEN"
-log "Enrolled ✓"
+# ── 4. Self-deploy install script ─────────────────────────────────────────────
+log "Saving install script for future updates..."
+curl -fsSL "$SERVER_URL/install.sh" -o "$INSTALL_DIR/install.sh" \\
+  && chmod +x "$INSTALL_DIR/install.sh" \\
+  && log "Install script saved ✓" \\
+  || log "Warning: could not save install script — 'update' mode will not work"
 
-# ── 6. Service ────────────────────────────────────────────────────────────────
-node "\$INSTALL_DIR/agent.js" service install
-node "\$INSTALL_DIR/agent.js" service start
-log ""
-log "BackupOS Agent installed. Check status with:"
-log "  systemctl status backupos-agent"
-log "  journalctl -u backupos-agent -f"
+# ── 5. Write .env ─────────────────────────────────────────────────────────────
+cat > "$ENV_FILE" <<ENVEOF
+BACKUPOS_URL=$WS_URL
+BACKUPOS_TOKEN=$TOKEN
+RESTIC_BINARY_PATH=$RESTIC_PATH
+ENVEOF
+chmod 600 "$ENV_FILE"
+log ".env written ✓"
+
+# ── 6. Install and start service ──────────────────────────────────────────────
+write_unit
+systemctl daemon-reload
+systemctl enable backupos-agent
+systemctl start backupos-agent
+sleep 2
+if systemctl is-active --quiet backupos-agent; then
+  log "Service started ✓"
+else
+  log "Service failed to start. Last 30 log lines:"
+  journalctl -u backupos-agent -n 30 --no-pager
+  exit 1
+fi
 
 log ""
 log "BackupOS Agent installed successfully."
 log "Logs:   journalctl -u backupos-agent -f"
 log "Status: systemctl status backupos-agent"
 `
+
   return new Response(script, {
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
   })

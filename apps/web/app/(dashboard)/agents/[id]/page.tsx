@@ -4,6 +4,7 @@ import { eq } from '@backupos/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { headers } from 'next/headers'
+import { getServerPublicUrl } from '@/lib/server-url'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
 import { getLogsPage } from '@/app/actions/logs'
@@ -78,12 +79,9 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
   const [agent] = await db.select().from(agents).where(eq(agents.id, id)).limit(1)
   if (!agent) notFound()
 
-  const hdrs    = await headers()
-  const host    = hdrs.get('host') ?? 'localhost:3000'
-  const proto   = host.startsWith('localhost') ? 'http' : 'https'
-  const wsProto = proto === 'https' ? 'wss' : 'ws'
-  const baseUrl = `${proto}://${host}`
-  const wsUrl   = `${wsProto}://${host}/ws/agent`
+  const hdrs = await headers()
+  const host = hdrs.get('host') ?? 'localhost:3093'
+  const { url: baseUrl, source: urlSource } = await getServerPublicUrl(`http://${host}/`)
 
   const jobs      = await db.select().from(backupJobs).where(eq(backupJobs.agentId, id)).all()
   const agentLogs = await getLogsPage({ entityType: 'agent', entityId: id }, 50)
@@ -128,6 +126,20 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
           <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 8 }}>
             Keep this token secret — it grants this agent access to your BackupOS instance.
           </div>
+        </div>
+      )}
+
+      {urlSource === 'request' && (
+        <div style={{
+          backgroundColor: 'color-mix(in srgb, var(--surf) 80%, #ca8a04 5%)',
+          border: '1px solid #ca8a04',
+          borderRadius: 'var(--radius)', padding: '12px 16px', marginBottom: 16,
+          fontSize: 12, color: '#92400e',
+        }}>
+          <strong>Server URL not configured.</strong>{' '}
+          The install one-liner above uses the request hostname, which may be wrong (e.g. a Tailscale IP).{' '}
+          Set a canonical URL in{' '}
+          <a href="/settings/general" style={{ color: '#92400e', textDecoration: 'underline' }}>Settings → General</a>.
         </div>
       )}
 

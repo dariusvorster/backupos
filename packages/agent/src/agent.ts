@@ -3,19 +3,25 @@ import * as os from 'os'
 import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage, BackupJobConfig } from '@backupos/agent-protocol'
 
-const SERVER_URL = process.env['BACKUPOS_URL'] ?? 'ws://localhost:3000/ws/agent'
-const TOKEN      = process.env['BACKUPOS_TOKEN'] ?? ''
+function requireEnv(name: string): string {
+  const v = process.env[name]
+  if (!v) {
+    console.error(`[agent] ${name} is required.`)
+    console.error(`[agent] If installed via systemd, ensure the unit at`)
+    console.error(`[agent]   /etc/systemd/system/backupos-agent.service`)
+    console.error(`[agent] contains: EnvironmentFile=/opt/backupos-agent/.env`)
+    console.error(`[agent] and that the .env file has ${name}=<value>.`)
+    console.error(`[agent] Run the install script in update mode to self-heal:`)
+    console.error(`[agent]   sudo bash /opt/backupos-agent/install.sh update`)
+    process.exit(1)
+  }
+  return v
+}
+
+const SERVER_URL = requireEnv('BACKUPOS_URL')
+const TOKEN      = requireEnv('BACKUPOS_TOKEN')
 const BINARY     = process.env['RESTIC_BINARY_PATH']
 const VERSION    = '0.1.0'
-
-if (!TOKEN) {
-  console.error('[agent] BACKUPOS_TOKEN is required.')
-  console.error('[agent] If installed via systemd, ensure the unit has:')
-  console.error('[agent]   EnvironmentFile=/opt/backupos-agent/.env')
-  console.error('[agent] and that /opt/backupos-agent/.env contains BACKUPOS_TOKEN=<value>.')
-  console.error('[agent] Self-heal with: curl -fsSL $SERVER_URL/install.sh | sudo bash -s update')
-  process.exit(1)
-}
 
 function getIp(): string {
   const ifaces = os.networkInterfaces()

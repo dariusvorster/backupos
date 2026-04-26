@@ -6,6 +6,7 @@ import { getDb, agents } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { AutoRefresh } from '@/components/ui/auto-refresh'
+import { getInstanceSettings } from '@/lib/settings'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -29,11 +30,31 @@ function CapBadge({ label, ok, na }: { label: string; ok: boolean | null; na?: b
 
 export default async function AgentsPage() {
   const db        = getDb()
-  const agentList = await db.select().from(agents).all()
+  const [agentList, settings] = await Promise.all([
+    db.select().from(agents).all(),
+    getInstanceSettings(),
+  ])
+  const showUrlWarning = !settings?.serverPublicUrl && !process.env['BACKUPOS_PUBLIC_URL']
 
   return (
     <div>
       <AutoRefresh intervalMs={5_000} />
+
+      {showUrlWarning && (
+        <div style={{
+          backgroundColor: 'color-mix(in srgb, var(--surf) 80%, #ca8a04 5%)',
+          border: '1px solid #ca8a04',
+          borderRadius: 'var(--radius)', padding: '12px 16px', marginBottom: 20,
+          fontSize: 12, color: '#92400e',
+        }}>
+          <strong>Server URL not configured.</strong>{' '}
+          Install one-liners will use the request hostname, which may be wrong behind a VPN or reverse proxy.{' '}
+          <a href="/settings/general" style={{ color: '#92400e', textDecoration: 'underline' }}>
+            Set it in Settings → General
+          </a>.
+        </div>
+      )}
+
       <PageHeader
         title="Agents"
         action={

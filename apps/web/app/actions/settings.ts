@@ -5,12 +5,18 @@ import { getDb, instanceSettings, smtpConfig, backupDefaults } from '@backupos/d
 
 export async function saveInstanceSettings(formData: FormData) {
   const db = getDb()
+  const rawUrl = String(formData.get('serverPublicUrl') ?? '').trim()
+  // Validate URL if provided: must be http:// or https://
+  if (rawUrl && !/^https?:\/\/.+/.test(rawUrl)) {
+    redirect('/settings/general?error=invalid_url')
+  }
   const values = {
-    instanceName: String(formData.get('instanceName') ?? 'BackupOS'),
-    timezone:     String(formData.get('timezone') ?? 'UTC'),
-    language:     String(formData.get('language') ?? 'en'),
-    dateFormat:   String(formData.get('dateFormat') ?? 'YYYY-MM-DD'),
-    updatedAt:    new Date(),
+    instanceName:    String(formData.get('instanceName') ?? 'BackupOS'),
+    timezone:        String(formData.get('timezone') ?? 'UTC'),
+    language:        String(formData.get('language') ?? 'en'),
+    dateFormat:      String(formData.get('dateFormat') ?? 'YYYY-MM-DD'),
+    serverPublicUrl: rawUrl || null,
+    updatedAt:       new Date(),
   }
   await db.insert(instanceSettings).values({ id: 'singleton', ...values })
     .onConflictDoUpdate({ target: instanceSettings.id, set: values })
