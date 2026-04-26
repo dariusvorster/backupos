@@ -52,6 +52,7 @@ export type AgentMessage =
   | { type: 'ping' }
   | { type: 'metrics'; metrics: AgentMetrics }
   | { type: 'backup_start'; jobId: string; config: BackupJobConfig }
+  | { type: 'backup_heartbeat'; jobId: string; runId: string; phase: 'starting' | 'scanning' | 'uploading' | 'finalizing'; lastResticEventAt: number }
   | { type: 'backup_progress'; jobId: string; pct: number; filesProcessed: number; bytesProcessed: number; filesTotal: number; bytesTotal: number; secondsRemaining?: number }
   | { type: 'backup_complete'; jobId: string; snapshotId: string; stats: BackupStats; log?: string }
   | { type: 'backup_failed'; jobId: string; error: string; detail: string; log?: string }
@@ -71,7 +72,7 @@ export interface DetectedResources {
 export type ServerMessage =
   | { type: 'welcome'; agentId: string; serverVersion: string; bundleHash?: string }
   | { type: 'pong' }
-  | { type: 'run_backup'; jobId: string; config: BackupJobConfig }
+  | { type: 'run_backup'; jobId: string; runId: string; config: BackupJobConfig }
   | { type: 'run_restore'; restoreId: string; specYaml: string; snapshotId: string }
   | { type: 'cancel_backup'; jobId: string }
   | { type: 'verify_repo'; repoId: string; repoUrl: string; repoPassword: string; readData: boolean; envVars?: Record<string, string> }

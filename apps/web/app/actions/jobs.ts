@@ -195,6 +195,7 @@ export async function retryRun(jobId: string): Promise<void> {
       const result = await dispatchToAgent(job.agentId, {
         type:   'run_backup',
         jobId,
+        runId,
         config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
       })
       if (!result.ok) {

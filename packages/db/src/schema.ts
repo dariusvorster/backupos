@@ -137,8 +137,10 @@ export const backupRuns = sqliteTable('backup_runs', {
   errorMessage: text('error_message'),
   errorDetail:  text('error_detail'),       // JSON — full error context
 
-  startedAt:   integer('started_at',   { mode: 'timestamp_ms' }).notNull(),
-  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+  startedAt:       integer('started_at',        { mode: 'timestamp_ms' }).notNull(),
+  completedAt:     integer('completed_at',      { mode: 'timestamp_ms' }),
+  lastHeartbeatAt: integer('last_heartbeat_at', { mode: 'timestamp_ms' }),
+  phase:           text('phase'),
 
   log:    text('log'),
   phases: text('phases'),

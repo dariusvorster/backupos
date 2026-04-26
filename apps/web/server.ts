@@ -447,6 +447,12 @@ void app.prepare().then(() => {
             .where(eq(backupJobs.id, msg.jobId)).limit(1)
           await sendAlert('backup_failed', { jobId: msg.jobId, jobName: job?.name ?? 'unknown', error: msg.error })
 
+        } else if (msg.type === 'backup_heartbeat' && agentId) {
+          await db.update(backupRuns).set({
+            lastHeartbeatAt: new Date(),
+            phase:           msg.phase,
+          }).where(eq(backupRuns.id, msg.runId))
+
         } else if (msg.type === 'resources_result') {
           console.log('[detect] resources_result requestId=%s resources=%j', msg.requestId, msg.resources)
           resolveDetect(msg.requestId, msg.resources)

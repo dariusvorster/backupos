@@ -4113,6 +4113,17 @@ var ws = null;
 var heartbeatTimer = null;
 var shuttingDown = false;
 var activeJobs = /* @__PURE__ */ new Map();
+setInterval(() => {
+  for (const [jobId, job] of activeJobs) {
+    send({
+      type: "backup_heartbeat",
+      jobId,
+      runId: job.runId,
+      phase: job.phase,
+      lastResticEventAt: job.lastResticEventAt
+    });
+  }
+}, 5e3);
 function send(msg) {
   if (ws?.readyState === wrapper_default.OPEN) {
     ws.send(JSON.stringify(msg));
@@ -4168,24 +4179,24 @@ async function handleMessage(raw) {
     void selfUpdate();
   } else if (msg.type === "pong") {
   } else if (msg.type === "run_backup") {
-    void runBackup(msg.jobId, msg.config);
+    void runBackup(msg.jobId, msg.runId, msg.config);
   } else if (msg.type === "cancel_backup") {
-    const ctrl = activeJobs.get(msg.jobId);
-    if (ctrl) {
-      ctrl.abort();
+    const job = activeJobs.get(msg.jobId);
+    if (job) {
+      job.ctrl.abort();
       console.log(`[agent] Cancelled job ${msg.jobId}`);
     }
   } else if (msg.type === "verify_repo") {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars);
   }
 }
-async function runBackup(jobId, config) {
+async function runBackup(jobId, runId, config) {
   if (activeJobs.has(jobId)) {
     console.warn(`[agent] Job ${jobId} already running \u2014 ignoring duplicate dispatch`);
     return;
   }
   const ctrl = new AbortController();
-  activeJobs.set(jobId, ctrl);
+  activeJobs.set(jobId, { ctrl, runId, phase: "starting", lastResticEventAt: Date.now() });
   send({ type: "backup_start", jobId, config });
   console.log(`[agent] Starting backup for job ${jobId} \u2014 paths: ${config.paths.join(", ")}`);
   let runLog = "";
@@ -4205,6 +4216,11 @@ async function runBackup(jobId, config) {
       exclude: config.exclude,
       tags: config.tags,
       onProgress: (s) => {
+        const active = activeJobs.get(jobId);
+        if (active) {
+          active.phase = "uploading";
+          active.lastResticEventAt = Date.now();
+        }
         send({
           type: "backup_progress",
           jobId,

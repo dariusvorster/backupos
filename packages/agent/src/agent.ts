@@ -130,8 +130,24 @@ let ws: WebSocket | null = null
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let shuttingDown = false
 
-// Active jobs — keyed by jobId — allow cancel
-const activeJobs = new Map<string, AbortController>()
+type BackupPhase = 'starting' | 'scanning' | 'uploading' | 'finalizing'
+interface ActiveJob { ctrl: AbortController; runId: string; phase: BackupPhase; lastResticEventAt: number }
+
+// Active jobs — keyed by jobId
+const activeJobs = new Map<string, ActiveJob>()
+
+// Emit a heartbeat for every in-flight backup every 5 seconds
+setInterval(() => {
+  for (const [jobId, job] of activeJobs) {
+    send({
+      type:              'backup_heartbeat',
+      jobId,
+      runId:             job.runId,
+      phase:             job.phase,
+      lastResticEventAt: job.lastResticEventAt,
+    })
+  }
+}, 5_000)
 
 function send(msg: AgentMessage): void {
   if (ws?.readyState === WebSocket.OPEN) {
@@ -192,25 +208,25 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
     // heartbeat acknowledged
 
   } else if (msg.type === 'run_backup') {
-    void runBackup(msg.jobId, msg.config)
+    void runBackup(msg.jobId, msg.runId, msg.config)
 
   } else if (msg.type === 'cancel_backup') {
-    const ctrl = activeJobs.get(msg.jobId)
-    if (ctrl) { ctrl.abort(); console.log(`[agent] Cancelled job ${msg.jobId}`) }
+    const job = activeJobs.get(msg.jobId)
+    if (job) { job.ctrl.abort(); console.log(`[agent] Cancelled job ${msg.jobId}`) }
 
   } else if (msg.type === 'verify_repo') {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars)
   }
 }
 
-async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> {
+async function runBackup(jobId: string, runId: string, config: BackupJobConfig): Promise<void> {
   if (activeJobs.has(jobId)) {
     console.warn(`[agent] Job ${jobId} already running — ignoring duplicate dispatch`)
     return
   }
 
   const ctrl = new AbortController()
-  activeJobs.set(jobId, ctrl)
+  activeJobs.set(jobId, { ctrl, runId, phase: 'starting', lastResticEventAt: Date.now() })
 
   send({ type: 'backup_start', jobId, config })
   console.log(`[agent] Starting backup for job ${jobId} — paths: ${config.paths.join(', ')}`)
@@ -236,6 +252,11 @@ async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> 
       exclude: config.exclude,
       tags:    config.tags,
       onProgress: (s) => {
+        const active = activeJobs.get(jobId)
+        if (active) {
+          active.phase = 'uploading'
+          active.lastResticEventAt = Date.now()
+        }
         send({
           type:             'backup_progress',
           jobId,

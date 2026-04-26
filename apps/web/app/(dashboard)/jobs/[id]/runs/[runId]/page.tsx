@@ -91,6 +91,35 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
         <CopyCommandButton runId={run.id} />
       </div>
 
+      {/* Live status — phase + heartbeat freshness (running only) */}
+      {run.status === 'running' && (run.phase ?? run.lastHeartbeatAt) && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          {run.phase && (
+            <span style={{
+              fontSize: 12, padding: '3px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)', backgroundColor: 'var(--surf2)', color: 'var(--fg)',
+            }}>
+              Phase: {run.phase}
+            </span>
+          )}
+          {run.lastHeartbeatAt && (() => {
+            const ageMs  = Date.now() - run.lastHeartbeatAt!.getTime()
+            const ageSec = Math.round(ageMs / 1000)
+            const c      = ageMs < 15_000 ? 'var(--ok)' : ageMs < 60_000 ? 'var(--warn)' : 'var(--err)'
+            return (
+              <span style={{
+                fontSize: 12, padding: '3px 10px', borderRadius: 'var(--radius-sm)',
+                border: `1px solid color-mix(in srgb, var(--border) 60%, ${c} 40%)`,
+                backgroundColor: `color-mix(in srgb, var(--surf2) 90%, ${c} 10%)`,
+                color: c,
+              }}>
+                last heartbeat {ageSec}s ago
+              </span>
+            )
+          })()}
+        </div>
+      )}
+
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
         {([
