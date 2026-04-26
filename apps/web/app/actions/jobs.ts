@@ -187,20 +187,36 @@ export async function retryRun(jobId: string): Promise<void> {
     const [repo] = await db.select().from(repositories)
       .where(eq(repositories.id, job.repositoryId!)).limit(1)
     if (repo) {
-      const cfg       = JSON.parse(decryptField(repo.config)) as Record<string, string>
-      const password  = decryptField(repo.resticPassword)
+      const cfg      = JSON.parse(decryptField(repo.config)) as Record<string, string>
+      const password = decryptField(repo.resticPassword)
       if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
-      const srcConfig = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
-      const tags      = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
-      const paths = job.sourceType === 'docker_volume'
-        ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
-        : (srcConfig.paths ?? [])
-      const result = await dispatchToAgent(job.agentId, {
-        type:   'run_backup',
-        jobId,
-        runId,
-        config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
-      })
+      const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
+
+      let result: { ok: boolean; reason?: string; knownIds?: string[] }
+      if (job.sourceType === 'compose_project') {
+        const composeConfig = JSON.parse(job.sourceConfig) as import('@backupos/agent-protocol').ComposeProjectConfig
+        result = await dispatchToAgent(job.agentId, {
+          type:         'run_compose_backup',
+          jobId,
+          runId,
+          config:       composeConfig,
+          repoId:       job.repositoryId!,
+          repoUrl:      cfg['repositoryUrl'] ?? '',
+          repoPassword: password,
+          envVars:      cfg,
+        })
+      } else {
+        const srcConfig = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
+        const paths = job.sourceType === 'docker_volume'
+          ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
+          : (srcConfig.paths ?? [])
+        result = await dispatchToAgent(job.agentId, {
+          type:   'run_backup',
+          jobId,
+          runId,
+          config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
+        })
+      }
       if (!result.ok) {
         console.error('[retryRun] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
       }
