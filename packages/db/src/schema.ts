@@ -123,7 +123,8 @@ export const backupRuns = sqliteTable('backup_runs', {
 
   status:  text('status').notNull(), // 'running'|'success'|'failed'|'cancelled'
   trigger: text('trigger').notNull(), // 'scheduled'|'manual'|'api'
-  snapshotId: text('snapshot_id'),  // Restic snapshot ID on success
+  snapshotId:  text('snapshot_id'),   // Restic snapshot ID on success (single-snapshot jobs)
+  snapshotIds: text('snapshot_ids'),  // JSON string[] for compose backups (multiple snapshots)
 
   // Stats
   filesNew:        integer('files_new'),

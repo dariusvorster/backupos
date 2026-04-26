@@ -129,9 +129,9 @@ export type AgentMessage =
   | { type: 'ping' }
   | { type: 'metrics'; metrics: AgentMetrics }
   | { type: 'backup_start'; jobId: string; config: BackupJobConfig }
-  | { type: 'backup_heartbeat'; jobId: string; runId: string; phase: 'starting' | 'scanning' | 'uploading' | 'finalizing'; lastResticEventAt: number }
+  | { type: 'backup_heartbeat'; jobId: string; runId: string; phase: 'starting' | 'scanning' | 'uploading' | 'finalizing' | 'quiescing' | 'resuming'; lastResticEventAt: number }
   | { type: 'backup_progress'; jobId: string; pct: number; filesProcessed: number; bytesProcessed: number; filesTotal: number; bytesTotal: number; secondsRemaining?: number }
-  | { type: 'backup_complete'; jobId: string; snapshotId: string; stats: BackupStats; log?: string }
+  | { type: 'backup_complete'; jobId: string; snapshotId: string; snapshotIds?: string[]; stats: BackupStats; log?: string }
   | { type: 'backup_failed'; jobId: string; error: string; detail: string; log?: string }
   | { type: 'backup_cancelled'; jobId: string; runId: string; reason: 'user_requested' | 'not_running' | 'agent_disconnect' }
   | { type: 'restore_start'; restoreId: string; specId: string }

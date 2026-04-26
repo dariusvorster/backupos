@@ -408,6 +408,7 @@ void app.prepare().then(() => {
             status: 'success', completedAt: new Date(),
             log:             msg.log ?? null,
             snapshotId:      msg.snapshotId,
+            snapshotIds:     msg.snapshotIds ? JSON.stringify(msg.snapshotIds) : null,
             filesNew:        msg.stats.filesNew,
             filesChanged:    msg.stats.filesChanged,
             filesUnmodified: msg.stats.filesUnmodified,

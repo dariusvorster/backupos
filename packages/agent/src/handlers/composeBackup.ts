@@ -1,0 +1,195 @@
+import { ResticEngine } from '@backupos/engine'
+import type { AgentMessage, ServerMessage, ComposeServiceConfig } from '@backupos/agent-protocol'
+import {
+  listComposeContainers,
+  pauseContainer, unpauseContainer,
+  stopContainer, startContainer, waitForRunning,
+} from '../docker-client'
+
+type SendFn = (msg: AgentMessage) => void
+type RunMsg = Extract<ServerMessage, { type: 'run_compose_backup' }>
+type EnsureRepoFn = (engine: ResticEngine, repoId: string) => Promise<void>
+
+interface ActiveJobRef {
+  ctrl: AbortController
+  runId: string
+  phase: string
+  lastResticEventAt: number
+  cancelled: boolean
+}
+
+async function quiesce(containerId: string, strategy: ComposeServiceConfig['quiescence']): Promise<void> {
+  switch (strategy) {
+    case 'none':    return
+    case 'pause':   await pauseContainer(containerId); return
+    case 'stop':    await stopContainer(containerId); return
+    case 'apphook': throw new Error('apphook quiescence not implemented yet (Task 8)')
+  }
+}
+
+async function resumeService(containerId: string, strategy: ComposeServiceConfig['quiescence']): Promise<void> {
+  switch (strategy) {
+    case 'none':   return
+    case 'pause':  await unpauseContainer(containerId); return
+    case 'stop':
+      await startContainer(containerId)
+      await waitForRunning(containerId, 30_000)
+      return
+    case 'apphook': return
+  }
+}
+
+export async function runComposeBackup(
+  msg: RunMsg,
+  send: SendFn,
+  activeJobs: Map<string, ActiveJobRef>,
+  binaryPath: string | undefined,
+  ensureRepo: EnsureRepoFn,
+): Promise<void> {
+  const { jobId, runId, config, repoId, repoUrl, repoPassword, envVars } = msg
+  const ctrl = new AbortController()
+
+  activeJobs.set(jobId, { ctrl, runId, phase: 'starting', lastResticEventAt: Date.now(), cancelled: false })
+
+  const logLines: string[] = []
+  const snapshotIds: string[] = []
+  const agg = { filesNew: 0, filesChanged: 0, filesUnmodified: 0, dataAdded: 0, totalSize: 0, durationMs: 0 }
+
+  function setPhase(phase: string): void {
+    const j = activeJobs.get(jobId)
+    if (j) { j.phase = phase; j.lastResticEventAt = Date.now() }
+  }
+
+  const makeEngine = () => new ResticEngine({
+    repositoryUrl: repoUrl,
+    password:      repoPassword,
+    envVars:       envVars ?? {},
+    binaryPath,
+  })
+
+  try {
+    await ensureRepo(makeEngine(), repoId)
+
+    const services = config.services.filter(s => s.included)
+
+    for (const service of services) {
+      if (service.includedVolumes.length === 0) {
+        logLines.push(`[compose] SKIP: "${service.serviceName}" — no included volumes`)
+        continue
+      }
+
+      const containers = await listComposeContainers(config.projectName)
+      const target = containers.find(
+        c => (c.Labels['com.docker.compose.service'] ?? '') === service.serviceName,
+      )
+      if (!target) {
+        logLines.push(`[compose] WARN: "${service.serviceName}" not found in Docker — skipping`)
+        continue
+      }
+
+      // Quiesce
+      setPhase('quiescing')
+      try {
+        await quiesce(target.Id, service.quiescence)
+        if (service.quiescence !== 'none') {
+          logLines.push(`[compose] quiesced "${service.serviceName}" (${service.quiescence})`)
+        }
+      } catch (err) {
+        const e = err instanceof Error ? err.message : String(err)
+        logLines.push(`[compose] FAIL: quiesce "${service.serviceName}" → ${e}`)
+        throw new Error(`quiesce failed for "${service.serviceName}": ${e}`)
+      }
+
+      // Back up volumes
+      setPhase('uploading')
+      let volumeBackupOk = false
+      try {
+        const paths = service.includedVolumes.map(v => `/var/lib/docker/volumes/${v}/_data`)
+        const result = await makeEngine().backup({
+          paths,
+          tags: [
+            `job:${jobId}`,
+            `compose:${config.projectName}`,
+            `service:${service.serviceName}`,
+          ],
+          signal: ctrl.signal,
+        })
+        snapshotIds.push(result.snapshotId)
+        agg.filesNew        += result.filesNew
+        agg.filesChanged    += result.filesChanged
+        agg.filesUnmodified += result.filesUnmodified
+        agg.dataAdded       += result.dataAdded
+        agg.totalSize       += result.totalSize
+        agg.durationMs      += result.duration
+        logLines.push(result.log)
+        volumeBackupOk = true
+      } catch (err) {
+        const e = err instanceof Error ? err.message : String(err)
+        logLines.push(`[compose] FAIL: restic backup "${service.serviceName}" → ${e}`)
+        setPhase('resuming')
+        await resumeService(target.Id, service.quiescence).catch(re => {
+          logLines.push(`[compose] WARN: resume "${service.serviceName}" after backup failure → ${re instanceof Error ? re.message : String(re)}`)
+        })
+        throw new Error(`backup failed for "${service.serviceName}": ${e}`)
+      }
+
+      // Resume
+      if (volumeBackupOk) {
+        setPhase('resuming')
+        try {
+          await resumeService(target.Id, service.quiescence)
+          if (service.quiescence !== 'none') {
+            logLines.push(`[compose] resumed "${service.serviceName}"`)
+          }
+        } catch (err) {
+          logLines.push(`[compose] WARN: resume "${service.serviceName}" failed → ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+    }
+
+    // Optionally back up the compose file itself
+    if (config.includeComposeFile && config.composeFilePath) {
+      setPhase('uploading')
+      try {
+        const result = await makeEngine().backup({
+          paths: [config.composeFilePath],
+          tags:  [`job:${jobId}`, `compose:${config.projectName}`, 'meta:compose-file'],
+          signal: ctrl.signal,
+        })
+        snapshotIds.push(result.snapshotId)
+        logLines.push(result.log)
+      } catch (err) {
+        logLines.push(`[compose] WARN: backup of compose file failed → ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
+    setPhase('finalizing')
+    send({
+      type:       'backup_complete',
+      jobId,
+      snapshotId: snapshotIds[0] ?? 'multi',
+      snapshotIds,
+      stats: {
+        filesNew:            agg.filesNew,
+        filesChanged:        agg.filesChanged,
+        filesUnmodified:     agg.filesUnmodified,
+        dataAdded:           agg.dataAdded,
+        totalFilesProcessed: agg.filesNew + agg.filesChanged + agg.filesUnmodified,
+        totalBytesProcessed: agg.totalSize,
+        durationMs:          agg.durationMs,
+      },
+      log: logLines.join('\n').slice(0, 1_000_000) || undefined,
+    })
+
+  } catch (err) {
+    send({
+      type:   'backup_failed',
+      jobId,
+      error:  err instanceof Error ? err.message : String(err),
+      detail: err instanceof Error && err.stack ? err.stack : '',
+      log:    logLines.join('\n').slice(0, 1_000_000) || undefined,
+    })
+  } finally {
+    activeJobs.delete(jobId)
+  }
+}

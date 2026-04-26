@@ -183,6 +183,13 @@
       "when": 1745971200000,
       "tag": "0025_run_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1746057600000,
+      "tag": "0026_snapshot_ids",
+      "breakpoints": true
     }
   ]
 }
