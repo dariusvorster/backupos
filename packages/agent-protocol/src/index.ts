@@ -89,8 +89,7 @@ export interface ComposeProjectListing {
 export interface ComposeApphookConfig {
   host?: string
   port?: number
-  user?: string
-  username?: string      // alias for user — accepts either
+  username?: string      // matches AppHookConfig.username
   passwordEnv?: string   // name of env var on the agent container holding the password
   database?: string
   dbPath?: string        // sqlite only — path inside the volume
