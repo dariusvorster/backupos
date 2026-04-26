@@ -3936,7 +3936,11 @@ var TOKEN = process.env["BACKUPOS_TOKEN"] ?? "";
 var BINARY = process.env["RESTIC_BINARY_PATH"];
 var VERSION = "0.1.0";
 if (!TOKEN) {
-  console.error("[agent] BACKUPOS_TOKEN is required");
+  console.error("[agent] BACKUPOS_TOKEN is required.");
+  console.error("[agent] If installed via systemd, ensure the unit has:");
+  console.error("[agent]   EnvironmentFile=/opt/backupos-agent/.env");
+  console.error("[agent] and that /opt/backupos-agent/.env contains BACKUPOS_TOKEN=<value>.");
+  console.error("[agent] Self-heal with: curl -fsSL $SERVER_URL/install.sh | sudo bash -s update");
   process.exit(1);
 }
 function getIp() {

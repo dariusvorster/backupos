@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+SUBCOMMAND="${1:-install}"
+shift 1 2>/dev/null || true
+
 SERVER_URL="${BACKUPOS_URL:-}"
 TOKEN="${BACKUPOS_TOKEN:-}"
 
@@ -12,19 +15,100 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-log() { echo "[install] $*"; }
-die() { echo "[install] ERROR: $*" >&2; exit 1; }
+log() { echo "[backupos] $*"; }
+die() { echo "[backupos] ERROR: $*" >&2; exit 1; }
 
-# Normalise ws(s):// → http(s):// so we can use it for downloads too
+INSTALL_DIR=/opt/backupos-agent
+ENV_FILE="$INSTALL_DIR/.env"
+UNIT_FILE=/etc/systemd/system/backupos-agent.service
+OVERRIDE_DIR=/etc/systemd/system/backupos-agent.service.d
+
+write_unit() {
+  cat > "$UNIT_FILE" <<'UNITEOF'
+[Unit]
+Description=BackupOS Agent
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/backupos-agent/.env
+ExecStart=/usr/bin/node /opt/backupos-agent/agent.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+}
+
+# ── Update / self-heal mode ────────────────────────────────────────────────────
+if [ "$SUBCOMMAND" = "update" ]; then
+  log "Running update on existing install..."
+
+  # Optionally download a fresh bundle if a server URL is known
+  if [ -n "$SERVER_URL" ]; then
+    DL_URL="${SERVER_URL/wss:\/\//https://}"
+    DL_URL="${DL_URL/ws:\/\//http://}"
+    DL_URL="${DL_URL%/ws/agent}"
+    log "Downloading fresh agent bundle from $DL_URL ..."
+    curl -fsSL "$DL_URL/agent/bundle.js" -o "$INSTALL_DIR/agent.js" \
+      && log "Agent bundle updated ✓" \
+      || log "Warning: Could not download fresh bundle — keeping existing agent.js"
+  fi
+
+  # Self-heal: rewrite unit if EnvironmentFile is missing
+  need_unit_rewrite=0
+  if [ ! -f "$UNIT_FILE" ]; then
+    need_unit_rewrite=1
+  elif ! grep -q '^EnvironmentFile=' "$UNIT_FILE"; then
+    need_unit_rewrite=1
+  fi
+
+  if [ "$need_unit_rewrite" = "1" ]; then
+    log "Rewriting systemd unit to add EnvironmentFile..."
+    write_unit
+    log "Unit rewritten ✓"
+  else
+    log "Unit file OK (EnvironmentFile already present) ✓"
+  fi
+
+  # Remove malformed override.conf (no [Service] header — silently ignored by systemd)
+  if [ -f "$OVERRIDE_DIR/override.conf" ]; then
+    if ! grep -q '^\[Service\]' "$OVERRIDE_DIR/override.conf"; then
+      log "Removing malformed override.conf (missing [Service] header)..."
+      rm -f "$OVERRIDE_DIR/override.conf"
+      rmdir "$OVERRIDE_DIR" 2>/dev/null || true
+      log "override.conf removed ✓"
+    fi
+  fi
+
+  systemctl daemon-reload
+  systemctl restart backupos-agent
+  sleep 2
+  if systemctl is-active --quiet backupos-agent; then
+    log "Agent is running ✓"
+    log "Logs:   journalctl -u backupos-agent -f"
+    log "Status: systemctl status backupos-agent"
+  else
+    log "Agent failed to start. Last 30 log lines:"
+    journalctl -u backupos-agent -n 30 --no-pager
+    exit 1
+  fi
+  exit 0
+fi
+
+# ── Fresh install ──────────────────────────────────────────────────────────────
+
+# Keep original WS URL for .env; normalise to http for downloads
+WS_URL="$SERVER_URL"
 SERVER_URL="${SERVER_URL/wss:\/\//https://}"
 SERVER_URL="${SERVER_URL/ws:\/\//http://}"
-# Strip trailing /ws/agent path if present
 SERVER_URL="${SERVER_URL%/ws/agent}"
 
 [[ -z "$SERVER_URL" ]] && SERVER_URL="http://localhost:3093"
-[[ -z "$TOKEN" ]] && die "Usage: curl -fsSL \$SERVER_URL/install.sh | BACKUPOS_URL=\$URL BACKUPOS_TOKEN=\$TOKEN bash"
+[[ -z "$TOKEN" ]] && die "Usage: BACKUPOS_URL=\$WS_URL BACKUPOS_TOKEN=\$TOKEN curl -fsSL \$SERVER_URL/install.sh | sudo bash"
 
-# ── 1. Node.js ────────────────────────────────────────────────────────────────
+# ── 1. Node.js ─────────────────────────────────────────────────────────────────
 if ! command -v node &>/dev/null; then
   log "Node.js not found — installing via NodeSource..."
   if command -v apt-get &>/dev/null; then
@@ -41,7 +125,7 @@ NODE_VER="$(node --version | sed 's/v//' | cut -d. -f1)"
 [[ "$NODE_VER" -ge 18 ]] || die "Node.js 18+ required (found $(node --version))"
 log "Node.js $(node --version) ✓"
 
-# ── 2. restic ─────────────────────────────────────────────────────────────────
+# ── 2. restic ──────────────────────────────────────────────────────────────────
 if ! command -v restic &>/dev/null; then
   log "Installing restic..."
   if command -v apt-get &>/dev/null; then
@@ -70,23 +154,43 @@ if ! command -v restic &>/dev/null; then
   restic version &>/dev/null || die "restic installed but cannot execute — check architecture"
   log "restic installed ✓"
 fi
+RESTIC_PATH="$(command -v restic)"
 
-# ── 3. Agent bundle ───────────────────────────────────────────────────────────
-INSTALL_DIR=/opt/backupos-agent
-sudo mkdir -p "$INSTALL_DIR"
+# ── 3. Agent bundle ────────────────────────────────────────────────────────────
+mkdir -p "$INSTALL_DIR"
 log "Downloading agent..."
-sudo curl -fsSL "$SERVER_URL/agent/bundle.js" -o "$INSTALL_DIR/agent.js" \
+curl -fsSL "$SERVER_URL/agent/bundle.js" -o "$INSTALL_DIR/agent.js" \
   || die "Failed to download agent bundle from $SERVER_URL/agent/bundle.js"
 log "Agent downloaded ✓"
 
-# ── 4. Enroll ─────────────────────────────────────────────────────────────────
-sudo node "$INSTALL_DIR/agent.js" enroll --url "$SERVER_URL" --token "$TOKEN"
-log "Enrolled ✓"
+# ── 4. Write .env ──────────────────────────────────────────────────────────────
+# Ensure WS URL is in ws:// form for the agent
+if [ -z "$WS_URL" ] || [[ "$WS_URL" == http* ]]; then
+  # Build ws URL from the http base
+  WS_URL="ws://${SERVER_URL#http://}/ws/agent"
+  WS_URL="${WS_URL/https:\/\//wss://}"
+fi
+cat > "$ENV_FILE" <<ENVEOF
+BACKUPOS_URL=$WS_URL
+BACKUPOS_TOKEN=$TOKEN
+RESTIC_BINARY_PATH=$RESTIC_PATH
+ENVEOF
+chmod 600 "$ENV_FILE"
+log ".env written ✓"
 
-# ── 5. Service ────────────────────────────────────────────────────────────────
-sudo node "$INSTALL_DIR/agent.js" service install
-sudo node "$INSTALL_DIR/agent.js" service start
-log "Service started ✓"
+# ── 5. Install and start service ───────────────────────────────────────────────
+write_unit
+systemctl daemon-reload
+systemctl enable backupos-agent
+systemctl start backupos-agent
+sleep 2
+if systemctl is-active --quiet backupos-agent; then
+  log "Service started ✓"
+else
+  log "Service failed to start. Last 30 log lines:"
+  journalctl -u backupos-agent -n 30 --no-pager
+  exit 1
+fi
 
 log ""
 log "BackupOS Agent installed successfully."
