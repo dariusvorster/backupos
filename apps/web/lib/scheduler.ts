@@ -119,6 +119,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
   const msg: ServerMessage = {
     type:   'run_backup',
     jobId:  job.id,
+    runId,
     config: {
       repoId:       job.repositoryId ?? '',
       repoUrl:      cfg['repositoryUrl'] ?? '',
