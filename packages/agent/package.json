@@ -7,7 +7,7 @@
     "backupos-agent": "./dist/agent.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/agent.ts --bundle --platform=node --target=node18 --format=cjs --outfile=../../apps/web/public/backupos-agent.cjs",
+    "build": "tsc -p tsconfig.json && esbuild src/agent.ts --bundle --platform=node --target=node18 --format=cjs --outfile=../../apps/web/public/agent/bundle.js",
     "start": "node dist/agent.js",
     "typecheck": "tsc --noEmit"
   },
