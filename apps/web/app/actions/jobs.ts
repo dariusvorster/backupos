@@ -145,7 +145,10 @@ export async function triggerJob(id: string): Promise<void> {
   })
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, id))
 
-  if (job.agentId && connectedAgentIds().includes(job.agentId)) {
+  const knownIds = connectedAgentIds()
+  console.log('[triggerJob] CHECK jobId=%s jobAgentId=%s knownIds=%j', id, job.agentId, knownIds)
+
+  if (job.agentId && knownIds.includes(job.agentId)) {
     const [repo] = await db.select().from(repositories)
       .where(eq(repositories.id, job.repositoryId!)).limit(1)
 
@@ -172,6 +175,7 @@ export async function triggerJob(id: string): Promise<void> {
       })
     }
   } else {
+    console.error('[triggerJob] FALLBACK: agent not in connections map, will attempt local execution. agentId=', job.agentId)
     // No connected agent — run locally in a detached promise
     void import('@/lib/scheduler').then(({ executeRun }) => executeRun(id, runId))
   }
