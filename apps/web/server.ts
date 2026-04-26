@@ -9,7 +9,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose } from './lib/ws-state'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
 import { sendAlert } from './lib/alerts'
@@ -79,6 +79,35 @@ void app.prepare().then(() => {
           res.writeHead(503, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ error: message }))
         })
+      return
+    }
+
+    const listComposeMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/list-compose$/)
+    if (req.method === 'POST' && listComposeMatch) {
+      const agentId2 = listComposeMatch[1]!
+      void (async () => {
+        let body: { projectName?: string } = {}
+        try {
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(chunk as Buffer)
+          body = JSON.parse(Buffer.concat(chunks).toString()) as { projectName?: string }
+        } catch { /* ignore */ }
+        if (!body.projectName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'projectName required' }))
+          return
+        }
+        requestListCompose(agentId2, body.projectName)
+          .then(project => {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify(project))
+          })
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : 'List compose failed'
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: message }))
+          })
+      })()
       return
     }
 
@@ -515,6 +544,9 @@ void app.prepare().then(() => {
 
         } else if (msg.type === 'test_mount_result') {
           resolveTestMount(msg.requestId, { ok: msg.ok, error: msg.error })
+
+        } else if (msg.type === 'compose_project_listing') {
+          resolveListCompose(msg.requestId, msg.project)
 
         } else if (msg.type === 'restore_complete' && agentId) {
           await db.update(restoreRuns).set({
