@@ -3738,7 +3738,7 @@ var ResticEngine = class {
           }
         } catch {
         }
-      } : void 0, void 0, 144e5);
+      } : void 0, void 0, 144e5, opts.signal);
       if (result.exitCode !== 0)
         throw new ResticError("backup", result);
       const summary = this.parseSummaryLine(result.stdout);
@@ -3892,13 +3892,24 @@ var ResticEngine = class {
   run(args, extraEnv, timeoutMs) {
     return this.runStreaming(args, void 0, extraEnv, timeoutMs);
   }
-  runStreaming(args, onLine, extraEnv, timeoutMs) {
+  runStreaming(args, onLine, extraEnv, timeoutMs, signal) {
     return new Promise((resolve, reject) => {
       const proc = (0, import_child_process.spawn)(this.binary, args, {
         env: this.buildEnv(extraEnv),
         stdio: ["ignore", "pipe", "pipe"]
       });
       let settled = false;
+      if (signal) {
+        signal.addEventListener("abort", () => {
+          if (settled)
+            return;
+          proc.kill("SIGTERM");
+          setTimeout(() => {
+            if (!proc.killed && proc.exitCode === null)
+              proc.kill("SIGKILL");
+          }, 1e4);
+        }, { once: true });
+      }
       const outLines = [];
       const err = [];
       let partial = "";
@@ -4182,9 +4193,14 @@ async function handleMessage(raw) {
     void runBackup(msg.jobId, msg.runId, msg.config);
   } else if (msg.type === "cancel_backup") {
     const job = activeJobs.get(msg.jobId);
-    if (job) {
+    if (!job) {
+      console.warn(`[agent] cancel_backup: no active backup for jobId=${msg.jobId}`);
+      send({ type: "backup_cancelled", jobId: msg.jobId, runId: msg.runId, reason: "not_running" });
+    } else {
+      console.log(`[agent] cancel_backup jobId=${msg.jobId} runId=${job.runId} \u2014 aborting`);
+      job.cancelled = true;
       job.ctrl.abort();
-      console.log(`[agent] Cancelled job ${msg.jobId}`);
+      send({ type: "backup_cancelled", jobId: msg.jobId, runId: job.runId, reason: "user_requested" });
     }
   } else if (msg.type === "verify_repo") {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars);
@@ -4196,7 +4212,7 @@ async function runBackup(jobId, runId, config) {
     return;
   }
   const ctrl = new AbortController();
-  activeJobs.set(jobId, { ctrl, runId, phase: "starting", lastResticEventAt: Date.now() });
+  activeJobs.set(jobId, { ctrl, runId, phase: "starting", lastResticEventAt: Date.now(), cancelled: false });
   send({ type: "backup_start", jobId, config });
   console.log(`[agent] Starting backup for job ${jobId} \u2014 paths: ${config.paths.join(", ")}`);
   let runLog = "";
@@ -4215,6 +4231,7 @@ async function runBackup(jobId, runId, config) {
       paths: config.paths,
       exclude: config.exclude,
       tags: config.tags,
+      signal: ctrl.signal,
       onProgress: (s) => {
         const active = activeJobs.get(jobId);
         if (active) {
@@ -4251,10 +4268,14 @@ async function runBackup(jobId, runId, config) {
     });
     console.log(`[agent] Backup complete \u2014 snapshot ${result.snapshotId}`);
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    const detail = err instanceof Error && err.stack ? err.stack : "";
-    send({ type: "backup_failed", jobId, error, detail, log: runLog || void 0 });
-    console.error(`[agent] Backup failed for job ${jobId}:`, error);
+    if (ctrl.signal.aborted) {
+      console.log(`[agent] Backup for job ${jobId} exited due to cancel signal \u2014 skipping backup_failed`);
+    } else {
+      const error = err instanceof Error ? err.message : String(err);
+      const detail = err instanceof Error && err.stack ? err.stack : "";
+      send({ type: "backup_failed", jobId, error, detail, log: runLog || void 0 });
+      console.error(`[agent] Backup failed for job ${jobId}:`, error);
+    }
   } finally {
     activeJobs.delete(jobId);
   }

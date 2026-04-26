@@ -97,6 +97,7 @@ export class ResticEngine {
           : undefined,
         undefined,
         14_400_000,
+        opts.signal,
       )
       if (result.exitCode !== 0) throw new ResticError('backup', result)
 
@@ -265,6 +266,7 @@ export class ResticEngine {
     onLine?: (line: string) => void,
     extraEnv?: Record<string, string>,
     timeoutMs?: number,
+    signal?: AbortSignal,
   ): Promise<ExecResult> {
     return new Promise((resolve, reject) => {
       const proc = spawn(this.binary, args, {
@@ -273,6 +275,16 @@ export class ResticEngine {
       })
 
       let settled = false
+
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          if (settled) return
+          proc.kill('SIGTERM')
+          setTimeout(() => {
+            if (!proc.killed && proc.exitCode === null) proc.kill('SIGKILL')
+          }, 10_000)
+        }, { once: true })
+      }
       const outLines: string[] = []
       const err: Buffer[] = []
       let partial = ''

@@ -25,6 +25,7 @@ export interface BackupOptions {
   preHook?: () => Promise<void>
   postHook?: () => Promise<void>
   onProgress?: (status: BackupProgressStatus) => void
+  signal?: AbortSignal
 }
 
 export interface ResticStatusJson {
