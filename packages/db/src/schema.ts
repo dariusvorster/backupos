@@ -17,6 +17,9 @@ export const agents = sqliteTable('agents', {
   lastSeenAt:   integer('last_seen_at',   { mode: 'timestamp_ms' }),
   enrolledAt:   integer('enrolled_at',    { mode: 'timestamp_ms' }).notNull(),
   publicKey:    text('public_key').notNull(), // Ed25519
+  protocolVersion: text('protocol_version'),
+  resticVersion:   text('restic_version'),
+  capabilities:    text('capabilities'),       // JSON array of strings
   updateChannel:     text('update_channel').default('stable'),   // 'stable' | 'beta' | 'pinned'
   hypervisorDriver:  integer('hypervisor_driver',  { mode: 'boolean' }),
   appHooksAvailable: integer('app_hooks_available', { mode: 'boolean' }),

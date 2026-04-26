@@ -48,7 +48,7 @@ export interface OsInfo {
 }
 
 export type AgentMessage =
-  | { type: 'hello'; token: string; hostname: string; ip: string; osInfo: OsInfo; agentVersion: string; platform: 'linux' | 'windows' }
+  | { type: 'hello'; token: string; hostname: string; ip: string; osInfo: OsInfo; agentVersion: string; platform: 'linux' | 'windows'; protocolVersion: string; resticVersion?: string; capabilities?: string[] }
   | { type: 'ping' }
   | { type: 'metrics'; metrics: AgentMetrics }
   | { type: 'backup_start'; jobId: string; config: BackupJobConfig }
@@ -78,3 +78,4 @@ export type ServerMessage =
   | { type: 'list_resources'; requestId: string }
   | { type: 'test_repo'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
   | { type: 'test_mount'; requestId: string; mountConfig: MountConfig }
+  | { type: 'force_update' }

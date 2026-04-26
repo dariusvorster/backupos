@@ -1,5 +1,8 @@
 import WebSocket from 'ws'
 import * as os from 'os'
+import { createHash } from 'crypto'
+import { readFileSync, writeFileSync, renameSync } from 'fs'
+import { spawn as spawnProcess } from 'child_process'
 import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage, BackupJobConfig } from '@backupos/agent-protocol'
 
@@ -27,6 +30,39 @@ function getHttpBase(): string {
   return `${proto}//${u.host}`
 }
 
+function computeSelfHash(): string {
+  try {
+    const buf = readFileSync(process.argv[1]!)
+    return createHash('sha256').update(buf).digest('hex')
+  } catch { return '' }
+}
+const SELF_HASH = computeSelfHash()
+
+async function selfUpdate(): Promise<void> {
+  const scriptPath = process.argv[1]
+  if (!scriptPath) { console.error('[agent] selfUpdate: cannot determine script path'); return }
+  try {
+    const base = getHttpBase()
+    const res = await fetch(`${base}/agent/bundle.js`, {
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!res.ok) throw new Error(`bundle download failed: ${res.status}`)
+    const buf = Buffer.from(await res.arrayBuffer())
+    const tmp = `${scriptPath}.tmp`
+    writeFileSync(tmp, buf)
+    renameSync(tmp, scriptPath)
+    console.log('[agent] Bundle updated — restarting …')
+    spawnProcess(process.execPath, process.argv.slice(1), {
+      env:      process.env,
+      detached: true,
+      stdio:    'inherit',
+    }).unref()
+    process.exit(0)
+  } catch (err) {
+    console.error('[agent] selfUpdate failed:', err instanceof Error ? err.message : err)
+  }
+}
+
 async function ensureRepoInitialized(engine: ResticEngine, repoId: string): Promise<void> {
   try {
     const base = getHttpBase()
@@ -50,8 +86,32 @@ async function ensureRepoInitialized(engine: ResticEngine, repoId: string): Prom
     try { await engine.init() } catch { /* already initialised */ }
   }
 }
-const BINARY     = process.env['RESTIC_BINARY_PATH']
-const VERSION    = '0.1.0'
+const BINARY          = process.env['RESTIC_BINARY_PATH']
+const VERSION         = '0.1.0'
+const PROTOCOL_VERSION = '1'
+
+async function queryResticVersion(): Promise<string> {
+  return new Promise((resolve) => {
+    const proc = spawnProcess(BINARY ?? 'restic', ['version'], { stdio: ['ignore', 'pipe', 'ignore'] })
+    let out = ''
+    proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })
+    proc.on('close', () => {
+      const m = out.match(/^restic\s+(\S+)/m)
+      resolve(m ? m[1]! : '')
+    })
+    proc.on('error', () => resolve(''))
+    setTimeout(() => { proc.kill(); resolve('') }, 10_000)
+  })
+}
+
+function buildCapabilities(): string[] {
+  const caps: string[] = ['backup', 'restore']
+  if (process.platform === 'win32') caps.push('vss')
+  return caps
+}
+
+let RESTIC_VERSION = ''
+void queryResticVersion().then(v => { RESTIC_VERSION = v })
 
 function getIp(): string {
   const ifaces = os.networkInterfaces()
@@ -115,6 +175,18 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
   if (msg.type === 'welcome') {
     console.log(`[agent] Authenticated — agent ID: ${msg.agentId}, server: ${msg.serverVersion}`)
     backoffMs = 1_000
+    if (msg.bundleHash && SELF_HASH) {
+      if (msg.bundleHash !== SELF_HASH) {
+        console.log(`[agent] Bundle hash mismatch (server: ${msg.bundleHash.slice(0, 8)} local: ${SELF_HASH.slice(0, 8)}) — self-updating`)
+        void selfUpdate()
+      } else {
+        console.log(`[agent] Bundle hash OK: ${msg.bundleHash.slice(0, 8)}`)
+      }
+    }
+
+  } else if (msg.type === 'force_update') {
+    console.log('[agent] Force-update requested by server — self-updating')
+    void selfUpdate()
 
   } else if (msg.type === 'pong') {
     // heartbeat acknowledged
@@ -237,12 +309,15 @@ function connect(): void {
   ws.on('open', () => {
     console.log('[agent] WebSocket open — sending hello')
     const hello: AgentMessage = {
-      type:         'hello',
-      token:        TOKEN,
-      hostname:     os.hostname(),
-      ip:           getIp(),
-      agentVersion: VERSION,
-      platform:     process.platform === 'win32' ? 'windows' : 'linux',
+      type:            'hello',
+      token:           TOKEN,
+      hostname:        os.hostname(),
+      ip:              getIp(),
+      agentVersion:    VERSION,
+      protocolVersion: PROTOCOL_VERSION,
+      resticVersion:   RESTIC_VERSION || undefined,
+      capabilities:    buildCapabilities(),
+      platform:        process.platform === 'win32' ? 'windows' : 'linux',
       osInfo: {
         os:     process.platform,
         arch:   process.arch,
