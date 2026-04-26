@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, renameSync } from 'fs'
 import { spawn as spawnProcess } from 'child_process'
 import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage, BackupJobConfig } from '@backupos/agent-protocol'
+import { getSystemUptimeSeconds } from './system-uptime'
 
 function requireEnv(name: string): string {
   const v = process.env[name]
@@ -177,7 +178,7 @@ function startHeartbeat(): void {
         memTotalBytes: memTotal,
         diskUsedBytes:  {},
         diskTotalBytes: {},
-        uptimeSeconds:  Math.floor(process.uptime()),
+        uptimeSeconds:  getSystemUptimeSeconds(),
       },
     })
   }, 30_000)

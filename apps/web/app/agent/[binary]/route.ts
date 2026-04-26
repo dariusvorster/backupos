@@ -3,8 +3,6 @@ import { readFile } from 'fs/promises'
 import { join } from 'path'
 
 const ALLOWED = new Set([
-  'backupos-agent-linux-x64',
-  'backupos-agent-linux-arm64',
   'backupos-agent-windows-x64.exe',
   'bundle.js',
 ])

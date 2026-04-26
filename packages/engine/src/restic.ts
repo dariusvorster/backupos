@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { spawnAllowed as spawn } from './exec-allowed'
 import type {
   ResticConfig,
   BackupOptions,
@@ -300,7 +300,7 @@ export class ResticEngine {
         }, timeoutMs)
       }
 
-      proc.stdout.on('data', (chunk: Buffer) => {
+      proc.stdout!.on('data', (chunk: Buffer) => {
         const text = partial + chunk.toString('utf8')
         const parts = text.split('\n')
         partial = parts.pop() ?? ''
@@ -310,7 +310,7 @@ export class ResticEngine {
         }
       })
 
-      proc.stderr.on('data', (chunk: Buffer) => err.push(chunk))
+      proc.stderr!.on('data', (chunk: Buffer) => err.push(chunk))
 
       proc.on('close', (code) => {
         if (settled) return
