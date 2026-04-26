@@ -144,12 +144,14 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
-        <StatCard label="Platform"  value={`${agent.platform ?? '—'} / ${agent.arch ?? '—'}`} />
-        <StatCard label="Hostname"  value={agent.hostname ?? '—'} />
-        <StatCard label="IP"        value={agent.ip ?? '—'} />
-        <StatCard label="Version"   value={agent.agentVersion ?? '—'} />
-        <StatCard label="VSS"       value={agent.vssAvailable ? 'Available' : agent.platform === 'windows' ? 'Unavailable' : 'N/A'} />
-        <StatCard label="Last seen" value={agent.lastSeenAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'} />
+        <StatCard label="Platform"         value={`${agent.platform ?? '—'} / ${agent.arch ?? '—'}`} />
+        <StatCard label="Hostname"         value={agent.hostname ?? '—'} />
+        <StatCard label="IP"               value={agent.ip ?? '—'} />
+        <StatCard label="Agent version"    value={agent.agentVersion ?? '—'} />
+        <StatCard label="Restic version"   value={agent.resticVersion ?? '—'} />
+        <StatCard label="Protocol"         value={agent.protocolVersion ?? '—'} />
+        <StatCard label="VSS"              value={agent.vssAvailable ? 'Available' : agent.platform === 'windows' ? 'Unavailable' : 'N/A'} />
+        <StatCard label="Last seen"        value={agent.lastSeenAt?.toISOString().slice(0, 16).replace('T', ' ') ?? '—'} />
       </div>
 
       {/* Capabilities */}

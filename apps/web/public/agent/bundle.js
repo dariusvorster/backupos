@@ -2228,7 +2228,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes, createHash } = require("crypto");
+    var { randomBytes, createHash: createHash2 } = require("crypto");
     var { Duplex, Readable } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2888,7 +2888,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -3255,7 +3255,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash } = require("crypto");
+    var { createHash: createHash2 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -3556,7 +3556,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -3654,6 +3654,9 @@ var wrapper_default = import_websocket.default;
 
 // src/agent.ts
 var os = __toESM(require("os"));
+var import_crypto = require("crypto");
+var import_fs = require("fs");
+var import_child_process2 = require("child_process");
 
 // ../engine/dist/restic.js
 var import_child_process = require("child_process");
@@ -4006,6 +4009,42 @@ function getHttpBase() {
   const proto = u.protocol === "wss:" ? "https:" : "http:";
   return `${proto}//${u.host}`;
 }
+function computeSelfHash() {
+  try {
+    const buf = (0, import_fs.readFileSync)(process.argv[1]);
+    return (0, import_crypto.createHash)("sha256").update(buf).digest("hex");
+  } catch {
+    return "";
+  }
+}
+var SELF_HASH = computeSelfHash();
+async function selfUpdate() {
+  const scriptPath = process.argv[1];
+  if (!scriptPath) {
+    console.error("[agent] selfUpdate: cannot determine script path");
+    return;
+  }
+  try {
+    const base = getHttpBase();
+    const res = await fetch(`${base}/agent/bundle.js`, {
+      signal: AbortSignal.timeout(3e4)
+    });
+    if (!res.ok) throw new Error(`bundle download failed: ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const tmp = `${scriptPath}.tmp`;
+    (0, import_fs.writeFileSync)(tmp, buf);
+    (0, import_fs.renameSync)(tmp, scriptPath);
+    console.log("[agent] Bundle updated \u2014 restarting \u2026");
+    (0, import_child_process2.spawn)(process.execPath, process.argv.slice(1), {
+      env: process.env,
+      detached: true,
+      stdio: "inherit"
+    }).unref();
+    process.exit(0);
+  } catch (err) {
+    console.error("[agent] selfUpdate failed:", err instanceof Error ? err.message : err);
+  }
+}
 async function ensureRepoInitialized(engine, repoId) {
   try {
     const base = getHttpBase();
@@ -4031,6 +4070,34 @@ async function ensureRepoInitialized(engine, repoId) {
 }
 var BINARY = process.env["RESTIC_BINARY_PATH"];
 var VERSION = "0.1.0";
+var PROTOCOL_VERSION = "1";
+async function queryResticVersion() {
+  return new Promise((resolve) => {
+    const proc = (0, import_child_process2.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    proc.stdout?.on("data", (d) => {
+      out += d.toString();
+    });
+    proc.on("close", () => {
+      const m = out.match(/^restic\s+(\S+)/m);
+      resolve(m ? m[1] : "");
+    });
+    proc.on("error", () => resolve(""));
+    setTimeout(() => {
+      proc.kill();
+      resolve("");
+    }, 1e4);
+  });
+}
+function buildCapabilities() {
+  const caps = ["backup", "restore"];
+  if (process.platform === "win32") caps.push("vss");
+  return caps;
+}
+var RESTIC_VERSION = "";
+void queryResticVersion().then((v) => {
+  RESTIC_VERSION = v;
+});
 function getIp() {
   const ifaces = os.networkInterfaces();
   for (const iface of Object.values(ifaces)) {
@@ -4088,6 +4155,17 @@ async function handleMessage(raw) {
   if (msg.type === "welcome") {
     console.log(`[agent] Authenticated \u2014 agent ID: ${msg.agentId}, server: ${msg.serverVersion}`);
     backoffMs = 1e3;
+    if (msg.bundleHash && SELF_HASH) {
+      if (msg.bundleHash !== SELF_HASH) {
+        console.log(`[agent] Bundle hash mismatch (server: ${msg.bundleHash.slice(0, 8)} local: ${SELF_HASH.slice(0, 8)}) \u2014 self-updating`);
+        void selfUpdate();
+      } else {
+        console.log(`[agent] Bundle hash OK: ${msg.bundleHash.slice(0, 8)}`);
+      }
+    }
+  } else if (msg.type === "force_update") {
+    console.log("[agent] Force-update requested by server \u2014 self-updating");
+    void selfUpdate();
   } else if (msg.type === "pong") {
   } else if (msg.type === "run_backup") {
     void runBackup(msg.jobId, msg.config);
@@ -4191,6 +4269,9 @@ function connect() {
       hostname: os.hostname(),
       ip: getIp(),
       agentVersion: VERSION,
+      protocolVersion: PROTOCOL_VERSION,
+      resticVersion: RESTIC_VERSION || void 0,
+      capabilities: buildCapabilities(),
       platform: process.platform === "win32" ? "windows" : "linux",
       osInfo: {
         os: process.platform,

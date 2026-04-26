@@ -260,7 +260,10 @@ void app.prepare().then(() => {
             ...(msg.hostname     ? { hostname:     msg.hostname }           : {}),
             ...(msg.ip           ? { ip:           msg.ip }                 : {}),
             ...(msg.platform     ? { platform:     msg.platform }           : {}),
-            ...(msg.agentVersion ? { agentVersion: msg.agentVersion }       : {}),
+            ...(msg.agentVersion    ? { agentVersion:    msg.agentVersion }                      : {}),
+            ...(msg.protocolVersion ? { protocolVersion: msg.protocolVersion }                  : {}),
+            ...(msg.resticVersion   ? { resticVersion:   msg.resticVersion }                    : {}),
+            ...(msg.capabilities    ? { capabilities:    JSON.stringify(msg.capabilities) }     : {}),
             ...(osInfo?.arch     ? { arch:         osInfo.arch }            : {}),
             ...(osInfo           ? { osInfo:       JSON.stringify(osInfo) } : {}),
           }).where(eq(agents.id, agentId))
