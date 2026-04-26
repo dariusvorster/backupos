@@ -4196,7 +4196,6 @@ async function dumpMysql(cfg, dest) {
     `-h${cfg.host ?? "localhost"}`,
     `-P${String(cfg.port ?? 3306)}`,
     `-u${cfg.username ?? "root"}`,
-    ...password ? [`-p${password}`] : [],
     "--single-transaction",
     "--routines",
     "--triggers",
@@ -4204,32 +4203,34 @@ async function dumpMysql(cfg, dest) {
     dest,
     cfg.database ?? ""
   ].filter(Boolean);
-  await spawnAllowed2("mysqldump", args);
+  const env = { ...process.env, ...password ? { MYSQL_PWD: password } : {} };
+  await spawnAllowed2("mysqldump", args, { env });
+}
+function redisEnv(cfg) {
+  const password = cfg.passwordEnv ? process.env[cfg.passwordEnv] : void 0;
+  return { ...process.env, ...password ? { REDISCLI_AUTH: password } : {} };
 }
 async function getRedisLastSave(cfg) {
-  const password = cfg.passwordEnv ? process.env[cfg.passwordEnv] : void 0;
   const args = [
     "-h",
     cfg.host ?? "localhost",
     "-p",
     String(cfg.port ?? 6379),
-    ...password ? ["-a", password, "--no-auth-warning"] : [],
     "LASTSAVE"
   ];
-  const { stdout } = await spawnAllowed2("redis-cli", args);
+  const { stdout } = await spawnAllowed2("redis-cli", args, { env: redisEnv(cfg) });
   return parseInt(stdout.trim(), 10) || 0;
 }
 async function dumpRedis(cfg, container, dest) {
-  const password = cfg.passwordEnv ? process.env[cfg.passwordEnv] : void 0;
+  const env = redisEnv(cfg);
   const connArgs = [
     "-h",
     cfg.host ?? "localhost",
     "-p",
-    String(cfg.port ?? 6379),
-    ...password ? ["-a", password, "--no-auth-warning"] : []
+    String(cfg.port ?? 6379)
   ];
   const initialLastSave = await getRedisLastSave(cfg);
-  await spawnAllowed2("redis-cli", [...connArgs, "BGSAVE"]);
+  await spawnAllowed2("redis-cli", [...connArgs, "BGSAVE"], { env });
   const deadline = Date.now() + 6e4;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 1e3));

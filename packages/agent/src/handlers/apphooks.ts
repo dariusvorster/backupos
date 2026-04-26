@@ -32,41 +32,45 @@ async function dumpMysql(cfg: ComposeApphookConfig, dest: string): Promise<void>
     `-h${cfg.host ?? 'localhost'}`,
     `-P${String(cfg.port ?? 3306)}`,
     `-u${cfg.username ?? 'root'}`,
-    ...(password ? [`-p${password}`] : []),
     '--single-transaction',
     '--routines',
     '--triggers',
     '--result-file', dest,
     cfg.database ?? '',
   ].filter(Boolean) as string[]
-  await spawnAllowed('mysqldump', args)
+  // MYSQL_PWD keeps the password out of the process arg list (visible via ps)
+  const env = { ...process.env, ...(password ? { MYSQL_PWD: password } : {}) }
+  await spawnAllowed('mysqldump', args, { env })
 }
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 
-async function getRedisLastSave(cfg: ComposeApphookConfig): Promise<number> {
+function redisEnv(cfg: ComposeApphookConfig): NodeJS.ProcessEnv {
   const password = cfg.passwordEnv ? process.env[cfg.passwordEnv] : undefined
+  // REDISCLI_AUTH keeps the password out of the process arg list (visible via ps)
+  return { ...process.env, ...(password ? { REDISCLI_AUTH: password } : {}) }
+}
+
+async function getRedisLastSave(cfg: ComposeApphookConfig): Promise<number> {
   const args = [
     '-h', cfg.host ?? 'localhost',
     '-p', String(cfg.port ?? 6379),
-    ...(password ? ['-a', password, '--no-auth-warning'] : []),
     'LASTSAVE',
   ]
-  const { stdout } = await spawnAllowed('redis-cli', args)
+  const { stdout } = await spawnAllowed('redis-cli', args, { env: redisEnv(cfg) })
   return parseInt(stdout.trim(), 10) || 0
 }
 
 async function dumpRedis(cfg: ComposeApphookConfig, container: DockerContainer, dest: string): Promise<void> {
-  const password = cfg.passwordEnv ? process.env[cfg.passwordEnv] : undefined
+  const env = redisEnv(cfg)
   const connArgs = [
     '-h', cfg.host ?? 'localhost',
     '-p', String(cfg.port ?? 6379),
-    ...(password ? ['-a', password, '--no-auth-warning'] : []),
   ]
 
   const initialLastSave = await getRedisLastSave(cfg)
 
-  await spawnAllowed('redis-cli', [...connArgs, 'BGSAVE'])
+  await spawnAllowed('redis-cli', [...connArgs, 'BGSAVE'], { env })
 
   const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
