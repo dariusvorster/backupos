@@ -3648,6 +3648,399 @@ var require_websocket_server = __commonJS({
   }
 });
 
+// ../engine/dist/exec-allowed.js
+function isAbsolutePathOfAllowed(command) {
+  for (const allowed of ALLOWED_COMMANDS) {
+    if (command.endsWith(`/${allowed}`))
+      return true;
+  }
+  return false;
+}
+function spawnAllowed(command, args, options) {
+  if (!ALLOWED_COMMANDS.has(command) && !isAbsolutePathOfAllowed(command)) {
+    throw new Error(`[exec-allowed] command "${command}" is not in the allowlist`);
+  }
+  return (0, import_node_child_process.spawn)(command, args, options ?? {});
+}
+var import_node_child_process, ALLOWED_COMMANDS;
+var init_exec_allowed = __esm({
+  "../engine/dist/exec-allowed.js"() {
+    "use strict";
+    import_node_child_process = require("node:child_process");
+    ALLOWED_COMMANDS = /* @__PURE__ */ new Set(["restic", "systemctl", "df", "hostname", "uname"]);
+  }
+});
+
+// ../engine/dist/restic.js
+function buildRunLog(stdout, stderr) {
+  const logLines = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed)
+      continue;
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed.message_type === "status")
+          continue;
+      } catch {
+      }
+    }
+    logLines.push(line);
+  }
+  for (const line of stderr.split("\n")) {
+    if (line.trim())
+      logLines.push(`[stderr] ${line}`);
+  }
+  const full = logLines.join("\n");
+  if (full.length > MAX_LOG_BYTES) {
+    return full.slice(-MAX_LOG_BYTES) + "\n[log truncated to last 1MB]";
+  }
+  return full;
+}
+var MAX_LOG_BYTES, ResticEngine, ResticError;
+var init_restic = __esm({
+  "../engine/dist/restic.js"() {
+    "use strict";
+    init_exec_allowed();
+    MAX_LOG_BYTES = 1e6;
+    ResticEngine = class {
+      config;
+      binary;
+      constructor(config) {
+        this.config = config;
+        this.binary = config.binaryPath ?? "restic";
+      }
+      async init() {
+        const result = await this.run(["init"], void 0, 6e4);
+        if (result.exitCode !== 0) {
+          throw new ResticError("init", result);
+        }
+      }
+      async backup(opts) {
+        if (opts.preHook)
+          await opts.preHook();
+        let backupError;
+        let backupResult;
+        try {
+          const args = ["backup", "--json", "--no-scan"];
+          for (const path of opts.paths)
+            args.push(path);
+          if (opts.tags)
+            for (const t of opts.tags)
+              args.push("--tag", t);
+          if (opts.exclude)
+            for (const e of opts.exclude)
+              args.push("--exclude", e);
+          if (opts.excludeFile)
+            args.push("--exclude-file", opts.excludeFile);
+          if (opts.oneFileSystem)
+            args.push("--one-file-system");
+          if (opts.useVSS)
+            args.push("--use-fs-snapshot");
+          const result = await this.runStreaming(args, opts.onProgress ? (line) => {
+            try {
+              const obj = JSON.parse(line);
+              if (obj.message_type === "status") {
+                const s = obj;
+                opts.onProgress({
+                  pct: s.percent_done,
+                  bytesDone: s.bytes_done,
+                  bytesTotal: s.total_bytes,
+                  filesDone: s.files_done,
+                  filesTotal: s.total_files,
+                  secondsElapsed: s.seconds_elapsed,
+                  secondsRemaining: s.seconds_remaining
+                });
+              }
+            } catch {
+            }
+          } : void 0, void 0, 144e5, opts.signal);
+          if (result.exitCode !== 0)
+            throw new ResticError("backup", result);
+          const summary = this.parseSummaryLine(result.stdout);
+          backupResult = {
+            snapshotId: summary.snapshot_id,
+            filesNew: summary.files_new,
+            filesChanged: summary.files_changed,
+            filesUnmodified: summary.files_unmodified,
+            dataAdded: summary.data_added,
+            totalSize: summary.total_bytes_processed,
+            duration: Math.round((summary.total_duration ?? 0) * 1e3),
+            log: buildRunLog(result.stdout, result.stderr)
+          };
+        } catch (err) {
+          backupError = err instanceof Error ? err : new Error(String(err));
+        }
+        if (opts.postHook)
+          await opts.postHook();
+        if (backupError)
+          throw backupError;
+        return backupResult;
+      }
+      async snapshots(tags) {
+        const args = ["snapshots", "--json"];
+        if (tags)
+          for (const t of tags)
+            args.push("--tag", t);
+        const result = await this.run(args, void 0, 3e4);
+        if (result.exitCode !== 0)
+          throw new ResticError("snapshots", result);
+        const raw = JSON.parse(result.stdout);
+        return raw.map((s) => ({
+          id: s.id,
+          time: s.time,
+          hostname: s.hostname,
+          paths: s.paths,
+          tags: s.tags,
+          username: s.username
+        }));
+      }
+      async ls(snapshotId) {
+        const result = await this.run(["ls", snapshotId, "--json"], void 0, 3e4);
+        if (result.exitCode !== 0)
+          throw new ResticError("ls", result);
+        const files = [];
+        for (const line of result.stdout.trim().split("\n")) {
+          if (!line)
+            continue;
+          const obj = JSON.parse(line);
+          if (obj.struct_type !== "node")
+            continue;
+          files.push({
+            name: obj.name,
+            type: obj.type,
+            path: obj.path,
+            size: obj.size,
+            mtime: obj.mtime,
+            permissions: obj.permissions
+          });
+        }
+        return files;
+      }
+      async check(readData = false) {
+        const args = ["check"];
+        if (readData)
+          args.push("--read-data");
+        const result = await this.run(args, void 0, 18e5);
+        const ok = result.exitCode === 0;
+        const lines = result.stderr.split("\n").filter(Boolean);
+        return {
+          ok,
+          errors: lines.filter((l) => l.includes("error")),
+          warnings: lines.filter((l) => l.includes("warning"))
+        };
+      }
+      async restore(snapshotId, target, include) {
+        const args = ["restore", snapshotId, "--target", target];
+        if (include)
+          for (const p of include)
+            args.push("--include", p);
+        const before = Date.now();
+        const result = await this.run(args, void 0, 144e5);
+        if (result.exitCode !== 0)
+          throw new ResticError("restore", result);
+        const match = result.stderr.match(/(\d+) files? restored/);
+        return {
+          filesRestored: match ? parseInt(match[1], 10) : 0,
+          totalSize: 0,
+          duration: Math.round((Date.now() - before) / 1e3)
+        };
+      }
+      async forget(policy, prune = true) {
+        const args = ["forget", "--json"];
+        if (policy.keepLast)
+          args.push("--keep-last", String(policy.keepLast));
+        if (policy.keepDaily)
+          args.push("--keep-daily", String(policy.keepDaily));
+        if (policy.keepWeekly)
+          args.push("--keep-weekly", String(policy.keepWeekly));
+        if (policy.keepMonthly)
+          args.push("--keep-monthly", String(policy.keepMonthly));
+        if (policy.keepYearly)
+          args.push("--keep-yearly", String(policy.keepYearly));
+        if (policy.keepTags)
+          for (const t of policy.keepTags)
+            args.push("--keep-tag", t);
+        if (prune)
+          args.push("--prune");
+        const result = await this.run(args, void 0, 18e5);
+        if (result.exitCode !== 0)
+          throw new ResticError("forget", result);
+        const raw = JSON.parse(result.stdout);
+        const entry = raw[0] ?? {};
+        return {
+          removed: entry.remove?.length ?? 0,
+          kept: entry.keep?.length ?? 0
+        };
+      }
+      async prune() {
+        const result = await this.run(["prune"], void 0, 18e5);
+        if (result.exitCode !== 0)
+          throw new ResticError("prune", result);
+      }
+      async stats() {
+        const result = await this.run(["stats", "--json"], void 0, 3e4);
+        if (result.exitCode !== 0)
+          throw new ResticError("stats", result);
+        const raw = JSON.parse(result.stdout);
+        return {
+          totalSize: raw.total_size,
+          totalUncompressedSize: raw.total_uncompressed_size,
+          compressionRatio: raw.compression_ratio,
+          totalBlobCount: raw.total_blob_count,
+          snapshotsCount: raw.snapshots_count
+        };
+      }
+      // Non-blocking — caller must unmount when done
+      mount(snapshotId, mountPoint) {
+        spawnAllowed(this.binary, ["mount", snapshotId, mountPoint], {
+          env: this.buildEnv(),
+          detached: true,
+          stdio: "ignore"
+        }).unref();
+      }
+      async unmount(mountPoint) {
+        const result = await this.run(["umount", mountPoint], void 0, 3e4);
+        if (result.exitCode !== 0)
+          throw new ResticError("umount", result);
+      }
+      // ── Private ──────────────────────────────────────────────────────────────
+      run(args, extraEnv, timeoutMs) {
+        return this.runStreaming(args, void 0, extraEnv, timeoutMs);
+      }
+      runStreaming(args, onLine, extraEnv, timeoutMs, signal) {
+        return new Promise((resolve, reject) => {
+          const proc = spawnAllowed(this.binary, args, {
+            env: this.buildEnv(extraEnv),
+            stdio: ["ignore", "pipe", "pipe"]
+          });
+          let settled = false;
+          if (signal) {
+            signal.addEventListener("abort", () => {
+              if (settled)
+                return;
+              proc.kill("SIGTERM");
+              setTimeout(() => {
+                if (!proc.killed && proc.exitCode === null)
+                  proc.kill("SIGKILL");
+              }, 1e4);
+            }, { once: true });
+          }
+          const outLines = [];
+          const err = [];
+          let partial = "";
+          let timer;
+          if (timeoutMs) {
+            timer = setTimeout(() => {
+              if (settled)
+                return;
+              settled = true;
+              proc.kill("SIGTERM");
+              setTimeout(() => {
+                if (!proc.killed)
+                  proc.kill("SIGKILL");
+              }, 1e4);
+              reject(new Error(`restic timed out after ${timeoutMs}ms during ${args[0] ?? "unknown"}`));
+            }, timeoutMs);
+          }
+          proc.stdout.on("data", (chunk) => {
+            const text = partial + chunk.toString("utf8");
+            const parts = text.split("\n");
+            partial = parts.pop() ?? "";
+            for (const line of parts) {
+              outLines.push(line);
+              if (onLine)
+                onLine(line);
+            }
+          });
+          proc.stderr.on("data", (chunk) => err.push(chunk));
+          proc.on("close", (code) => {
+            if (settled)
+              return;
+            settled = true;
+            if (timer)
+              clearTimeout(timer);
+            if (partial) {
+              outLines.push(partial);
+              if (onLine)
+                onLine(partial);
+            }
+            resolve({
+              stdout: outLines.join("\n"),
+              stderr: Buffer.concat(err).toString("utf8"),
+              exitCode: code ?? 1
+            });
+          });
+          proc.on("error", (e) => {
+            if (settled)
+              return;
+            settled = true;
+            if (timer)
+              clearTimeout(timer);
+            resolve({ stdout: "", stderr: e.message, exitCode: 1 });
+          });
+        });
+      }
+      buildEnv(extra) {
+        return {
+          ...process.env,
+          RESTIC_REPOSITORY: this.config.repositoryUrl,
+          RESTIC_PASSWORD: this.config.password,
+          ...this.config.envVars,
+          ...extra
+        };
+      }
+      parseSummaryLine(stdout) {
+        const lines = stdout.trim().split("\n").filter(Boolean);
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const obj = JSON.parse(lines[i]);
+            if (obj.message_type === "summary")
+              return obj;
+          } catch {
+          }
+        }
+        throw new Error("restic backup did not emit a summary JSON line");
+      }
+    };
+    ResticError = class extends Error {
+      command;
+      result;
+      constructor(command, result) {
+        super(`restic ${command} failed (exit ${result.exitCode}): ${result.stderr.trim()}`);
+        this.command = command;
+        this.result = result;
+        this.name = "ResticError";
+      }
+    };
+  }
+});
+
+// ../engine/dist/types.js
+var init_types = __esm({
+  "../engine/dist/types.js"() {
+    "use strict";
+  }
+});
+
+// ../engine/dist/storage-cost.js
+var init_storage_cost = __esm({
+  "../engine/dist/storage-cost.js"() {
+    "use strict";
+  }
+});
+
+// ../engine/dist/index.js
+var init_dist = __esm({
+  "../engine/dist/index.js"() {
+    "use strict";
+    init_restic();
+    init_types();
+    init_storage_cost();
+  }
+});
+
 // src/docker-client.ts
 function getOpts() {
   const h = process.env["DOCKER_HOST"] ?? "unix:///var/run/docker.sock";
@@ -3699,11 +4092,210 @@ async function listComposeContainers(projectName) {
   const f = encodeURIComponent(JSON.stringify({ label: [`com.docker.compose.project=${projectName}`] }));
   return dockerReq("GET", `/v1.41/containers/json?filters=${f}&all=true`);
 }
+async function pauseContainer(id) {
+  await dockerReq("POST", `/v1.41/containers/${id}/pause`);
+}
+async function unpauseContainer(id) {
+  await dockerReq("POST", `/v1.41/containers/${id}/unpause`);
+}
+async function stopContainer(id, timeoutSec = 10) {
+  await dockerReq("POST", `/v1.41/containers/${id}/stop?t=${timeoutSec}`);
+}
+async function startContainer(id) {
+  await dockerReq("POST", `/v1.41/containers/${id}/start`);
+}
+async function inspectContainer(id) {
+  return dockerReq("GET", `/v1.41/containers/${id}/json`);
+}
+async function waitForRunning(id, timeoutMs = 3e4) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const info = await inspectContainer(id);
+    if (info.State.Status === "running") return;
+    await new Promise((r) => setTimeout(r, 1e3));
+  }
+  throw new Error(`Container ${id} did not reach 'running' within ${timeoutMs}ms`);
+}
 var http2;
 var init_docker_client = __esm({
   "src/docker-client.ts"() {
     "use strict";
     http2 = __toESM(require("http"));
+  }
+});
+
+// src/handlers/composeBackup.ts
+var composeBackup_exports = {};
+__export(composeBackup_exports, {
+  runComposeBackup: () => runComposeBackup
+});
+async function quiesce(containerId, strategy) {
+  switch (strategy) {
+    case "none":
+      return;
+    case "pause":
+      await pauseContainer(containerId);
+      return;
+    case "stop":
+      await stopContainer(containerId);
+      return;
+    case "apphook":
+      throw new Error("apphook quiescence not implemented yet (Task 8)");
+  }
+}
+async function resumeService(containerId, strategy) {
+  switch (strategy) {
+    case "none":
+      return;
+    case "pause":
+      await unpauseContainer(containerId);
+      return;
+    case "stop":
+      await startContainer(containerId);
+      await waitForRunning(containerId, 3e4);
+      return;
+    case "apphook":
+      return;
+  }
+}
+async function runComposeBackup(msg, send2, activeJobs2, binaryPath, ensureRepo) {
+  const { jobId, runId, config, repoId, repoUrl, repoPassword, envVars } = msg;
+  const ctrl = new AbortController();
+  activeJobs2.set(jobId, { ctrl, runId, phase: "starting", lastResticEventAt: Date.now(), cancelled: false });
+  const logLines = [];
+  const snapshotIds = [];
+  const agg = { filesNew: 0, filesChanged: 0, filesUnmodified: 0, dataAdded: 0, totalSize: 0, durationMs: 0 };
+  function setPhase(phase) {
+    const j = activeJobs2.get(jobId);
+    if (j) {
+      j.phase = phase;
+      j.lastResticEventAt = Date.now();
+    }
+  }
+  const makeEngine = () => new ResticEngine({
+    repositoryUrl: repoUrl,
+    password: repoPassword,
+    envVars: envVars ?? {},
+    binaryPath
+  });
+  try {
+    await ensureRepo(makeEngine(), repoId);
+    const services = config.services.filter((s) => s.included);
+    for (const service of services) {
+      if (service.includedVolumes.length === 0) {
+        logLines.push(`[compose] SKIP: "${service.serviceName}" \u2014 no included volumes`);
+        continue;
+      }
+      const containers = await listComposeContainers(config.projectName);
+      const target = containers.find(
+        (c) => (c.Labels["com.docker.compose.service"] ?? "") === service.serviceName
+      );
+      if (!target) {
+        logLines.push(`[compose] WARN: "${service.serviceName}" not found in Docker \u2014 skipping`);
+        continue;
+      }
+      setPhase("quiescing");
+      try {
+        await quiesce(target.Id, service.quiescence);
+        if (service.quiescence !== "none") {
+          logLines.push(`[compose] quiesced "${service.serviceName}" (${service.quiescence})`);
+        }
+      } catch (err) {
+        const e = err instanceof Error ? err.message : String(err);
+        logLines.push(`[compose] FAIL: quiesce "${service.serviceName}" \u2192 ${e}`);
+        throw new Error(`quiesce failed for "${service.serviceName}": ${e}`);
+      }
+      setPhase("uploading");
+      let volumeBackupOk = false;
+      try {
+        const paths = service.includedVolumes.map((v) => `/var/lib/docker/volumes/${v}/_data`);
+        const result = await makeEngine().backup({
+          paths,
+          tags: [
+            `job:${jobId}`,
+            `compose:${config.projectName}`,
+            `service:${service.serviceName}`
+          ],
+          signal: ctrl.signal
+        });
+        snapshotIds.push(result.snapshotId);
+        agg.filesNew += result.filesNew;
+        agg.filesChanged += result.filesChanged;
+        agg.filesUnmodified += result.filesUnmodified;
+        agg.dataAdded += result.dataAdded;
+        agg.totalSize += result.totalSize;
+        agg.durationMs += result.duration;
+        logLines.push(result.log);
+        volumeBackupOk = true;
+      } catch (err) {
+        const e = err instanceof Error ? err.message : String(err);
+        logLines.push(`[compose] FAIL: restic backup "${service.serviceName}" \u2192 ${e}`);
+        setPhase("resuming");
+        await resumeService(target.Id, service.quiescence).catch((re) => {
+          logLines.push(`[compose] WARN: resume "${service.serviceName}" after backup failure \u2192 ${re instanceof Error ? re.message : String(re)}`);
+        });
+        throw new Error(`backup failed for "${service.serviceName}": ${e}`);
+      }
+      if (volumeBackupOk) {
+        setPhase("resuming");
+        try {
+          await resumeService(target.Id, service.quiescence);
+          if (service.quiescence !== "none") {
+            logLines.push(`[compose] resumed "${service.serviceName}"`);
+          }
+        } catch (err) {
+          logLines.push(`[compose] WARN: resume "${service.serviceName}" failed \u2192 ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+    if (config.includeComposeFile && config.composeFilePath) {
+      setPhase("uploading");
+      try {
+        const result = await makeEngine().backup({
+          paths: [config.composeFilePath],
+          tags: [`job:${jobId}`, `compose:${config.projectName}`, "meta:compose-file"],
+          signal: ctrl.signal
+        });
+        snapshotIds.push(result.snapshotId);
+        logLines.push(result.log);
+      } catch (err) {
+        logLines.push(`[compose] WARN: backup of compose file failed \u2192 ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    setPhase("finalizing");
+    send2({
+      type: "backup_complete",
+      jobId,
+      snapshotId: snapshotIds[0] ?? "multi",
+      snapshotIds,
+      stats: {
+        filesNew: agg.filesNew,
+        filesChanged: agg.filesChanged,
+        filesUnmodified: agg.filesUnmodified,
+        dataAdded: agg.dataAdded,
+        totalFilesProcessed: agg.filesNew + agg.filesChanged + agg.filesUnmodified,
+        totalBytesProcessed: agg.totalSize,
+        durationMs: agg.durationMs
+      },
+      log: logLines.join("\n").slice(0, 1e6) || void 0
+    });
+  } catch (err) {
+    send2({
+      type: "backup_failed",
+      jobId,
+      error: err instanceof Error ? err.message : String(err),
+      detail: err instanceof Error && err.stack ? err.stack : "",
+      log: logLines.join("\n").slice(0, 1e6) || void 0
+    });
+  } finally {
+    activeJobs2.delete(jobId);
+  }
+}
+var init_composeBackup = __esm({
+  "src/handlers/composeBackup.ts"() {
+    "use strict";
+    init_dist();
+    init_docker_client();
   }
 });
 
@@ -3769,362 +4361,7 @@ var os = __toESM(require("os"));
 var import_crypto = require("crypto");
 var import_fs2 = require("fs");
 var import_child_process2 = require("child_process");
-
-// ../engine/dist/exec-allowed.js
-var import_node_child_process = require("node:child_process");
-var ALLOWED_COMMANDS = /* @__PURE__ */ new Set(["restic", "systemctl", "df", "hostname", "uname"]);
-function isAbsolutePathOfAllowed(command) {
-  for (const allowed of ALLOWED_COMMANDS) {
-    if (command.endsWith(`/${allowed}`))
-      return true;
-  }
-  return false;
-}
-function spawnAllowed(command, args, options) {
-  if (!ALLOWED_COMMANDS.has(command) && !isAbsolutePathOfAllowed(command)) {
-    throw new Error(`[exec-allowed] command "${command}" is not in the allowlist`);
-  }
-  return (0, import_node_child_process.spawn)(command, args, options ?? {});
-}
-
-// ../engine/dist/restic.js
-var MAX_LOG_BYTES = 1e6;
-function buildRunLog(stdout, stderr) {
-  const logLines = [];
-  for (const line of stdout.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed)
-      continue;
-    if (trimmed.startsWith("{")) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (parsed.message_type === "status")
-          continue;
-      } catch {
-      }
-    }
-    logLines.push(line);
-  }
-  for (const line of stderr.split("\n")) {
-    if (line.trim())
-      logLines.push(`[stderr] ${line}`);
-  }
-  const full = logLines.join("\n");
-  if (full.length > MAX_LOG_BYTES) {
-    return full.slice(-MAX_LOG_BYTES) + "\n[log truncated to last 1MB]";
-  }
-  return full;
-}
-var ResticEngine = class {
-  config;
-  binary;
-  constructor(config) {
-    this.config = config;
-    this.binary = config.binaryPath ?? "restic";
-  }
-  async init() {
-    const result = await this.run(["init"], void 0, 6e4);
-    if (result.exitCode !== 0) {
-      throw new ResticError("init", result);
-    }
-  }
-  async backup(opts) {
-    if (opts.preHook)
-      await opts.preHook();
-    let backupError;
-    let backupResult;
-    try {
-      const args = ["backup", "--json", "--no-scan"];
-      for (const path of opts.paths)
-        args.push(path);
-      if (opts.tags)
-        for (const t of opts.tags)
-          args.push("--tag", t);
-      if (opts.exclude)
-        for (const e of opts.exclude)
-          args.push("--exclude", e);
-      if (opts.excludeFile)
-        args.push("--exclude-file", opts.excludeFile);
-      if (opts.oneFileSystem)
-        args.push("--one-file-system");
-      if (opts.useVSS)
-        args.push("--use-fs-snapshot");
-      const result = await this.runStreaming(args, opts.onProgress ? (line) => {
-        try {
-          const obj = JSON.parse(line);
-          if (obj.message_type === "status") {
-            const s = obj;
-            opts.onProgress({
-              pct: s.percent_done,
-              bytesDone: s.bytes_done,
-              bytesTotal: s.total_bytes,
-              filesDone: s.files_done,
-              filesTotal: s.total_files,
-              secondsElapsed: s.seconds_elapsed,
-              secondsRemaining: s.seconds_remaining
-            });
-          }
-        } catch {
-        }
-      } : void 0, void 0, 144e5, opts.signal);
-      if (result.exitCode !== 0)
-        throw new ResticError("backup", result);
-      const summary = this.parseSummaryLine(result.stdout);
-      backupResult = {
-        snapshotId: summary.snapshot_id,
-        filesNew: summary.files_new,
-        filesChanged: summary.files_changed,
-        filesUnmodified: summary.files_unmodified,
-        dataAdded: summary.data_added,
-        totalSize: summary.total_bytes_processed,
-        duration: Math.round((summary.total_duration ?? 0) * 1e3),
-        log: buildRunLog(result.stdout, result.stderr)
-      };
-    } catch (err) {
-      backupError = err instanceof Error ? err : new Error(String(err));
-    }
-    if (opts.postHook)
-      await opts.postHook();
-    if (backupError)
-      throw backupError;
-    return backupResult;
-  }
-  async snapshots(tags) {
-    const args = ["snapshots", "--json"];
-    if (tags)
-      for (const t of tags)
-        args.push("--tag", t);
-    const result = await this.run(args, void 0, 3e4);
-    if (result.exitCode !== 0)
-      throw new ResticError("snapshots", result);
-    const raw = JSON.parse(result.stdout);
-    return raw.map((s) => ({
-      id: s.id,
-      time: s.time,
-      hostname: s.hostname,
-      paths: s.paths,
-      tags: s.tags,
-      username: s.username
-    }));
-  }
-  async ls(snapshotId) {
-    const result = await this.run(["ls", snapshotId, "--json"], void 0, 3e4);
-    if (result.exitCode !== 0)
-      throw new ResticError("ls", result);
-    const files = [];
-    for (const line of result.stdout.trim().split("\n")) {
-      if (!line)
-        continue;
-      const obj = JSON.parse(line);
-      if (obj.struct_type !== "node")
-        continue;
-      files.push({
-        name: obj.name,
-        type: obj.type,
-        path: obj.path,
-        size: obj.size,
-        mtime: obj.mtime,
-        permissions: obj.permissions
-      });
-    }
-    return files;
-  }
-  async check(readData = false) {
-    const args = ["check"];
-    if (readData)
-      args.push("--read-data");
-    const result = await this.run(args, void 0, 18e5);
-    const ok = result.exitCode === 0;
-    const lines = result.stderr.split("\n").filter(Boolean);
-    return {
-      ok,
-      errors: lines.filter((l) => l.includes("error")),
-      warnings: lines.filter((l) => l.includes("warning"))
-    };
-  }
-  async restore(snapshotId, target, include) {
-    const args = ["restore", snapshotId, "--target", target];
-    if (include)
-      for (const p of include)
-        args.push("--include", p);
-    const before = Date.now();
-    const result = await this.run(args, void 0, 144e5);
-    if (result.exitCode !== 0)
-      throw new ResticError("restore", result);
-    const match = result.stderr.match(/(\d+) files? restored/);
-    return {
-      filesRestored: match ? parseInt(match[1], 10) : 0,
-      totalSize: 0,
-      duration: Math.round((Date.now() - before) / 1e3)
-    };
-  }
-  async forget(policy, prune = true) {
-    const args = ["forget", "--json"];
-    if (policy.keepLast)
-      args.push("--keep-last", String(policy.keepLast));
-    if (policy.keepDaily)
-      args.push("--keep-daily", String(policy.keepDaily));
-    if (policy.keepWeekly)
-      args.push("--keep-weekly", String(policy.keepWeekly));
-    if (policy.keepMonthly)
-      args.push("--keep-monthly", String(policy.keepMonthly));
-    if (policy.keepYearly)
-      args.push("--keep-yearly", String(policy.keepYearly));
-    if (policy.keepTags)
-      for (const t of policy.keepTags)
-        args.push("--keep-tag", t);
-    if (prune)
-      args.push("--prune");
-    const result = await this.run(args, void 0, 18e5);
-    if (result.exitCode !== 0)
-      throw new ResticError("forget", result);
-    const raw = JSON.parse(result.stdout);
-    const entry = raw[0] ?? {};
-    return {
-      removed: entry.remove?.length ?? 0,
-      kept: entry.keep?.length ?? 0
-    };
-  }
-  async prune() {
-    const result = await this.run(["prune"], void 0, 18e5);
-    if (result.exitCode !== 0)
-      throw new ResticError("prune", result);
-  }
-  async stats() {
-    const result = await this.run(["stats", "--json"], void 0, 3e4);
-    if (result.exitCode !== 0)
-      throw new ResticError("stats", result);
-    const raw = JSON.parse(result.stdout);
-    return {
-      totalSize: raw.total_size,
-      totalUncompressedSize: raw.total_uncompressed_size,
-      compressionRatio: raw.compression_ratio,
-      totalBlobCount: raw.total_blob_count,
-      snapshotsCount: raw.snapshots_count
-    };
-  }
-  // Non-blocking — caller must unmount when done
-  mount(snapshotId, mountPoint) {
-    spawnAllowed(this.binary, ["mount", snapshotId, mountPoint], {
-      env: this.buildEnv(),
-      detached: true,
-      stdio: "ignore"
-    }).unref();
-  }
-  async unmount(mountPoint) {
-    const result = await this.run(["umount", mountPoint], void 0, 3e4);
-    if (result.exitCode !== 0)
-      throw new ResticError("umount", result);
-  }
-  // ── Private ──────────────────────────────────────────────────────────────
-  run(args, extraEnv, timeoutMs) {
-    return this.runStreaming(args, void 0, extraEnv, timeoutMs);
-  }
-  runStreaming(args, onLine, extraEnv, timeoutMs, signal) {
-    return new Promise((resolve, reject) => {
-      const proc = spawnAllowed(this.binary, args, {
-        env: this.buildEnv(extraEnv),
-        stdio: ["ignore", "pipe", "pipe"]
-      });
-      let settled = false;
-      if (signal) {
-        signal.addEventListener("abort", () => {
-          if (settled)
-            return;
-          proc.kill("SIGTERM");
-          setTimeout(() => {
-            if (!proc.killed && proc.exitCode === null)
-              proc.kill("SIGKILL");
-          }, 1e4);
-        }, { once: true });
-      }
-      const outLines = [];
-      const err = [];
-      let partial = "";
-      let timer;
-      if (timeoutMs) {
-        timer = setTimeout(() => {
-          if (settled)
-            return;
-          settled = true;
-          proc.kill("SIGTERM");
-          setTimeout(() => {
-            if (!proc.killed)
-              proc.kill("SIGKILL");
-          }, 1e4);
-          reject(new Error(`restic timed out after ${timeoutMs}ms during ${args[0] ?? "unknown"}`));
-        }, timeoutMs);
-      }
-      proc.stdout.on("data", (chunk) => {
-        const text = partial + chunk.toString("utf8");
-        const parts = text.split("\n");
-        partial = parts.pop() ?? "";
-        for (const line of parts) {
-          outLines.push(line);
-          if (onLine)
-            onLine(line);
-        }
-      });
-      proc.stderr.on("data", (chunk) => err.push(chunk));
-      proc.on("close", (code) => {
-        if (settled)
-          return;
-        settled = true;
-        if (timer)
-          clearTimeout(timer);
-        if (partial) {
-          outLines.push(partial);
-          if (onLine)
-            onLine(partial);
-        }
-        resolve({
-          stdout: outLines.join("\n"),
-          stderr: Buffer.concat(err).toString("utf8"),
-          exitCode: code ?? 1
-        });
-      });
-      proc.on("error", (e) => {
-        if (settled)
-          return;
-        settled = true;
-        if (timer)
-          clearTimeout(timer);
-        resolve({ stdout: "", stderr: e.message, exitCode: 1 });
-      });
-    });
-  }
-  buildEnv(extra) {
-    return {
-      ...process.env,
-      RESTIC_REPOSITORY: this.config.repositoryUrl,
-      RESTIC_PASSWORD: this.config.password,
-      ...this.config.envVars,
-      ...extra
-    };
-  }
-  parseSummaryLine(stdout) {
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const obj = JSON.parse(lines[i]);
-        if (obj.message_type === "summary")
-          return obj;
-      } catch {
-      }
-    }
-    throw new Error("restic backup did not emit a summary JSON line");
-  }
-};
-var ResticError = class extends Error {
-  command;
-  result;
-  constructor(command, result) {
-    super(`restic ${command} failed (exit ${result.exitCode}): ${result.stderr.trim()}`);
-    this.command = command;
-    this.result = result;
-    this.name = "ResticError";
-  }
-};
+init_dist();
 
 // src/system-uptime.ts
 var import_node_fs = require("node:fs");
@@ -4351,7 +4588,7 @@ setInterval(() => {
       type: "backup_heartbeat",
       jobId,
       runId: job.runId,
-      phase: job.phase,
+      phase: job.phase ?? "starting",
       lastResticEventAt: job.lastResticEventAt
     });
   }
@@ -4426,7 +4663,10 @@ async function handleMessage(raw) {
   } else if (msg.type === "verify_repo") {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars);
   } else if (msg.type === "run_compose_backup") {
-    send({ type: "backup_failed", jobId: msg.jobId, error: "compose backup execution not implemented yet (Task 7)", detail: "" });
+    void (async () => {
+      const { runComposeBackup: runComposeBackup2 } = await Promise.resolve().then(() => (init_composeBackup(), composeBackup_exports));
+      await runComposeBackup2(msg, send, activeJobs, BINARY, ensureRepoInitialized);
+    })();
   } else if (msg.type === "list_compose_project") {
     void (async () => {
       try {
