@@ -1,6 +1,6 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq, and, lt, lte, isNotNull } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq, and, or, lt, lte, isNotNull, isNull } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
@@ -49,8 +49,8 @@ export async function initScheduler(): Promise<void> {
     console.log(`[scheduler] Scheduled "${job.name}" (${job.schedule})`)
   }
 
-  // Trigger-driven tick: fire any job with nextRunAt <= now (Run Now, SQL trigger, etc.)
-  setInterval(() => { void triggerTick(db) }, 5_000)
+  // Trigger-driven tick: fire any job with nextRunAt <= now; also sweep for stuck runs
+  setInterval(() => { void triggerTick(db); void checkRunHealth(db) }, 5_000)
   console.log('[scheduler] Trigger tick active (5s interval)')
 
   // Check for disconnected agents every 5 minutes
@@ -326,6 +326,49 @@ async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
   }
 }
 
+async function markRunFailed(db: Db, runId: string, errorMessage: string): Promise<void> {
+  await db.update(backupRuns).set({
+    status: 'failed', completedAt: new Date(), errorMessage,
+  }).where(eq(backupRuns.id, runId))
+}
+
+async function checkRunHealth(db: Db): Promise<void> {
+  const heartbeatCutoff = new Date(Date.now() - 60_000)       // 60s
+  const fatalCutoff     = new Date(Date.now() - 5 * 60_000)   // 5min
+
+  const stale = await db.select().from(backupRuns).where(
+    and(
+      eq(backupRuns.status, 'running'),
+      or(
+        and(isNull(backupRuns.lastHeartbeatAt), lt(backupRuns.startedAt, fatalCutoff)),
+        lt(backupRuns.lastHeartbeatAt, heartbeatCutoff),
+      ),
+    ),
+  ).all()
+
+  for (const run of stale) {
+    const heartbeatAge = run.lastHeartbeatAt ? Date.now() - run.lastHeartbeatAt.getTime() : null
+    const startAge     = Date.now() - run.startedAt.getTime()
+
+    if (heartbeatAge !== null && heartbeatAge < 5 * 60_000) {
+      // Stale 60s–5min: only kill if the agent is also disconnected
+      const alive = run.agentId ? connectedAgentIds().includes(run.agentId) : false
+      if (alive) continue
+      await markRunFailed(db, run.id, `agent disconnected, no heartbeat for ${Math.round(heartbeatAge / 1000)}s`)
+      continue
+    }
+
+    // Fatal: > 5min or never heartbeat
+    await markRunFailed(
+      db,
+      run.id,
+      heartbeatAge !== null
+        ? `no heartbeat for ${Math.round(heartbeatAge / 1000)}s — run abandoned`
+        : `no heartbeat received and run started ${Math.round(startAge / 1000)}s ago — agent likely never started restic`,
+    )
+  }
+}
+
 // In-memory set prevents duplicate missed-backup alerts within a server session
 const missedAlertSent = new Set<string>()
 
@@ -372,21 +415,4 @@ async function checkAgents(db: Db): Promise<void> {
     await sendAlert('agent_disconnected', { agentId: agent.id, agentName: agent.name })
   }
 
-  // Mark runs stuck in 'running' for more than 2 hours as failed
-  const staleRunCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000)
-  const staleRuns = await db
-    .select()
-    .from(backupRuns)
-    .where(and(eq(backupRuns.status, 'running'), lt(backupRuns.startedAt, staleRunCutoff)))
-    .all()
-
-  for (const run of staleRuns) {
-    await db.update(backupRuns).set({
-      status: 'failed', completedAt: new Date(),
-      errorMessage: 'Run timed out — no completion message received from agent',
-    }).where(eq(backupRuns.id, run.id))
-    if (run.jobId) {
-      await db.update(backupJobs).set({ lastRunStatus: 'failed' }).where(eq(backupJobs.id, run.jobId))
-    }
-  }
 }

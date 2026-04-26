@@ -492,6 +492,11 @@ void app.prepare().then(() => {
         if (agentId) {
           unregisterAgent(agentId)
           await db.update(agents).set({ status: 'disconnected' }).where(eq(agents.id, agentId))
+          // Immediately fail any runs in-flight on this agent
+          await db.update(backupRuns).set({
+            status: 'failed', completedAt: new Date(),
+            errorMessage: 'agent disconnected mid-run',
+          }).where(and(eq(backupRuns.agentId, agentId), eq(backupRuns.status, 'running')))
           await db.insert(auditLog).values({
             id: crypto.randomUUID(), action: 'agent_disconnected',
             resourceType: 'agent', resourceId: agentId,
