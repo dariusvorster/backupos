@@ -14,10 +14,13 @@ import { triggerJob, saveJobRetention, cancelJob, retryRun } from '@/app/actions
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
-function fmtDuration(s: number | null): string {
-  if (s == null) return '—'
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return '—'
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const minutes = Math.floor(ms / 60_000)
+  const seconds = Math.round((ms % 60_000) / 1000)
+  return `${minutes}m ${seconds}s`
 }
 
 function fmtBytes(b: number | null): string {

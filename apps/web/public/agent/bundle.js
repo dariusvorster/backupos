@@ -3657,6 +3657,33 @@ var os = __toESM(require("os"));
 
 // ../engine/dist/restic.js
 var import_child_process = require("child_process");
+var MAX_LOG_BYTES = 1e6;
+function buildRunLog(stdout, stderr) {
+  const logLines = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed)
+      continue;
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed.message_type === "status")
+          continue;
+      } catch {
+      }
+    }
+    logLines.push(line);
+  }
+  for (const line of stderr.split("\n")) {
+    if (line.trim())
+      logLines.push(`[stderr] ${line}`);
+  }
+  const full = logLines.join("\n");
+  if (full.length > MAX_LOG_BYTES) {
+    return full.slice(-MAX_LOG_BYTES) + "\n[log truncated to last 1MB]";
+  }
+  return full;
+}
 var ResticEngine = class {
   config;
   binary;
@@ -3719,7 +3746,8 @@ var ResticEngine = class {
         filesUnmodified: summary.files_unmodified,
         dataAdded: summary.data_added,
         totalSize: summary.total_bytes_processed,
-        duration: Math.round(summary.total_duration)
+        duration: Math.round((summary.total_duration ?? 0) * 1e3),
+        log: buildRunLog(result.stdout, result.stderr)
       };
     } catch (err) {
       backupError = err instanceof Error ? err : new Error(String(err));
@@ -4082,6 +4110,7 @@ async function runBackup(jobId, config) {
   activeJobs.set(jobId, ctrl);
   send({ type: "backup_start", jobId, config });
   console.log(`[agent] Starting backup for job ${jobId} \u2014 paths: ${config.paths.join(", ")}`);
+  let runLog = "";
   try {
     if (!config.repoPassword) {
       throw new Error("runBackup: repoPassword is missing from dispatch payload. Server-side dispatch is broken \u2014 check that decryptField(repo.resticPassword) is being included in the WS message.");
@@ -4110,10 +4139,12 @@ async function runBackup(jobId, config) {
         });
       }
     });
+    runLog = result.log;
     send({
       type: "backup_complete",
       jobId,
       snapshotId: result.snapshotId,
+      log: result.log,
       stats: {
         filesNew: result.filesNew,
         filesChanged: result.filesChanged,
@@ -4121,14 +4152,14 @@ async function runBackup(jobId, config) {
         dataAdded: result.dataAdded,
         totalFilesProcessed: result.filesNew + result.filesChanged + result.filesUnmodified,
         totalBytesProcessed: result.totalSize ?? 0,
-        durationSeconds: result.duration ?? 0
+        durationMs: result.duration ?? 0
       }
     });
     console.log(`[agent] Backup complete \u2014 snapshot ${result.snapshotId}`);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     const detail = err instanceof Error && err.stack ? err.stack : "";
-    send({ type: "backup_failed", jobId, error, detail });
+    send({ type: "backup_failed", jobId, error, detail, log: runLog || void 0 });
     console.error(`[agent] Backup failed for job ${jobId}:`, error);
   } finally {
     activeJobs.delete(jobId);

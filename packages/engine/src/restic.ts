@@ -19,6 +19,31 @@ import type {
   ResticLsNodeJson,
 } from './types'
 
+const MAX_LOG_BYTES = 1_000_000
+
+function buildRunLog(stdout: string, stderr: string): string {
+  const logLines: string[] = []
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as { message_type?: string }
+        if (parsed.message_type === 'status') continue
+      } catch { /* not JSON — keep the line */ }
+    }
+    logLines.push(line)
+  }
+  for (const line of stderr.split('\n')) {
+    if (line.trim()) logLines.push(`[stderr] ${line}`)
+  }
+  const full = logLines.join('\n')
+  if (full.length > MAX_LOG_BYTES) {
+    return full.slice(-MAX_LOG_BYTES) + '\n[log truncated to last 1MB]'
+  }
+  return full
+}
+
 export class ResticEngine {
   private readonly binary: string
 
@@ -83,7 +108,8 @@ export class ResticEngine {
         filesUnmodified: summary.files_unmodified,
         dataAdded:       summary.data_added,
         totalSize:       summary.total_bytes_processed,
-        duration:        Math.round(summary.total_duration),
+        duration:        Math.round((summary.total_duration ?? 0) * 1000),
+        log:             buildRunLog(result.stdout, result.stderr),
       }
     } catch (err) {
       backupError = err instanceof Error ? err : new Error(String(err))

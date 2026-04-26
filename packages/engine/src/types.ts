@@ -45,7 +45,8 @@ export interface BackupResult {
   filesUnmodified: number
   dataAdded: number   // bytes
   totalSize: number   // bytes
-  duration: number    // seconds
+  duration: number    // milliseconds
+  log: string
 }
 
 export interface Snapshot {
