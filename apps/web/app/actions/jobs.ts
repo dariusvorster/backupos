@@ -124,61 +124,13 @@ async function resolveBandwidthLimitKbps(db: ReturnType<typeof getDb>, jobId: st
 }
 
 export async function triggerJob(id: string): Promise<void> {
-  const db  = getDb()
-  const now = new Date()
+  const db = getDb()
 
   const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, id)).limit(1)
   if (!job || !job.repositoryId) { redirect(`/jobs/${id}`) }
 
-  const bandwidthLimitKbps = await resolveBandwidthLimitKbps(db, id)
-  const runId = crypto.randomUUID()
-
-  await db.insert(backupRuns).values({
-    id:           runId,
-    jobId:        id,
-    repositoryId: job.repositoryId,
-    agentId:      job.agentId ?? null,
-    status:       'running',
-    trigger:      'manual',
-    startedAt:    now,
-    bandwidthLimitKbps,
-  })
-  await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, id))
-
-  if (job.agentId) {
-    const [repo] = await db.select().from(repositories)
-      .where(eq(repositories.id, job.repositoryId!)).limit(1)
-
-    if (repo) {
-      const repoConfig = JSON.parse(decryptField(repo.config)) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
-      const srcConfig  = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
-      const tags       = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${id}`]
-
-      const paths = job.sourceType === 'docker_volume'
-        ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
-        : (srcConfig.paths ?? [])
-
-      const result = await dispatchToAgent(job.agentId, {
-        type:   'run_backup',
-        jobId:  id,
-        config: {
-          repoId:       job.repositoryId!,
-          repoUrl:      repoConfig.repositoryUrl,
-          repoPassword: repoConfig.password,
-          paths,
-          exclude:      srcConfig.exclude,
-          tags,
-          envVars:      repoConfig.envVars,
-        },
-      })
-      if (!result.ok) {
-        console.error('[triggerJob] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
-      }
-    }
-  } else {
-    // No agent assigned — run locally in a detached promise
-    void import('@/lib/scheduler').then(({ executeRun }) => executeRun(id, runId))
-  }
+  // Set nextRunAt to now — the scheduler trigger tick (≤5s) picks it up and dispatches
+  await db.update(backupJobs).set({ nextRunAt: new Date() }).where(eq(backupJobs.id, id))
 
   redirect(`/jobs/${id}`)
 }
