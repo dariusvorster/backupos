@@ -81,7 +81,7 @@ async function stampNextRun(db: Db, jobId: string, schedule: string): Promise<vo
 }
 
 // executeRun performs local restic execution for an already-inserted backupRun row.
-// Called by both the scheduler (runJob) and manual triggers (triggerJob server action).
+// Called only for no-agent manual retries (retryRun in jobs.ts when job.agentId is null).
 export async function executeRun(jobId: string, runId: string): Promise<void> {
   const db = getDb()
   const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
@@ -163,26 +163,56 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
   return true
 }
 
+/**
+ * Dispatches a job to its assigned agent.
+ *
+ * INVARIANT: This function NEVER executes backups locally on the BackupOS server.
+ * All backup execution happens on agents. If the agent is unreachable, the run is
+ * marked failed with a clear error message.
+ *
+ * Adding any local-execution fallback here is a regression. Phase A Item 3 and this
+ * fix (2026-04-26) explicitly removed all such fallbacks because they:
+ *   1. Don't work for most source types (compose, proxmox, docker_volume, etc.)
+ *   2. Produce misleading errors when they fail (e.g., "No backup paths configured")
+ *   3. Hide the real problem (agent connectivity) behind opaque restic errors
+ */
 async function runJob(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<void> {
   if (!job.repositoryId) return
 
-  // Prefer agent execution when one is assigned and currently connected
-  if (job.agentId && connectedAgentIds().includes(job.agentId)) {
-    const dispatched = await dispatchToAgent(db, job, trigger)
-    if (dispatched) return
+  const now = new Date()
+
+  if (!job.agentId) {
+    await db.insert(backupRuns).values({
+      id:           crypto.randomUUID(),
+      jobId:        job.id,
+      repositoryId: job.repositoryId,
+      status:       'failed',
+      trigger,
+      startedAt:    now,
+      completedAt:  now,
+      errorMessage: 'job has no agent assigned — set an agent on this job',
+    })
+    await db.update(backupJobs).set({ lastRunAt: now, lastRunStatus: 'failed' }).where(eq(backupJobs.id, job.id))
+    return
   }
 
-  const runId = crypto.randomUUID()
-  await db.insert(backupRuns).values({
-    id:           runId,
-    jobId:        job.id,
-    repositoryId: job.repositoryId,
-    agentId:      job.agentId ?? null,
-    status:       'running',
-    trigger,
-    startedAt:    new Date(),
-  })
-  await runJobCore(db, job, runId)
+  if (!connectedAgentIds().includes(job.agentId)) {
+    await db.insert(backupRuns).values({
+      id:           crypto.randomUUID(),
+      jobId:        job.id,
+      repositoryId: job.repositoryId,
+      agentId:      job.agentId,
+      status:       'failed',
+      trigger,
+      startedAt:    now,
+      completedAt:  now,
+      errorMessage: `agent ${job.agentId} is not connected — backup deferred until agent reconnects`,
+    })
+    await db.update(backupJobs).set({ lastRunAt: now, lastRunStatus: 'failed' }).where(eq(backupJobs.id, job.id))
+    return
+  }
+
+  await dispatchToAgent(db, job, trigger)
 }
 
 async function triggerTick(db: Db): Promise<void> {
