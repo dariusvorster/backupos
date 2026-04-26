@@ -227,6 +227,9 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
   } else if (msg.type === 'verify_repo') {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars)
 
+  } else if (msg.type === 'run_compose_backup') {
+    send({ type: 'backup_failed', jobId: msg.jobId, error: 'compose backup execution not implemented yet (Task 7)', detail: '' })
+
   } else if (msg.type === 'list_compose_project') {
     void (async () => {
       try {

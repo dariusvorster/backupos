@@ -5,7 +5,7 @@ import { decryptField } from './repo-crypto'
 import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
-import type { ServerMessage, MountConfig } from '@backupos/agent-protocol'
+import type { ServerMessage, MountConfig, ComposeProjectConfig } from '@backupos/agent-protocol'
 
 interface RepoConfig {
   repositoryUrl: string
@@ -96,12 +96,9 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
     .where(eq(repositories.id, job.repositoryId)).limit(1)
   if (!repo) return false
 
-  const cfg       = JSON.parse(decryptField(repo.config)) as Record<string, string>
-  const password  = decryptField(repo.resticPassword)
+  const cfg      = JSON.parse(decryptField(repo.config)) as Record<string, string>
+  const password = decryptField(repo.resticPassword)
   if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
-  const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
-  const paths     = resolveBackupPaths(job.sourceType, srcConfig)
-  if (paths.length === 0) return false
 
   const runId = crypto.randomUUID()
   const now   = new Date()
@@ -110,26 +107,45 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
     id: runId, jobId: job.id, repositoryId: job.repositoryId,
     agentId: job.agentId, status: 'running', trigger, startedAt: now,
   })
-
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, job.id))
 
-  const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
-  const mountConfig = cfg['mountConfig'] ? (JSON.parse(cfg['mountConfig']) as MountConfig) : undefined
-
-  const msg: ServerMessage = {
-    type:   'run_backup',
-    jobId:  job.id,
-    runId,
-    config: {
+  let msg: ServerMessage
+  if (job.sourceType === 'compose_project') {
+    const composeConfig = JSON.parse(job.sourceConfig) as ComposeProjectConfig
+    msg = {
+      type:         'run_compose_backup',
+      jobId:        job.id,
+      runId,
+      config:       composeConfig,
       repoId:       job.repositoryId ?? '',
       repoUrl:      cfg['repositoryUrl'] ?? '',
       repoPassword: password,
-      paths,
-      exclude:  srcConfig.exclude,
-      tags,
-      envVars:  cfg,
-      mountConfig,
-    },
+      envVars:      cfg,
+    }
+  } else {
+    const srcConfig   = JSON.parse(job.sourceConfig) as SourceConfig
+    const paths       = resolveBackupPaths(job.sourceType, srcConfig)
+    if (paths.length === 0) {
+      await db.update(backupRuns).set({ status: 'failed', completedAt: now, errorMessage: 'No backup paths resolved' }).where(eq(backupRuns.id, runId))
+      return false
+    }
+    const tags        = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
+    const mountConfig = cfg['mountConfig'] ? (JSON.parse(cfg['mountConfig']) as MountConfig) : undefined
+    msg = {
+      type:   'run_backup',
+      jobId:  job.id,
+      runId,
+      config: {
+        repoId:       job.repositoryId ?? '',
+        repoUrl:      cfg['repositoryUrl'] ?? '',
+        repoPassword: password,
+        paths,
+        exclude:      srcConfig.exclude,
+        tags,
+        envVars:      cfg,
+        mountConfig,
+      },
+    }
   }
 
   const sent = dispatch(job.agentId, msg)
@@ -143,7 +159,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
 
   // Reset nextRunAt so the trigger tick doesn't re-fire this job
   await stampNextRun(db, job.id, job.schedule)
-  console.log(`[scheduler] Dispatched job "${job.name}" to agent ${job.agentId}`)
+  console.log(`[scheduler] Dispatched job "${job.name}" (${job.sourceType}) to agent ${job.agentId}`)
   return true
 }
 
