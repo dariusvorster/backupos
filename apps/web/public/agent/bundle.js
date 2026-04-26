@@ -3724,8 +3724,8 @@ var init_restic = __esm({
         let backupResult;
         try {
           const args = ["backup", "--json", "--no-scan"];
-          for (const path of opts.paths)
-            args.push(path);
+          for (const path2 of opts.paths)
+            args.push(path2);
           if (opts.tags)
             for (const t of opts.tags)
               args.push("--tag", t);
@@ -4051,14 +4051,14 @@ function getOpts() {
   }
   throw new Error(`Unsupported DOCKER_HOST: ${h}`);
 }
-function dockerReq(method, path, body) {
+function dockerReq(method, path2, body) {
   return new Promise((resolve, reject) => {
     const opts = getOpts();
     const payload = body ? JSON.stringify(body) : void 0;
-    const timer = setTimeout(() => reject(new Error(`Docker ${method} ${path} timeout`)), 3e4);
+    const timer = setTimeout(() => reject(new Error(`Docker ${method} ${path2} timeout`)), 3e4);
     const reqOpts = {
       method,
-      path,
+      path: path2,
       ...opts,
       headers: payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}
     };
@@ -4076,7 +4076,7 @@ function dockerReq(method, path, body) {
             resolve(data);
           }
         } else {
-          reject(new Error(`Docker ${method} ${path} \u2192 HTTP ${res.statusCode ?? "?"}: ${data}`));
+          reject(new Error(`Docker ${method} ${path2} \u2192 HTTP ${res.statusCode ?? "?"}: ${data}`));
         }
       });
     });
@@ -4124,6 +4124,155 @@ var init_docker_client = __esm({
   }
 });
 
+// src/exec-allowed.ts
+function spawnAllowed2(cmd, args, opts = {}) {
+  if (!ALLOWED_COMMANDS2.has(cmd)) {
+    return Promise.reject(new Error(`exec-allowed: "${cmd}" is not permitted`));
+  }
+  return new Promise((resolve, reject) => {
+    const proc = (0, import_child_process2.spawn)(cmd, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: opts.env ?? process.env
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout?.on("data", (d) => {
+      stdout += d.toString();
+    });
+    proc.stderr?.on("data", (d) => {
+      stderr += d.toString();
+    });
+    proc.on("error", (err) => reject(err));
+    proc.on("close", (code) => {
+      if (code === 0) resolve({ stdout, stderr });
+      else reject(new Error(`${cmd} exited with code ${code}${stderr ? ": " + stderr.trim() : ""}`));
+    });
+  });
+}
+var import_child_process2, ALLOWED_COMMANDS2;
+var init_exec_allowed2 = __esm({
+  "src/exec-allowed.ts"() {
+    "use strict";
+    import_child_process2 = require("child_process");
+    ALLOWED_COMMANDS2 = /* @__PURE__ */ new Set([
+      "restic",
+      "pg_dump",
+      "mysqldump",
+      "redis-cli",
+      "sqlite3",
+      "docker"
+    ]);
+  }
+});
+
+// src/handlers/apphooks.ts
+async function dumpPostgres(cfg, dest) {
+  const password = cfg.passwordEnv ? process.env[cfg.passwordEnv] : void 0;
+  if (!password && cfg.passwordEnv) {
+    throw new Error(`apphook postgres: env var "${cfg.passwordEnv}" is not set in agent environment`);
+  }
+  const args = [
+    "-h",
+    cfg.host ?? "localhost",
+    "-p",
+    String(cfg.port ?? 5432),
+    "-U",
+    cfg.username ?? "postgres",
+    "-d",
+    cfg.database ?? cfg.username ?? "postgres",
+    "--format=custom",
+    "--file",
+    dest
+  ];
+  const env = { ...process.env, PGPASSWORD: password ?? "" };
+  await spawnAllowed2("pg_dump", args, { env });
+}
+async function dumpMysql(cfg, dest) {
+  const password = cfg.passwordEnv ? process.env[cfg.passwordEnv] : void 0;
+  if (!password && cfg.passwordEnv) {
+    throw new Error(`apphook mysql: env var "${cfg.passwordEnv}" is not set in agent environment`);
+  }
+  const args = [
+    `-h${cfg.host ?? "localhost"}`,
+    `-P${String(cfg.port ?? 3306)}`,
+    `-u${cfg.username ?? "root"}`,
+    "--single-transaction",
+    "--routines",
+    "--triggers",
+    "--result-file",
+    dest,
+    cfg.database ?? ""
+  ].filter(Boolean);
+  const env = { ...process.env, ...password ? { MYSQL_PWD: password } : {} };
+  await spawnAllowed2("mysqldump", args, { env });
+}
+function redisEnv(cfg) {
+  const password = cfg.passwordEnv ? process.env[cfg.passwordEnv] : void 0;
+  return { ...process.env, ...password ? { REDISCLI_AUTH: password } : {} };
+}
+async function getRedisLastSave(cfg) {
+  const args = [
+    "-h",
+    cfg.host ?? "localhost",
+    "-p",
+    String(cfg.port ?? 6379),
+    "LASTSAVE"
+  ];
+  const { stdout } = await spawnAllowed2("redis-cli", args, { env: redisEnv(cfg) });
+  return parseInt(stdout.trim(), 10) || 0;
+}
+async function dumpRedis(cfg, container, dest) {
+  const env = redisEnv(cfg);
+  const connArgs = [
+    "-h",
+    cfg.host ?? "localhost",
+    "-p",
+    String(cfg.port ?? 6379)
+  ];
+  const initialLastSave = await getRedisLastSave(cfg);
+  await spawnAllowed2("redis-cli", [...connArgs, "BGSAVE"], { env });
+  const deadline = Date.now() + 6e4;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1e3));
+    const current = await getRedisLastSave(cfg);
+    if (current > initialLastSave) {
+      await spawnAllowed2("docker", ["cp", `${container.Id}:/data/dump.rdb`, dest]);
+      return;
+    }
+  }
+  throw new Error("apphook redis: BGSAVE did not complete within 60s");
+}
+async function dumpSqlite(cfg, container, dest) {
+  if (!cfg.dbPath) throw new Error("apphook sqlite: dbPath is required");
+  const insidePath = `/tmp/backupos-sqlite-${Date.now()}.db`;
+  await spawnAllowed2("docker", ["exec", container.Id, "sqlite3", cfg.dbPath, `.backup ${insidePath}`]);
+  await spawnAllowed2("docker", ["cp", `${container.Id}:${insidePath}`, dest]);
+  await spawnAllowed2("docker", ["exec", container.Id, "rm", "-f", insidePath]).catch(() => {
+  });
+}
+async function runApphook(service, container, dest) {
+  const cfg = service.apphookConfig;
+  if (!cfg) throw new Error(`apphook: no config for service "${service.serviceName}"`);
+  switch (service.apphookType) {
+    case "postgres":
+      return dumpPostgres(cfg, dest);
+    case "mysql":
+      return dumpMysql(cfg, dest);
+    case "redis":
+      return dumpRedis(cfg, container, dest);
+    case "sqlite":
+      return dumpSqlite(cfg, container, dest);
+    default:
+      throw new Error(`apphook: unknown type "${String(service.apphookType)}"`);
+  }
+}
+var init_apphooks = __esm({
+  "src/handlers/apphooks.ts"() {
+    "use strict";
+    init_exec_allowed2();
+  }
+});
+
 // src/handlers/composeBackup.ts
 var composeBackup_exports = {};
 __export(composeBackup_exports, {
@@ -4140,7 +4289,7 @@ async function quiesce(containerId, strategy) {
       await stopContainer(containerId);
       return;
     case "apphook":
-      throw new Error("apphook quiescence not implemented yet (Task 8)");
+      throw new Error("apphook must be handled before quiesce is called");
   }
 }
 async function resumeService(containerId, strategy) {
@@ -4178,11 +4327,12 @@ async function runComposeBackup(msg, send2, activeJobs2, binaryPath, ensureRepo)
     envVars: envVars ?? {},
     binaryPath
   });
+  const tmpDir = path.join(os.tmpdir(), "backupos-apphooks", jobId);
   try {
     await ensureRepo(makeEngine(), repoId);
-    const services = config.services.filter((s) => s.included);
+    const services = config.services?.filter((s) => s.included) ?? [];
     for (const service of services) {
-      if (service.includedVolumes.length === 0) {
+      if (service.includedVolumes.length === 0 && service.quiescence !== "apphook") {
         logLines.push(`[compose] SKIP: "${service.serviceName}" \u2014 no included volumes`);
         continue;
       }
@@ -4194,21 +4344,52 @@ async function runComposeBackup(msg, send2, activeJobs2, binaryPath, ensureRepo)
         logLines.push(`[compose] WARN: "${service.serviceName}" not found in Docker \u2014 skipping`);
         continue;
       }
-      setPhase("quiescing");
-      try {
-        await quiesce(target.Id, service.quiescence);
-        if (service.quiescence !== "none") {
-          logLines.push(`[compose] quiesced "${service.serviceName}" (${service.quiescence})`);
+      let extraPaths = [];
+      let cleanupDump = async () => {
+      };
+      if (service.quiescence === "apphook") {
+        setPhase("uploading");
+        if (!service.apphookConfig) {
+          logLines.push(`[compose] FAIL: apphook config missing for "${service.serviceName}"`);
+          throw new Error(`apphook config missing for "${service.serviceName}"`);
         }
-      } catch (err) {
-        const e = err instanceof Error ? err.message : String(err);
-        logLines.push(`[compose] FAIL: quiesce "${service.serviceName}" \u2192 ${e}`);
-        throw new Error(`quiesce failed for "${service.serviceName}": ${e}`);
+        await fs.mkdir(tmpDir, { recursive: true });
+        const dumpFile = path.join(tmpDir, `${service.serviceName}.dump`);
+        try {
+          await runApphook(service, target, dumpFile);
+          extraPaths = [dumpFile];
+          cleanupDump = async () => {
+            try {
+              await fs.unlink(dumpFile);
+            } catch {
+            }
+          };
+          logLines.push(`[compose] apphook "${service.serviceName}" (${service.apphookType ?? "unknown"}) \u2014 dump ready`);
+        } catch (err) {
+          const e = err instanceof Error ? err.message : String(err);
+          logLines.push(`[compose] FAIL: apphook "${service.serviceName}" \u2192 ${e}`);
+          throw new Error(`apphook failed for "${service.serviceName}": ${e}`);
+        }
+      } else {
+        setPhase("quiescing");
+        try {
+          await quiesce(target.Id, service.quiescence);
+          if (service.quiescence !== "none") {
+            logLines.push(`[compose] quiesced "${service.serviceName}" (${service.quiescence})`);
+          }
+        } catch (err) {
+          const e = err instanceof Error ? err.message : String(err);
+          logLines.push(`[compose] FAIL: quiesce "${service.serviceName}" \u2192 ${e}`);
+          throw new Error(`quiesce failed for "${service.serviceName}": ${e}`);
+        }
       }
       setPhase("uploading");
       let volumeBackupOk = false;
       try {
-        const paths = service.includedVolumes.map((v) => `/var/lib/docker/volumes/${v}/_data`);
+        const paths = [
+          ...service.includedVolumes.map((v) => `/var/lib/docker/volumes/${v}/_data`),
+          ...extraPaths
+        ];
         const result = await makeEngine().backup({
           paths,
           tags: [
@@ -4230,13 +4411,17 @@ async function runComposeBackup(msg, send2, activeJobs2, binaryPath, ensureRepo)
       } catch (err) {
         const e = err instanceof Error ? err.message : String(err);
         logLines.push(`[compose] FAIL: restic backup "${service.serviceName}" \u2192 ${e}`);
-        setPhase("resuming");
-        await resumeService(target.Id, service.quiescence).catch((re) => {
-          logLines.push(`[compose] WARN: resume "${service.serviceName}" after backup failure \u2192 ${re instanceof Error ? re.message : String(re)}`);
-        });
+        if (service.quiescence !== "apphook") {
+          setPhase("resuming");
+          await resumeService(target.Id, service.quiescence).catch((re) => {
+            logLines.push(`[compose] WARN: resume "${service.serviceName}" after backup failure \u2192 ${re instanceof Error ? re.message : String(re)}`);
+          });
+        }
         throw new Error(`backup failed for "${service.serviceName}": ${e}`);
+      } finally {
+        await cleanupDump();
       }
-      if (volumeBackupOk) {
+      if (volumeBackupOk && service.quiescence !== "apphook") {
         setPhase("resuming");
         try {
           await resumeService(target.Id, service.quiescence);
@@ -4288,14 +4473,21 @@ async function runComposeBackup(msg, send2, activeJobs2, binaryPath, ensureRepo)
       log: logLines.join("\n").slice(0, 1e6) || void 0
     });
   } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+    });
     activeJobs2.delete(jobId);
   }
 }
+var fs, os, path;
 var init_composeBackup = __esm({
   "src/handlers/composeBackup.ts"() {
     "use strict";
+    fs = __toESM(require("fs/promises"));
+    os = __toESM(require("os"));
+    path = __toESM(require("path"));
     init_dist();
     init_docker_client();
+    init_apphooks();
   }
 });
 
@@ -4357,10 +4549,10 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
 
 // src/agent.ts
-var os = __toESM(require("os"));
+var os2 = __toESM(require("os"));
 var import_crypto = require("crypto");
 var import_fs2 = require("fs");
-var import_child_process2 = require("child_process");
+var import_child_process3 = require("child_process");
 init_dist();
 
 // src/system-uptime.ts
@@ -4389,7 +4581,7 @@ async function binaryExists(name) {
     return false;
   }
 }
-function dockerRequest(dockerHost, path) {
+function dockerRequest(dockerHost, path2) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("timeout")), 5e3);
     const done = () => clearTimeout(timeout);
@@ -4402,7 +4594,7 @@ function dockerRequest(dockerHost, path) {
     };
     if (dockerHost.startsWith("unix://")) {
       const req = http.request(
-        { socketPath: dockerHost.slice("unix://".length), path, method: "GET" },
+        { socketPath: dockerHost.slice("unix://".length), path: path2, method: "GET" },
         handler
       );
       req.on("error", (e) => {
@@ -4413,7 +4605,7 @@ function dockerRequest(dockerHost, path) {
     } else if (dockerHost.startsWith("tcp://")) {
       const u = new URL(dockerHost);
       const req = http.request(
-        { host: u.hostname, port: parseInt(u.port || "2375"), path, method: "GET" },
+        { host: u.hostname, port: parseInt(u.port || "2375"), path: path2, method: "GET" },
         handler
       );
       req.on("error", (e) => {
@@ -4504,7 +4696,7 @@ async function selfUpdate() {
     (0, import_fs2.writeFileSync)(tmp, buf);
     (0, import_fs2.renameSync)(tmp, scriptPath);
     console.log("[agent] Bundle updated \u2014 restarting \u2026");
-    (0, import_child_process2.spawn)(process.execPath, process.argv.slice(1), {
+    (0, import_child_process3.spawn)(process.execPath, process.argv.slice(1), {
       env: process.env,
       detached: true,
       stdio: "inherit"
@@ -4542,7 +4734,7 @@ var VERSION = "0.1.0";
 var PROTOCOL_VERSION = "1";
 async function queryResticVersion() {
   return new Promise((resolve) => {
-    const proc = (0, import_child_process2.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
+    const proc = (0, import_child_process3.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     proc.stdout?.on("data", (d) => {
       out += d.toString();
@@ -4568,7 +4760,7 @@ void queryResticVersion().then((v) => {
   RESTIC_VERSION = v;
 });
 function getIp() {
-  const ifaces = os.networkInterfaces();
+  const ifaces = os2.networkInterfaces();
   for (const iface of Object.values(ifaces)) {
     for (const addr of iface ?? []) {
       if (addr.family === "IPv4" && !addr.internal) return addr.address;
@@ -4608,10 +4800,10 @@ function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
     send({ type: "ping" });
-    const memTotal = os.totalmem();
-    const memFree = os.freemem();
-    const cpuCount = os.cpus().length || 1;
-    const cpuLoad = (os.loadavg()[0] ?? 0) / cpuCount * 100;
+    const memTotal = os2.totalmem();
+    const memFree = os2.freemem();
+    const cpuCount = os2.cpus().length || 1;
+    const cpuLoad = (os2.loadavg()[0] ?? 0) / cpuCount * 100;
     send({
       type: "metrics",
       metrics: {
@@ -4778,7 +4970,7 @@ function connect() {
     const hello = {
       type: "hello",
       token: TOKEN,
-      hostname: os.hostname(),
+      hostname: os2.hostname(),
       ip: getIp(),
       agentVersion: VERSION,
       protocolVersion: PROTOCOL_VERSION,
@@ -4789,7 +4981,7 @@ function connect() {
       osInfo: {
         os: process.platform,
         arch: process.arch,
-        kernel: os.release()
+        kernel: os2.release()
       }
     };
     ws.send(JSON.stringify(hello));

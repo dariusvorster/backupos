@@ -1,3 +1,6 @@
+import * as fs from 'fs/promises'
+import * as os from 'os'
+import * as path from 'path'
 import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage, ComposeServiceConfig } from '@backupos/agent-protocol'
 import {
@@ -5,6 +8,7 @@ import {
   pauseContainer, unpauseContainer,
   stopContainer, startContainer, waitForRunning,
 } from '../docker-client'
+import { runApphook } from './apphooks'
 
 type SendFn = (msg: AgentMessage) => void
 type RunMsg = Extract<ServerMessage, { type: 'run_compose_backup' }>
@@ -23,7 +27,7 @@ async function quiesce(containerId: string, strategy: ComposeServiceConfig['quie
     case 'none':    return
     case 'pause':   await pauseContainer(containerId); return
     case 'stop':    await stopContainer(containerId); return
-    case 'apphook': throw new Error('apphook quiescence not implemented yet (Task 8)')
+    case 'apphook': throw new Error('apphook must be handled before quiesce is called')
   }
 }
 
@@ -67,13 +71,16 @@ export async function runComposeBackup(
     binaryPath,
   })
 
+  const tmpDir = path.join(os.tmpdir(), 'backupos-apphooks', jobId)
+
   try {
     await ensureRepo(makeEngine(), repoId)
 
-    const services = config.services.filter(s => s.included)
+    const services = config.services?.filter(s => s.included) ?? []
 
     for (const service of services) {
-      if (service.includedVolumes.length === 0) {
+      // Apphook services proceed even with no included volumes (the dump is the backup artifact)
+      if (service.includedVolumes.length === 0 && service.quiescence !== 'apphook') {
         logLines.push(`[compose] SKIP: "${service.serviceName}" — no included volumes`)
         continue
       }
@@ -87,24 +94,51 @@ export async function runComposeBackup(
         continue
       }
 
-      // Quiesce
-      setPhase('quiescing')
-      try {
-        await quiesce(target.Id, service.quiescence)
-        if (service.quiescence !== 'none') {
-          logLines.push(`[compose] quiesced "${service.serviceName}" (${service.quiescence})`)
+      let extraPaths: string[] = []
+      let cleanupDump: () => Promise<void> = async () => { /* no-op */ }
+
+      if (service.quiescence === 'apphook') {
+        // Apphook: dump DB to tmp file; container stays running throughout
+        setPhase('uploading')
+        if (!service.apphookConfig) {
+          logLines.push(`[compose] FAIL: apphook config missing for "${service.serviceName}"`)
+          throw new Error(`apphook config missing for "${service.serviceName}"`)
         }
-      } catch (err) {
-        const e = err instanceof Error ? err.message : String(err)
-        logLines.push(`[compose] FAIL: quiesce "${service.serviceName}" → ${e}`)
-        throw new Error(`quiesce failed for "${service.serviceName}": ${e}`)
+        await fs.mkdir(tmpDir, { recursive: true })
+        const dumpFile = path.join(tmpDir, `${service.serviceName}.dump`)
+        try {
+          await runApphook(service, target, dumpFile)
+          extraPaths = [dumpFile]
+          cleanupDump = async () => { try { await fs.unlink(dumpFile) } catch { /* ignore */ } }
+          logLines.push(`[compose] apphook "${service.serviceName}" (${service.apphookType ?? 'unknown'}) — dump ready`)
+        } catch (err) {
+          const e = err instanceof Error ? err.message : String(err)
+          logLines.push(`[compose] FAIL: apphook "${service.serviceName}" → ${e}`)
+          throw new Error(`apphook failed for "${service.serviceName}": ${e}`)
+        }
+      } else {
+        // Quiesce
+        setPhase('quiescing')
+        try {
+          await quiesce(target.Id, service.quiescence)
+          if (service.quiescence !== 'none') {
+            logLines.push(`[compose] quiesced "${service.serviceName}" (${service.quiescence})`)
+          }
+        } catch (err) {
+          const e = err instanceof Error ? err.message : String(err)
+          logLines.push(`[compose] FAIL: quiesce "${service.serviceName}" → ${e}`)
+          throw new Error(`quiesce failed for "${service.serviceName}": ${e}`)
+        }
       }
 
-      // Back up volumes
+      // Back up volumes + dump file (apphook) via restic
       setPhase('uploading')
       let volumeBackupOk = false
       try {
-        const paths = service.includedVolumes.map(v => `/var/lib/docker/volumes/${v}/_data`)
+        const paths = [
+          ...service.includedVolumes.map(v => `/var/lib/docker/volumes/${v}/_data`),
+          ...extraPaths,
+        ]
         const result = await makeEngine().backup({
           paths,
           tags: [
@@ -126,15 +160,19 @@ export async function runComposeBackup(
       } catch (err) {
         const e = err instanceof Error ? err.message : String(err)
         logLines.push(`[compose] FAIL: restic backup "${service.serviceName}" → ${e}`)
-        setPhase('resuming')
-        await resumeService(target.Id, service.quiescence).catch(re => {
-          logLines.push(`[compose] WARN: resume "${service.serviceName}" after backup failure → ${re instanceof Error ? re.message : String(re)}`)
-        })
+        if (service.quiescence !== 'apphook') {
+          setPhase('resuming')
+          await resumeService(target.Id, service.quiescence).catch(re => {
+            logLines.push(`[compose] WARN: resume "${service.serviceName}" after backup failure → ${re instanceof Error ? re.message : String(re)}`)
+          })
+        }
         throw new Error(`backup failed for "${service.serviceName}": ${e}`)
+      } finally {
+        await cleanupDump()
       }
 
-      // Resume
-      if (volumeBackupOk) {
+      // Resume container (non-apphook only — apphook services never stopped)
+      if (volumeBackupOk && service.quiescence !== 'apphook') {
         setPhase('resuming')
         try {
           await resumeService(target.Id, service.quiescence)
@@ -163,6 +201,10 @@ export async function runComposeBackup(
       }
     }
 
+    // TODO(env-files): when ComposeServiceConfig.envFiles is populated by handleListCompose,
+    // read each path, redact secret keys, write to tmpDir, append to restic paths.
+    // See follow-on task: env-file backup + redaction (GitHub issue).
+
     setPhase('finalizing')
     send({
       type:       'backup_complete',
@@ -190,6 +232,7 @@ export async function runComposeBackup(
       log:    logLines.join('\n').slice(0, 1_000_000) || undefined,
     })
   } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { /* ignore if never created */ })
     activeJobs.delete(jobId)
   }
 }
