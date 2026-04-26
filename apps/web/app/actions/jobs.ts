@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, backupJobs, backupRuns, repositories, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
 import { decryptField } from '@/lib/repo-crypto'
-import { dispatch, connectedAgentIds } from '@/lib/ws-state'
+import { dispatchToAgent } from '@/lib/internal-dispatch'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
   const str = (k: string) => (fd.get(k) as string | null)?.trim() || undefined
@@ -145,10 +145,7 @@ export async function triggerJob(id: string): Promise<void> {
   })
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, id))
 
-  const knownIds = connectedAgentIds()
-  console.log('[triggerJob] CHECK jobId=%s jobAgentId=%s knownIds=%j', id, job.agentId, knownIds)
-
-  if (job.agentId && knownIds.includes(job.agentId)) {
+  if (job.agentId) {
     const [repo] = await db.select().from(repositories)
       .where(eq(repositories.id, job.repositoryId!)).limit(1)
 
@@ -161,7 +158,7 @@ export async function triggerJob(id: string): Promise<void> {
         ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
         : (srcConfig.paths ?? [])
 
-      dispatch(job.agentId, {
+      const result = await dispatchToAgent(job.agentId, {
         type:   'run_backup',
         jobId:  id,
         config: {
@@ -173,10 +170,12 @@ export async function triggerJob(id: string): Promise<void> {
           envVars:      repoConfig.envVars,
         },
       })
+      if (!result.ok) {
+        console.error('[triggerJob] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
+      }
     }
   } else {
-    console.error('[triggerJob] FALLBACK: agent not in connections map, will attempt local execution. agentId=', job.agentId)
-    // No connected agent — run locally in a detached promise
+    // No agent assigned — run locally in a detached promise
     void import('@/lib/scheduler').then(({ executeRun }) => executeRun(id, runId))
   }
 
@@ -228,7 +227,7 @@ export async function retryRun(jobId: string): Promise<void> {
   })
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, jobId))
 
-  if (job.agentId && connectedAgentIds().includes(job.agentId)) {
+  if (job.agentId) {
     const [repo] = await db.select().from(repositories)
       .where(eq(repositories.id, job.repositoryId!)).limit(1)
     if (repo) {
@@ -238,11 +237,14 @@ export async function retryRun(jobId: string): Promise<void> {
       const paths = job.sourceType === 'docker_volume'
         ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
         : (srcConfig.paths ?? [])
-      dispatch(job.agentId, {
+      const result = await dispatchToAgent(job.agentId, {
         type:   'run_backup',
         jobId,
         config: { repoUrl: repoConfig.repositoryUrl, repoPassword: repoConfig.password, paths, exclude: srcConfig.exclude, tags, envVars: repoConfig.envVars },
       })
+      if (!result.ok) {
+        console.error('[retryRun] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
+      }
     }
   } else {
     void import('@/lib/scheduler').then(({ executeRun }) => executeRun(jobId, runId))
@@ -265,8 +267,8 @@ export async function cancelJob(jobId: string): Promise<void> {
   await db.update(backupJobs).set({ lastRunStatus: 'cancelled' }).where(eq(backupJobs.id, jobId))
 
   const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
-  if (job?.agentId && connectedAgentIds().includes(job.agentId)) {
-    dispatch(job.agentId, { type: 'cancel_backup', jobId })
+  if (job?.agentId) {
+    void dispatchToAgent(job.agentId, { type: 'cancel_backup', jobId })
   }
 
   revalidatePath(`/jobs/${jobId}`)

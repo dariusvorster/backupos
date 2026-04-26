@@ -10,6 +10,7 @@ import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, res
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch } from './lib/ws-state'
+import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
 import { sendAlert } from './lib/alerts'
 import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
@@ -37,6 +38,7 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 
+loadOrCreateInternalToken()
 runMigrations()
 
 function getBundleHash(): string {
@@ -140,6 +142,43 @@ void app.prepare().then(() => {
         requestTestMount(agentId, mountConfig)
           .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
           .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Mount test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
+      })()
+      return
+    }
+
+    // Internal dispatch bridge — server actions call this to reach the real connections Map
+    if (req.method === 'POST' && parsed.pathname === '/internal/dispatch') {
+      void (async () => {
+        const auth = req.headers['x-internal-token']
+        if (auth !== process.env['BACKUPOS_INTERNAL_TOKEN']) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, reason: 'unauthorized' }))
+          return
+        }
+        let body: { agentId?: string; message?: unknown } = {}
+        try {
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(chunk as Buffer)
+          body = JSON.parse(Buffer.concat(chunks).toString()) as { agentId?: string; message?: unknown }
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, reason: 'invalid_json' }))
+          return
+        }
+        const { agentId, message } = body
+        if (!agentId || !message) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, reason: 'agentId and message required' }))
+          return
+        }
+        const sent = dispatch(agentId, message as Parameters<typeof dispatch>[1])
+        if (!sent) {
+          res.writeHead(503, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, reason: 'agent_not_connected', knownIds: connectedAgentIds() }))
+          return
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true }))
       })()
       return
     }
