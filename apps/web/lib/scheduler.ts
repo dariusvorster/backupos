@@ -1,6 +1,6 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq, and, lt } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq, and, lt, lte, isNotNull } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
@@ -44,10 +44,14 @@ export async function initScheduler(): Promise<void> {
       continue
     }
 
-    cron.schedule(job.schedule, () => { void runJob(db, job) }, { timezone: 'UTC' })
+    cron.schedule(job.schedule, () => { void runJob(db, job, 'cron') }, { timezone: 'UTC' })
     void stampNextRun(db, job.id, job.schedule)
     console.log(`[scheduler] Scheduled "${job.name}" (${job.schedule})`)
   }
+
+  // Trigger-driven tick: fire any job with nextRunAt <= now (Run Now, SQL trigger, etc.)
+  setInterval(() => { void triggerTick(db) }, 5_000)
+  console.log('[scheduler] Trigger tick active (5s interval)')
 
   // Check for disconnected agents every 5 minutes
   cron.schedule('*/5 * * * *', () => { void checkAgents(db) }, { timezone: 'UTC' })
@@ -85,7 +89,7 @@ export async function executeRun(jobId: string, runId: string): Promise<void> {
   await runJobCore(db, job, runId)
 }
 
-async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
+async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<boolean> {
   if (!job.agentId || !job.repositoryId) return false
 
   const [repo] = await db.select().from(repositories)
@@ -102,7 +106,7 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
 
   await db.insert(backupRuns).values({
     id: runId, jobId: job.id, repositoryId: job.repositoryId,
-    agentId: job.agentId, status: 'running', trigger: 'scheduled', startedAt: now,
+    agentId: job.agentId, status: 'running', trigger, startedAt: now,
   })
 
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, job.id))
@@ -134,16 +138,18 @@ async function dispatchToAgent(db: Db, job: Job): Promise<boolean> {
     return false
   }
 
+  // Reset nextRunAt so the trigger tick doesn't re-fire this job
+  await stampNextRun(db, job.id, job.schedule)
   console.log(`[scheduler] Dispatched job "${job.name}" to agent ${job.agentId}`)
   return true
 }
 
-async function runJob(db: Db, job: Job): Promise<void> {
+async function runJob(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<void> {
   if (!job.repositoryId) return
 
   // Prefer agent execution when one is assigned and currently connected
   if (job.agentId && connectedAgentIds().includes(job.agentId)) {
-    const dispatched = await dispatchToAgent(db, job)
+    const dispatched = await dispatchToAgent(db, job, trigger)
     if (dispatched) return
   }
 
@@ -154,10 +160,34 @@ async function runJob(db: Db, job: Job): Promise<void> {
     repositoryId: job.repositoryId,
     agentId:      job.agentId ?? null,
     status:       'running',
-    trigger:      'scheduled',
+    trigger,
     startedAt:    new Date(),
   })
   await runJobCore(db, job, runId)
+}
+
+async function triggerTick(db: Db): Promise<void> {
+  const now = new Date()
+  const jobs = await db.select().from(backupJobs).where(
+    and(
+      eq(backupJobs.enabled, true),
+      isNotNull(backupJobs.nextRunAt),
+      lte(backupJobs.nextRunAt, now),
+    )
+  ).all()
+
+  for (const job of jobs) {
+    const [active] = await db.select({ id: backupRuns.id }).from(backupRuns).where(
+      and(eq(backupRuns.jobId, job.id), eq(backupRuns.status, 'running'))
+    ).limit(1).all()
+    if (active) continue
+
+    // Reset nextRunAt before dispatching so the next tick doesn't re-fire
+    const next = nextRunDate(job.schedule)
+    await db.update(backupJobs).set({ nextRunAt: next ?? null }).where(eq(backupJobs.id, job.id))
+
+    await runJob(db, job, 'manual')
+  }
 }
 
 function fmtBytes(b: number): string {
