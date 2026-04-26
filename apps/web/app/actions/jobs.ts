@@ -184,16 +184,18 @@ export async function retryRun(jobId: string): Promise<void> {
     const [repo] = await db.select().from(repositories)
       .where(eq(repositories.id, job.repositoryId!)).limit(1)
     if (repo) {
-      const repoConfig = JSON.parse(decryptField(repo.config)) as { repositoryUrl: string; password: string; envVars?: Record<string, string> }
-      const srcConfig  = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
-      const tags       = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
+      const cfg       = JSON.parse(decryptField(repo.config)) as Record<string, string>
+      const password  = decryptField(repo.resticPassword)
+      if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
+      const srcConfig = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
+      const tags      = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
       const paths = job.sourceType === 'docker_volume'
         ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
         : (srcConfig.paths ?? [])
       const result = await dispatchToAgent(job.agentId, {
         type:   'run_backup',
         jobId,
-        config: { repoId: job.repositoryId!, repoUrl: repoConfig.repositoryUrl, repoPassword: repoConfig.password, paths, exclude: srcConfig.exclude, tags, envVars: repoConfig.envVars },
+        config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
       })
       if (!result.ok) {
         console.error('[retryRun] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)

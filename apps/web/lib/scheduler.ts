@@ -97,6 +97,8 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
   if (!repo) return false
 
   const cfg       = JSON.parse(decryptField(repo.config)) as Record<string, string>
+  const password  = decryptField(repo.resticPassword)
+  if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
   const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
   const paths     = resolveBackupPaths(job.sourceType, srcConfig)
   if (paths.length === 0) return false
@@ -120,7 +122,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
     config: {
       repoId:       job.repositoryId ?? '',
       repoUrl:      cfg['repositoryUrl'] ?? '',
-      repoPassword: decryptField(repo.resticPassword),
+      repoPassword: password,
       paths,
       exclude:  srcConfig.exclude,
       tags,
