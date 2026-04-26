@@ -226,6 +226,19 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
 
   } else if (msg.type === 'verify_repo') {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars)
+
+  } else if (msg.type === 'list_compose_project') {
+    void (async () => {
+      try {
+        const { handleListCompose } = await import('./handlers/listCompose')
+        const project = await handleListCompose(msg.projectName)
+        send({ type: 'compose_project_listing', requestId: msg.requestId, project })
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err)
+        console.error('[agent] list_compose_project failed:', error)
+        send({ type: 'compose_project_listing', requestId: msg.requestId, project: { name: msg.projectName, services: [] } })
+      }
+    })()
   }
 }
 

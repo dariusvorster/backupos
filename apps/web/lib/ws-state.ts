@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws'
-import type { DetectedResources, MountConfig } from '@backupos/agent-protocol'
+import type { DetectedResources, MountConfig, ComposeProjectListing } from '@backupos/agent-protocol'
 export type { DetectedResources }
 
 export interface RepoTestResult  { ok: boolean; error?: string; snapshotCount?: number }
@@ -131,4 +131,37 @@ export function requestTestMount(agentId: string, mountConfig: MountConfig): Pro
 
 export function resolveTestMount(requestId: string, result: MountTestResult): void {
   pendingMountTests.get(requestId)?.(result)
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __bkp_pending_compose_lists: Map<string, (r: ComposeProjectListing) => void> | undefined
+}
+
+const pendingComposeLists: Map<string, (r: ComposeProjectListing) => void> =
+  (globalThis.__bkp_pending_compose_lists ??= new Map())
+
+export function requestListCompose(agentId: string, projectName: string): Promise<ComposeProjectListing> {
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID()
+    const timer = setTimeout(() => {
+      pendingComposeLists.delete(requestId)
+      reject(new Error('Agent did not respond to list_compose_project in time'))
+    }, 15_000)
+    pendingComposeLists.set(requestId, result => {
+      clearTimeout(timer)
+      pendingComposeLists.delete(requestId)
+      resolve(result)
+    })
+    const sent = dispatch(agentId, { type: 'list_compose_project', requestId, projectName })
+    if (!sent) {
+      clearTimeout(timer)
+      pendingComposeLists.delete(requestId)
+      reject(new Error('Agent not connected'))
+    }
+  })
+}
+
+export function resolveListCompose(requestId: string, project: ComposeProjectListing): void {
+  pendingComposeLists.get(requestId)?.(project)
 }

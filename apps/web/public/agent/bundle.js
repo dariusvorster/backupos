@@ -5,8 +5,15 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -2225,7 +2232,7 @@ var require_websocket = __commonJS({
     "use strict";
     var EventEmitter = require("events");
     var https = require("https");
-    var http2 = require("http");
+    var http3 = require("http");
     var net = require("net");
     var tls = require("tls");
     var { randomBytes, createHash: createHash2 } = require("crypto");
@@ -2759,7 +2766,7 @@ var require_websocket = __commonJS({
       }
       const defaultPort = isSecure ? 443 : 80;
       const key = randomBytes(16).toString("base64");
-      const request2 = isSecure ? https.request : http2.request;
+      const request3 = isSecure ? https.request : http3.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
       opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
@@ -2836,12 +2843,12 @@ var require_websocket = __commonJS({
         if (opts.auth && !options.headers.authorization) {
           options.headers.authorization = "Basic " + Buffer.from(opts.auth).toString("base64");
         }
-        req = websocket._req = request2(opts);
+        req = websocket._req = request3(opts);
         if (websocket._redirects) {
           websocket.emit("redirect", websocket.url, req);
         }
       } else {
-        req = websocket._req = request2(opts);
+        req = websocket._req = request3(opts);
       }
       if (opts.timeout) {
         req.on("timeout", () => {
@@ -3253,7 +3260,7 @@ var require_websocket_server = __commonJS({
   "../../node_modules/.pnpm/ws@8.20.0/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
     var EventEmitter = require("events");
-    var http2 = require("http");
+    var http3 = require("http");
     var { Duplex } = require("stream");
     var { createHash: createHash2 } = require("crypto");
     var extension2 = require_extension();
@@ -3328,8 +3335,8 @@ var require_websocket_server = __commonJS({
           );
         }
         if (options.port != null) {
-          this._server = http2.createServer((req, res) => {
-            const body = http2.STATUS_CODES[426];
+          this._server = http3.createServer((req, res) => {
+            const body = http3.STATUS_CODES[426];
             res.writeHead(426, {
               "Content-Length": body.length,
               "Content-Type": "text/plain"
@@ -3616,7 +3623,7 @@ var require_websocket_server = __commonJS({
       this.destroy();
     }
     function abortHandshake(socket, code, message, headers) {
-      message = message || http2.STATUS_CODES[code];
+      message = message || http3.STATUS_CODES[code];
       headers = {
         Connection: "close",
         "Content-Type": "text/html",
@@ -3625,7 +3632,7 @@ var require_websocket_server = __commonJS({
       };
       socket.once("finish", socket.destroy);
       socket.end(
-        `HTTP/1.1 ${code} ${http2.STATUS_CODES[code]}\r
+        `HTTP/1.1 ${code} ${http3.STATUS_CODES[code]}\r
 ` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join("\r\n") + "\r\n\r\n" + message
       );
     }
@@ -3638,6 +3645,111 @@ var require_websocket_server = __commonJS({
         abortHandshake(socket, code, message, headers);
       }
     }
+  }
+});
+
+// src/docker-client.ts
+function getOpts() {
+  const h = process.env["DOCKER_HOST"] ?? "unix:///var/run/docker.sock";
+  if (h.startsWith("unix://")) return { socketPath: h.slice("unix://".length) };
+  if (h.startsWith("tcp://")) {
+    const u = new URL(h);
+    return { host: u.hostname, port: parseInt(u.port || "2375") };
+  }
+  throw new Error(`Unsupported DOCKER_HOST: ${h}`);
+}
+function dockerReq(method, path, body) {
+  return new Promise((resolve, reject) => {
+    const opts = getOpts();
+    const payload = body ? JSON.stringify(body) : void 0;
+    const timer = setTimeout(() => reject(new Error(`Docker ${method} ${path} timeout`)), 3e4);
+    const reqOpts = {
+      method,
+      path,
+      ...opts,
+      headers: payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}
+    };
+    const req = http2.request(reqOpts, (res) => {
+      let data = "";
+      res.on("data", (c) => {
+        data += c;
+      });
+      res.on("end", () => {
+        clearTimeout(timer);
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(data));
+          } catch {
+            resolve(data);
+          }
+        } else {
+          reject(new Error(`Docker ${method} ${path} \u2192 HTTP ${res.statusCode ?? "?"}: ${data}`));
+        }
+      });
+    });
+    req.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+async function listComposeContainers(projectName) {
+  const f = encodeURIComponent(JSON.stringify({ label: [`com.docker.compose.project=${projectName}`] }));
+  return dockerReq("GET", `/v1.41/containers/json?filters=${f}&all=true`);
+}
+var http2;
+var init_docker_client = __esm({
+  "src/docker-client.ts"() {
+    "use strict";
+    http2 = __toESM(require("http"));
+  }
+});
+
+// src/handlers/listCompose.ts
+var listCompose_exports = {};
+__export(listCompose_exports, {
+  handleListCompose: () => handleListCompose
+});
+function defaultQuiescence(image) {
+  const img = image.toLowerCase();
+  if (/postgres|postgis/.test(img)) return { quiescence: "apphook", apphookType: "postgres" };
+  if (/mysql|mariadb/.test(img)) return { quiescence: "apphook", apphookType: "mysql" };
+  if (/^redis/.test(img)) return { quiescence: "apphook", apphookType: "redis" };
+  if (/nginx|caddy|traefik|plex|jellyfin|emby/.test(img)) return { quiescence: "none" };
+  return { quiescence: "stop" };
+}
+async function handleListCompose(projectName) {
+  const containers = await listComposeContainers(projectName);
+  if (containers.length === 0) {
+    throw new Error(`No containers found for project '${projectName}'. Is the project name correct and is Docker accessible?`);
+  }
+  const composeFilePath = containers[0]?.Labels["com.docker.compose.project.config_files"] ?? void 0;
+  const services = containers.map((c) => {
+    const serviceName = c.Labels["com.docker.compose.service"] ?? c.Names[0]?.replace(/^\//, "") ?? "unknown";
+    const volumes = c.Mounts.filter((m) => m.Type === "volume").map((m) => ({ type: "volume", name: m.Name, target: m.Destination }));
+    const binds = c.Mounts.filter((m) => m.Type === "bind").map((m) => m.Source);
+    const dq = defaultQuiescence(c.Image);
+    return {
+      name: serviceName,
+      image: c.Image,
+      containerStatus: c.Status,
+      volumes,
+      binds,
+      envFiles: [],
+      networks: Object.keys(c.NetworkSettings?.Networks ?? {}),
+      labels: c.Labels,
+      defaultQuiescence: dq.quiescence,
+      defaultApphookType: dq.apphookType
+    };
+  });
+  return { name: projectName, composeFilePath, services };
+}
+var init_listCompose = __esm({
+  "src/handlers/listCompose.ts"() {
+    "use strict";
+    init_docker_client();
   }
 });
 
@@ -4297,6 +4409,18 @@ async function handleMessage(raw) {
     }
   } else if (msg.type === "verify_repo") {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars);
+  } else if (msg.type === "list_compose_project") {
+    void (async () => {
+      try {
+        const { handleListCompose: handleListCompose2 } = await Promise.resolve().then(() => (init_listCompose(), listCompose_exports));
+        const project = await handleListCompose2(msg.projectName);
+        send({ type: "compose_project_listing", requestId: msg.requestId, project });
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        console.error("[agent] list_compose_project failed:", error);
+        send({ type: "compose_project_listing", requestId: msg.requestId, project: { name: msg.projectName, services: [] } });
+      }
+    })();
   }
 }
 async function runBackup(jobId, runId, config) {
