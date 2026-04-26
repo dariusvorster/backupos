@@ -11,10 +11,10 @@ export default async function EditJobPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ cronError?: string }>
+  searchParams: Promise<{ cronError?: string; composeError?: string }>
 }) {
   const { id }      = await params
-  const { cronError } = await searchParams
+  const { cronError, composeError } = await searchParams
   const db = getDb()
 
   const [[job], repos, agentList] = await Promise.all([
@@ -59,6 +59,7 @@ export default async function EditJobPage({
           <SourceConfigSection
             defaultSourceType={job.sourceType}
             initialConfig={job.sourceConfig}
+            composeError={composeError}
           />
 
           <div style={{ marginBottom: 20 }}>
