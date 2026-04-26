@@ -96,27 +96,6 @@ async function dumpSqlite(cfg: ComposeApphookConfig, container: DockerContainer,
   await spawnAllowed('docker', ['exec', container.Id, 'rm', '-f', insidePath]).catch(() => { /* ignore */ })
 }
 
-// ── Env-file redaction ────────────────────────────────────────────────────────
-
-const SECRET_PATTERN = /(?:^|_)(?:PASSWORD|PASSWD|PWD|SECRET|TOKEN|KEY|APIKEY|CREDENTIAL|CREDS|CERT)(?:$|_)/
-
-function isSecretKey(key: string): boolean {
-  const k = key.toUpperCase()
-  return SECRET_PATTERN.test(k) || /API_?KEY/.test(k) || /ACCESS_KEY/.test(k) || /PRIVATE_KEY/.test(k)
-}
-
-export function redactEnvFile(content: string): string {
-  return content
-    .split('\n')
-    .map(line => {
-      const eq = line.indexOf('=')
-      if (eq === -1) return line
-      const key = line.slice(0, eq).trim()
-      return isSecretKey(key) ? `${key}=[REDACTED]` : line
-    })
-    .join('\n')
-}
-
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function runApphook(

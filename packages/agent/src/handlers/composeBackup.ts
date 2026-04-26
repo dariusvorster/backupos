@@ -201,6 +201,10 @@ export async function runComposeBackup(
       }
     }
 
+    // TODO(env-files): when ComposeServiceConfig.envFiles is populated by handleListCompose,
+    // read each path, redact secret keys, write to tmpDir, append to restic paths.
+    // See follow-on task: env-file backup + redaction (GitHub issue).
+
     setPhase('finalizing')
     send({
       type:       'backup_complete',
