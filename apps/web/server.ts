@@ -249,6 +249,15 @@ void app.prepare().then(() => {
             actor: agentId, createdAt: new Date(),
           })
 
+        } else if (msg.type === 'backup_progress' && agentId) {
+          await db.update(backupRuns).set({
+            progressPct: msg.pct,
+            bytesDone:   msg.bytesProcessed,
+            bytesTotal:  msg.bytesTotal,
+            filesDone:   msg.filesProcessed,
+            filesTotal:  msg.filesTotal,
+          }).where(and(eq(backupRuns.jobId, msg.jobId), eq(backupRuns.status, 'running')))
+
         } else if (msg.type === 'backup_complete' && agentId) {
           const [run] = await db.select().from(backupRuns)
             .where(and(eq(backupRuns.jobId, msg.jobId), eq(backupRuns.status, 'running')))

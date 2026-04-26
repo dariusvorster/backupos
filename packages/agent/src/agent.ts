@@ -118,6 +118,18 @@ async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> 
       paths:   config.paths,
       exclude: config.exclude,
       tags:    config.tags,
+      onProgress: (s) => {
+        send({
+          type:             'backup_progress',
+          jobId,
+          pct:              s.pct,
+          filesProcessed:   s.filesDone,
+          bytesProcessed:   s.bytesDone,
+          filesTotal:       s.filesTotal,
+          bytesTotal:       s.bytesTotal,
+          secondsRemaining: s.secondsRemaining,
+        })
+      },
     })
 
     send({
