@@ -14,8 +14,8 @@ export const agents = sqliteTable('agents', {
   vssAvailable: integer('vss_available', { mode: 'boolean' }),
   agentVersion: text('agent_version'),
   status:       text('status').default('disconnected'),
-  lastSeenAt:   integer('last_seen_at',   { mode: 'timestamp' }),
-  enrolledAt:   integer('enrolled_at',    { mode: 'timestamp' }).notNull(),
+  lastSeenAt:   integer('last_seen_at',   { mode: 'timestamp_ms' }),
+  enrolledAt:   integer('enrolled_at',    { mode: 'timestamp_ms' }).notNull(),
   publicKey:    text('public_key').notNull(), // Ed25519
   updateChannel:     text('update_channel').default('stable'),   // 'stable' | 'beta' | 'pinned'
   hypervisorDriver:  integer('hypervisor_driver',  { mode: 'boolean' }),
@@ -38,10 +38,10 @@ export const repositories = sqliteTable('repositories', {
   resticPassword:  text('restic_password').notNull(), // encrypted with ENCRYPTION_KEY
   sizeBytes:       integer('size_bytes'),
   snapshotCount:   integer('snapshot_count'),
-  initializedAt:   integer('initialized_at',    { mode: 'timestamp' }),
-  lastCheckedAt:   integer('last_checked_at',   { mode: 'timestamp' }),
+  initializedAt:   integer('initialized_at',    { mode: 'timestamp_ms' }),
+  lastCheckedAt:   integer('last_checked_at',   { mode: 'timestamp_ms' }),
   lastCheckStatus: text('last_check_status'),   // 'ok' | 'errors' | 'unknown'
-  createdAt:          integer('created_at',           { mode: 'timestamp' }).notNull(),
+  createdAt:          integer('created_at',           { mode: 'timestamp_ms' }).notNull(),
   costPerGbMonth:     integer('cost_per_gb_month'),
   monthlyBudgetCents: integer('monthly_budget_cents'),
   escrowedKey:        text('escrowed_key'),
@@ -59,7 +59,7 @@ export const infraOsServices = sqliteTable('infra_os_services', {
   serviceType: text('service_type').notNull(), // 'database' | 'filesystem' | 'container'
   host:        text('host'),
   description: text('description'),
-  createdAt:   integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt:   integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Backup jobs ───────────────────────────────────────────────────────────
@@ -96,15 +96,15 @@ export const backupJobs = sqliteTable('backup_jobs', {
   preHook:  text('pre_hook'),  // JSON — AppHookConfig
   postHook: text('post_hook'), // JSON — AppHookConfig
 
-  lastRunAt:     integer('last_run_at',     { mode: 'timestamp' }),
+  lastRunAt:     integer('last_run_at',     { mode: 'timestamp_ms' }),
   lastRunStatus: text('last_run_status'),   // 'success' | 'failed' | 'running'
-  nextRunAt:     integer('next_run_at',     { mode: 'timestamp' }),
-  createdAt:     integer('created_at',      { mode: 'timestamp' }).notNull(),
+  nextRunAt:     integer('next_run_at',     { mode: 'timestamp_ms' }),
+  createdAt:     integer('created_at',      { mode: 'timestamp_ms' }).notNull(),
   bandwidthProfileId: text('bandwidth_profile_id').references(() => bandwidthProfiles.id),
 
   // Pre-flight checks
   preflightEnabled:    integer('preflight_enabled',    { mode: 'boolean' }).default(true),
-  lastPreflightAt:     integer('last_preflight_at',    { mode: 'timestamp' }),
+  lastPreflightAt:     integer('last_preflight_at',    { mode: 'timestamp_ms' }),
   lastPreflightStatus: text('last_preflight_status'),  // 'ok' | 'warning' | 'failed' | null
   infraServiceId: text('infra_service_id').references(() => infraOsServices.id),
 })
@@ -134,8 +134,8 @@ export const backupRuns = sqliteTable('backup_runs', {
   errorMessage: text('error_message'),
   errorDetail:  text('error_detail'),       // JSON — full error context
 
-  startedAt:   integer('started_at',   { mode: 'timestamp' }).notNull(),
-  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  startedAt:   integer('started_at',   { mode: 'timestamp_ms' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
 
   log:    text('log'),
   phases: text('phases'),
@@ -171,10 +171,10 @@ export const snapshots = sqliteTable('snapshots', {
   pinned:        integer('pinned',         { mode: 'boolean' }).default(false),
   retentionHold: integer('retention_hold', { mode: 'boolean' }).default(false),
   holdReason:    text('hold_reason'),
-  holdExpiresAt: integer('hold_expires_at', { mode: 'timestamp' }),
+  holdExpiresAt: integer('hold_expires_at', { mode: 'timestamp_ms' }),
   customTags:    text('custom_tags'),
   sizeBytes:    integer('size_bytes'),
-  createdAt:    integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt:    integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Restore specs ─────────────────────────────────────────────────────────
@@ -187,9 +187,9 @@ export const restoreSpecs = sqliteTable('restore_specs', {
   yamlContent:      text('yaml_content').notNull(),
   jobId:            text('job_id').references(() => backupJobs.id),
   repositoryId:     text('repository_id').references(() => repositories.id),
-  lastValidatedAt:  integer('last_validated_at', { mode: 'timestamp' }),
+  lastValidatedAt:  integer('last_validated_at', { mode: 'timestamp_ms' }),
   validationStatus: text('validation_status'), // 'valid'|'invalid'|'untested'
-  createdAt:        integer('created_at',       { mode: 'timestamp' }).notNull(),
+  createdAt:        integer('created_at',       { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Restore runs ──────────────────────────────────────────────────────────
@@ -201,8 +201,8 @@ export const restoreRuns = sqliteTable('restore_runs', {
   status:      text('status').notNull(), // 'running'|'success'|'failed'
   log:         text('log'),              // full restore log
   trigger:     text('trigger'),          // 'manual'|'scheduled_test'|'api'
-  startedAt:   integer('started_at',   { mode: 'timestamp' }).notNull(),
-  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  startedAt:   integer('started_at',   { mode: 'timestamp_ms' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
 })
 
 // ── Third-party monitors ──────────────────────────────────────────────────
@@ -214,9 +214,9 @@ export const backupMonitors = sqliteTable('backup_monitors', {
   type:         text('type').notNull(),   // 'proxmox_pbs'|'borg'|'duplicati'|'veeam'|'restic_repo'
   group:        text('group'),
   config:       text('config').notNull(), // JSON, encrypted — connection details
-  lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
+  lastSyncedAt: integer('last_synced_at', { mode: 'timestamp_ms' }),
   status:       text('status').default('unknown'), // 'healthy'|'warning'|'error'|'unknown'
-  createdAt:    integer('created_at',     { mode: 'timestamp' }).notNull(),
+  createdAt:    integer('created_at',     { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Monitor results ───────────────────────────────────────────────────────
@@ -225,11 +225,11 @@ export const monitorResults = sqliteTable('monitor_results', {
   id:               text('id').primaryKey(),
   monitorId:        text('monitor_id').references(() => backupMonitors.id),
   status:           text('status').notNull(),
-  lastBackupAt:     integer('last_backup_at',     { mode: 'timestamp' }),
+  lastBackupAt:     integer('last_backup_at',     { mode: 'timestamp_ms' }),
   lastBackupStatus: text('last_backup_status'),
   sizeBytes:        integer('size_bytes'),
   details:          text('details'),    // JSON — monitor-specific data
-  checkedAt:        integer('checked_at', { mode: 'timestamp' }).notNull(),
+  checkedAt:        integer('checked_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Alert rules ───────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ export const alertRules = sqliteTable('alert_rules', {
   targetId:   text('target_id'),
   config:     text('config').notNull(), // JSON — thresholds, channels
   enabled:    integer('enabled', { mode: 'boolean' }).default(true),
-  lastFiredAt: integer('last_fired_at', { mode: 'timestamp' }),
+  lastFiredAt: integer('last_fired_at', { mode: 'timestamp_ms' }),
   channelId:   text('channel_id'),
 })
 
@@ -259,7 +259,7 @@ export const auditLog = sqliteTable('audit_log', {
   detail:       text('detail'),
   prevHash:     text('prev_hash'),
   hash:         text('hash'),
-  createdAt:    integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt:    integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 }, t => ({
   createdAtIdx: index('audit_log_created_at_idx').on(t.createdAt),
 }))
@@ -275,7 +275,7 @@ export const operationalLogs = sqliteTable('logs', {
   payload:    text('payload'),
   entityType: text('entity_type'),
   entityId:   text('entity_id'),
-  createdAt:  integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt:  integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 }, t => ({
   entityIdx:    index('logs_entity_idx').on(t.entityType, t.entityId),
   createdAtIdx: index('logs_created_at_idx').on(t.createdAt),
@@ -288,7 +288,7 @@ export const loggingConfig = sqliteTable('logging_config', {
   activityRetention: text('activity_retention').notNull().default('90d'),
   auditRetention:    text('audit_retention').notNull().default('365d'),
   opsRetention:      text('ops_retention').notNull().default('14d'),
-  updatedAt:         integer('updated_at', { mode: 'timestamp' }),
+  updatedAt:         integer('updated_at', { mode: 'timestamp_ms' }),
 })
 
 // ── Hypervisor integrations ────────────────────────────────────────────────
@@ -300,8 +300,8 @@ export const hypervisorIntegrations = sqliteTable('hypervisor_integrations', {
   type:         text('type').notNull(),   // 'proxmox'|'xcpng'|'vmware'
   config:       text('config').notNull(), // JSON, encrypted — URL, token, etc.
   status:       text('status').default('unknown'),
-  lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
-  createdAt:    integer('created_at',     { mode: 'timestamp' }).notNull(),
+  lastSyncedAt: integer('last_synced_at', { mode: 'timestamp_ms' }),
+  createdAt:    integer('created_at',     { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Hypervisor targets ────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ export const hypervisorTargets = sqliteTable('hypervisor_targets', {
   osType:        text('os_type'),
   tags:          text('tags'),           // JSON array
   meta:          text('meta'),           // JSON — hypervisor-specific fields
-  lastSeenAt:    integer('last_seen_at', { mode: 'timestamp' }),
+  lastSeenAt:    integer('last_seen_at', { mode: 'timestamp_ms' }),
 })
 
 // ── Repository metrics ─────────────────────────────────────────────────────
@@ -346,11 +346,11 @@ export const repositoryMetrics = sqliteTable('repository_metrics', {
   estimatedFullRestoreCostUSD: integer('estimated_full_restore_cost_usd'),
 
   // Integrity
-  lastCheckAt:        integer('last_check_at', { mode: 'timestamp' }),
+  lastCheckAt:        integer('last_check_at', { mode: 'timestamp_ms' }),
   lastCheckStatus:    text('last_check_status'),   // 'ok'|'errors'
   lastCheckErrorCount: integer('last_check_error_count'),
 
-  recordedAt: integer('recorded_at', { mode: 'timestamp' }).notNull(),
+  recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Storage alerts ─────────────────────────────────────────────────────────
@@ -363,8 +363,8 @@ export const storageAlerts = sqliteTable('storage_alerts', {
   severity:   text('severity'),   // 'info'|'warning'|'critical'
   message:    text('message').notNull(),
   detail:     text('detail'),
-  firedAt:    integer('fired_at',    { mode: 'timestamp' }).notNull(),
-  resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+  firedAt:    integer('fired_at',    { mode: 'timestamp_ms' }).notNull(),
+  resolvedAt: integer('resolved_at', { mode: 'timestamp_ms' }),
 })
 
 // ── Alert instances ───────────────────────────────────────────────────────
@@ -379,9 +379,9 @@ export const alerts = sqliteTable('alerts', {
   severity:     text('severity'),
   message:      text('message').notNull(),
   status:       text('status').notNull().default('open'),
-  snoozedUntil: integer('snoozed_until', { mode: 'timestamp' }),
-  firedAt:      integer('fired_at',    { mode: 'timestamp' }).notNull(),
-  resolvedAt:   integer('resolved_at', { mode: 'timestamp' }),
+  snoozedUntil: integer('snoozed_until', { mode: 'timestamp_ms' }),
+  firedAt:      integer('fired_at',    { mode: 'timestamp_ms' }).notNull(),
+  resolvedAt:   integer('resolved_at', { mode: 'timestamp_ms' }),
 })
 
 // ── Alert channels ────────────────────────────────────────────────────────
@@ -393,7 +393,7 @@ export const alertChannels = sqliteTable('alert_channels', {
   type:      text('type').notNull(),
   config:    text('config').notNull(),
   enabled:   integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Verification tests ─────────────────────────────────────────────────────
@@ -410,9 +410,9 @@ export const verificationTests = sqliteTable('verification_tests', {
   schedule:       text('schedule'),        // cron expression
   enabled:        integer('enabled', { mode: 'boolean' }).default(true),
   lastResult:     text('last_result'),     // 'passed' | 'failed' | null
-  lastRunAt:      integer('last_run_at',  { mode: 'timestamp' }),
-  nextRunAt:      integer('next_run_at',  { mode: 'timestamp' }),
-  createdAt:      integer('created_at',   { mode: 'timestamp' }).notNull(),
+  lastRunAt:      integer('last_run_at',  { mode: 'timestamp_ms' }),
+  nextRunAt:      integer('next_run_at',  { mode: 'timestamp_ms' }),
+  createdAt:      integer('created_at',   { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Verification runs ──────────────────────────────────────────────────────
@@ -424,8 +424,8 @@ export const verificationRuns = sqliteTable('verification_runs', {
   status:       text('status').notNull(), // 'running' | 'passed' | 'failed'
   log:          text('log'),              // full log output
   errorMessage: text('error_message'),
-  startedAt:    integer('started_at',   { mode: 'timestamp' }).notNull(),
-  completedAt:  integer('completed_at', { mode: 'timestamp' }),
+  startedAt:    integer('started_at',   { mode: 'timestamp_ms' }).notNull(),
+  completedAt:  integer('completed_at', { mode: 'timestamp_ms' }),
 })
 
 // ── Bandwidth profiles ────────────────────────────────────────────────────
@@ -436,7 +436,7 @@ export const bandwidthProfiles = sqliteTable('bandwidth_profiles', {
   name:        text('name').notNull(),
   description: text('description'),
   isGlobal:    integer('is_global', { mode: 'boolean' }).default(false),
-  createdAt:   integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt:   integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 export const bandwidthRules = sqliteTable('bandwidth_rules', {
@@ -455,12 +455,12 @@ export const user = sqliteTable('user', {
   email:           text('email').notNull().unique(),
   emailVerified:   integer('email_verified',    { mode: 'boolean' }).notNull().default(false),
   image:           text('image'),
-  createdAt:       integer('created_at',        { mode: 'timestamp' }).notNull(),
-  updatedAt:       integer('updated_at',        { mode: 'timestamp' }).notNull(),
+  createdAt:       integer('created_at',        { mode: 'timestamp_ms' }).notNull(),
+  updatedAt:       integer('updated_at',        { mode: 'timestamp_ms' }).notNull(),
   // Extended profile fields
   displayName:     text('display_name'),
   phone:           text('phone'),
-  phoneVerifiedAt: integer('phone_verified_at', { mode: 'timestamp' }),
+  phoneVerifiedAt: integer('phone_verified_at', { mode: 'timestamp_ms' }),
   timezone:        text('timezone').notNull().default('UTC'),
   language:        text('language').notNull().default('en'),
   emailNotify:     integer('email_notify',      { mode: 'boolean' }).notNull().default(true),
@@ -473,10 +473,10 @@ export const user = sqliteTable('user', {
 
 export const session = sqliteTable('session', {
   id:        text('id').primaryKey(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
   token:     text('token').notNull().unique(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
   userId:    text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
@@ -490,21 +490,21 @@ export const account = sqliteTable('account', {
   accessToken:           text('access_token'),
   refreshToken:          text('refresh_token'),
   idToken:               text('id_token'),
-  accessTokenExpiresAt:  integer('access_token_expires_at',  { mode: 'timestamp' }),
-  refreshTokenExpiresAt: integer('refresh_token_expires_at', { mode: 'timestamp' }),
+  accessTokenExpiresAt:  integer('access_token_expires_at',  { mode: 'timestamp_ms' }),
+  refreshTokenExpiresAt: integer('refresh_token_expires_at', { mode: 'timestamp_ms' }),
   scope:                 text('scope'),
   password:              text('password'),
-  createdAt:             integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt:             integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt:             integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt:             integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 export const verification = sqliteTable('verification', {
   id:         text('id').primaryKey(),
   identifier: text('identifier').notNull(),
   value:      text('value').notNull(),
-  expiresAt:  integer('expires_at', { mode: 'timestamp' }).notNull(),
-  createdAt:  integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt:  integer('updated_at', { mode: 'timestamp' }),
+  expiresAt:  integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt:  integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt:  integer('updated_at', { mode: 'timestamp_ms' }),
 })
 
 export const twoFactorSecrets = sqliteTable('two_factor', {
@@ -512,7 +512,7 @@ export const twoFactorSecrets = sqliteTable('two_factor', {
   secret:      text('secret').notNull(),
   backupCodes: text('backup_codes').notNull(),
   userId:      text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
-  createdAt:   integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt:   integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Instance settings ─────────────────────────────────────────────────────
@@ -523,7 +523,7 @@ export const instanceSettings = sqliteTable('instance_settings', {
   language:        text('language').notNull().default('en'),
   dateFormat:      text('date_format').notNull().default('YYYY-MM-DD'),
   serverPublicUrl: text('server_public_url'), // e.g., http://192.168.69.52:3093
-  updatedAt:       integer('updated_at', { mode: 'timestamp' }),
+  updatedAt:       integer('updated_at', { mode: 'timestamp_ms' }),
 })
 
 // ── SMTP config ───────────────────────────────────────────────────────────
@@ -537,7 +537,7 @@ export const smtpConfig = sqliteTable('smtp_config', {
   fromEmail: text('from_email'),
   tls:       integer('tls',     { mode: 'boolean' }).default(true),
   enabled:   integer('enabled', { mode: 'boolean' }).default(false),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
 })
 
 // ── API tokens ────────────────────────────────────────────────────────────
@@ -547,9 +547,9 @@ export const apiTokens = sqliteTable('api_tokens', {
   name:        text('name').notNull(),
   tokenHash:   text('token_hash').notNull(),
   tokenPrefix: text('token_prefix').notNull(),
-  lastUsedAt:  integer('last_used_at', { mode: 'timestamp' }),
-  expiresAt:   integer('expires_at',   { mode: 'timestamp' }),
-  createdAt:   integer('created_at',   { mode: 'timestamp' }).notNull(),
+  lastUsedAt:  integer('last_used_at', { mode: 'timestamp_ms' }),
+  expiresAt:   integer('expires_at',   { mode: 'timestamp_ms' }),
+  createdAt:   integer('created_at',   { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Backup defaults ───────────────────────────────────────────────────────
@@ -562,7 +562,7 @@ export const backupDefaults = sqliteTable('backup_defaults', {
   keepYearly:    integer('keep_yearly').default(0),
   scheduleStart: integer('schedule_start').default(0),
   scheduleEnd:   integer('schedule_end').default(23),
-  updatedAt:     integer('updated_at', { mode: 'timestamp' }),
+  updatedAt:     integer('updated_at', { mode: 'timestamp_ms' }),
 })
 
 // ─── User Invites ───────────────────────────────────────────────────────────

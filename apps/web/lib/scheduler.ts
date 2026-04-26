@@ -169,6 +169,7 @@ async function runJob(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<voi
 }
 
 async function triggerTick(db: Db): Promise<void> {
+  // nextRunAt is ms since epoch; comparing against Date.now() in ms
   const now = new Date()
   const jobs = await db.select().from(backupJobs).where(
     and(
