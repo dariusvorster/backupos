@@ -47,8 +47,86 @@ export interface OsInfo {
   kernel: string
 }
 
+// ── Phase B: capability detection ─────────────────────────────────────────
+
+export type Capability =
+  | 'filesystem'           // can read host filesystem paths
+  | 'docker'               // can reach Docker API
+  | 'podman'               // can reach Podman API
+  | 'vss'                  // Windows VSS available
+  | 'apphook:postgres'     // pg_dump available
+  | 'apphook:mysql'        // mysqldump available
+  | 'apphook:redis'        // redis-cli available
+  | 'apphook:sqlite'       // sqlite3 available
+  | 'hypervisor:proxmox'   // can reach Proxmox API
+
+// ── Phase B: compose project types ────────────────────────────────────────
+
+export interface ComposeServiceVolume {
+  type: 'volume' | 'bind'
+  name?: string
+  source?: string
+  target: string
+}
+
+export interface ComposeServiceListing {
+  name: string
+  image: string
+  containerStatus: string
+  volumes: ComposeServiceVolume[]
+  binds: string[]
+  envFiles: string[]
+  networks: string[]
+  labels: Record<string, string>
+}
+
+export interface ComposeProjectListing {
+  name: string
+  composeFilePath?: string
+  services: ComposeServiceListing[]
+}
+
+export interface ComposeApphookConfig {
+  host?: string
+  port?: number
+  user?: string
+  username?: string      // alias for user — accepts either
+  passwordEnv?: string   // name of env var on the agent container holding the password
+  database?: string
+  dbPath?: string        // sqlite only — path inside the volume
+}
+
+export interface ComposeServiceConfig {
+  serviceName: string
+  included: boolean
+  quiescence: 'none' | 'pause' | 'stop' | 'apphook'
+  apphookType?: 'postgres' | 'mysql' | 'redis' | 'sqlite'
+  apphookConfig?: ComposeApphookConfig
+  includedVolumes: string[]
+  includedBindMounts: string[]
+}
+
+export interface ComposeProjectConfig {
+  projectName: string
+  composeFilePath?: string
+  services: ComposeServiceConfig[]
+  includeComposeFile: boolean
+  includeEnvFiles: boolean
+  redactSecretsInEnvFiles: boolean
+  includeContainerLabels: boolean
+  includeNetworkMetadata: boolean
+}
+
+export interface ComposeRestoreConfig {
+  projectName: string
+  newProjectName?: string   // omit for in-place; set for side-by-side
+  snapshotId: string
+}
+
+// ── Messages ──────────────────────────────────────────────────────────────
+
 export type AgentMessage =
-  | { type: 'hello'; token: string; hostname: string; ip: string; osInfo: OsInfo; agentVersion: string; platform: 'linux' | 'windows'; protocolVersion: string; resticVersion?: string; capabilities?: string[] }
+  | { type: 'hello'; token: string; hostname: string; ip: string; osInfo: OsInfo; agentVersion: string; platform: 'linux' | 'windows'; protocolVersion: string; resticVersion?: string; capabilities?: string[]; bundleHash?: string }
   | { type: 'ping' }
   | { type: 'metrics'; metrics: AgentMetrics }
   | { type: 'backup_start'; jobId: string; config: BackupJobConfig }
@@ -63,6 +141,7 @@ export type AgentMessage =
   | { type: 'resources_result'; requestId: string; resources: DetectedResources }
   | { type: 'test_repo_result'; requestId: string; ok: boolean; error?: string; snapshotCount?: number }
   | { type: 'test_mount_result'; requestId: string; ok: boolean; error?: string }
+  | { type: 'compose_project_listing'; requestId: string; project: ComposeProjectListing }
 
 export interface DetectedResources {
   dockerVolumes?: string[]
@@ -81,3 +160,6 @@ export type ServerMessage =
   | { type: 'test_repo'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
   | { type: 'test_mount'; requestId: string; mountConfig: MountConfig }
   | { type: 'force_update' }
+  | { type: 'list_compose_project'; requestId: string; projectName: string }
+  | { type: 'run_compose_backup'; jobId: string; runId: string; config: ComposeProjectConfig; repoId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
+  | { type: 'run_compose_restore'; jobId: string; runId: string; config: ComposeRestoreConfig; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
