@@ -183,6 +183,38 @@ void app.prepare().then(() => {
       return
     }
 
+    // Repository init-state — used by agent to check/set initializedAt (Fix A)
+    if (req.method === 'GET' && /^\/internal\/repository\/[^/]+\/state$/.test(parsed.pathname ?? '')) {
+      void (async () => {
+        const agentToken = req.headers['x-agent-token'] as string | undefined
+        if (!agentToken) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'missing x-agent-token' })); return }
+        const db = getDb()
+        const [agentRow] = await db.select().from(agents).where(eq(agents.publicKey, agentToken)).limit(1)
+        if (!agentRow) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'invalid token' })); return }
+        const repoId = (parsed.pathname ?? '').split('/')[3]!
+        const [repo] = await db.select({ initializedAt: repositories.initializedAt }).from(repositories).where(eq(repositories.id, repoId)).limit(1)
+        if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'repository not found' })); return }
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ initializedAt: repo.initializedAt ? repo.initializedAt.getTime() : null }))
+      })()
+      return
+    }
+
+    if (req.method === 'POST' && /^\/internal\/repository\/[^/]+\/initialized$/.test(parsed.pathname ?? '')) {
+      void (async () => {
+        const agentToken = req.headers['x-agent-token'] as string | undefined
+        if (!agentToken) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'missing x-agent-token' })); return }
+        const db = getDb()
+        const [agentRow] = await db.select().from(agents).where(eq(agents.publicKey, agentToken)).limit(1)
+        if (!agentRow) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'invalid token' })); return }
+        const repoId = (parsed.pathname ?? '').split('/')[3]!
+        await db.update(repositories).set({ initializedAt: new Date() }).where(eq(repositories.id, repoId))
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true }))
+      })()
+      return
+    }
+
     void handle(req, res, parsed)
   })
 

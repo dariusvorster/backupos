@@ -162,6 +162,7 @@ export async function triggerJob(id: string): Promise<void> {
         type:   'run_backup',
         jobId:  id,
         config: {
+          repoId:       job.repositoryId!,
           repoUrl:      repoConfig.repositoryUrl,
           repoPassword: repoConfig.password,
           paths,
@@ -240,7 +241,7 @@ export async function retryRun(jobId: string): Promise<void> {
       const result = await dispatchToAgent(job.agentId, {
         type:   'run_backup',
         jobId,
-        config: { repoUrl: repoConfig.repositoryUrl, repoPassword: repoConfig.password, paths, exclude: srcConfig.exclude, tags, envVars: repoConfig.envVars },
+        config: { repoId: job.repositoryId!, repoUrl: repoConfig.repositoryUrl, repoPassword: repoConfig.password, paths, exclude: srcConfig.exclude, tags, envVars: repoConfig.envVars },
       })
       if (!result.ok) {
         console.error('[retryRun] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
