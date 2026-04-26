@@ -143,6 +143,8 @@ async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> 
   send({ type: 'backup_start', jobId, config })
   console.log(`[agent] Starting backup for job ${jobId} — paths: ${config.paths.join(', ')}`)
 
+  let runLog = ''
+
   try {
     if (!config.repoPassword) {
       throw new Error('runBackup: repoPassword is missing from dispatch payload. Server-side dispatch is broken — check that decryptField(repo.resticPassword) is being included in the WS message.')
@@ -175,10 +177,13 @@ async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> 
       },
     })
 
+    runLog = result.log
+
     send({
       type:       'backup_complete',
       jobId,
       snapshotId: result.snapshotId,
+      log:        result.log,
       stats: {
         filesNew:            result.filesNew,
         filesChanged:        result.filesChanged,
@@ -186,7 +191,7 @@ async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> 
         dataAdded:           result.dataAdded,
         totalFilesProcessed: result.filesNew + result.filesChanged + result.filesUnmodified,
         totalBytesProcessed: result.totalSize ?? 0,
-        durationSeconds:     result.duration  ?? 0,
+        durationMs:          result.duration  ?? 0,
       },
     })
     console.log(`[agent] Backup complete — snapshot ${result.snapshotId}`)
@@ -194,7 +199,7 @@ async function runBackup(jobId: string, config: BackupJobConfig): Promise<void> 
   } catch (err) {
     const error  = err instanceof Error ? err.message : String(err)
     const detail = err instanceof Error && err.stack ? err.stack : ''
-    send({ type: 'backup_failed', jobId, error, detail })
+    send({ type: 'backup_failed', jobId, error, detail, log: runLog || undefined })
     console.error(`[agent] Backup failed for job ${jobId}:`, error)
 
   } finally {

@@ -344,7 +344,7 @@ void app.prepare().then(() => {
             filesUnmodified: msg.stats.filesUnmodified,
             dataAdded:       msg.stats.dataAdded,
             totalSize:       msg.stats.totalBytesProcessed,
-            duration:        msg.stats.durationSeconds,
+            duration:        msg.stats.durationMs,
           }).where(eq(backupRuns.id, run.id))
 
           const [jobForNext] = await db.select({ schedule: backupJobs.schedule })

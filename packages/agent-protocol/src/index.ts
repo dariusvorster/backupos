@@ -29,7 +29,7 @@ export interface BackupStats {
   dataAdded: number
   totalFilesProcessed: number
   totalBytesProcessed: number
-  durationSeconds: number
+  durationMs: number
 }
 
 export interface AgentMetrics {

@@ -13,6 +13,15 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'var(--fg-dim)',
 }
 
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return '—'
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const minutes = Math.floor(ms / 60_000)
+  const seconds = Math.round((ms % 60_000) / 1000)
+  return `${minutes}m ${seconds}s`
+}
+
 function safeParsePhases(raw: string | null | undefined): PhaseData | null {
   if (!raw) return null
   try { return JSON.parse(raw) } catch { return null }
@@ -85,7 +94,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
         {([
-          { label: 'Duration',   value: run.duration    != null ? `${run.duration}s`                                    : '—' },
+          { label: 'Duration',   value: run.duration    != null ? fmtDuration(run.duration)                           : '—' },
           { label: 'Data added', value: run.dataAdded   != null ? `${(run.dataAdded   / 1_048_576).toFixed(1)} MB`      : '—' },
           { label: 'Total size', value: run.totalSize   != null ? `${(run.totalSize   / 1_073_741_824).toFixed(2)} GB`  : '—' },
           { label: 'Files new',  value: run.filesNew         != null ? String(run.filesNew)         : '—' },
