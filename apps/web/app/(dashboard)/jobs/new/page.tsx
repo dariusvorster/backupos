@@ -7,13 +7,14 @@ import { CronInput } from '@/components/cron-input'
 export default async function NewJobPage({
   searchParams,
 }: {
-  searchParams: Promise<{ name?: string; sourceType?: string; infraServiceId?: string; cronError?: string }>
+  searchParams: Promise<{ name?: string; sourceType?: string; infraServiceId?: string; cronError?: string; composeError?: string }>
 }) {
   const params              = await searchParams
   const prefillName         = params.name           ?? ''
   const prefillSourceType   = params.sourceType     ?? ''
   const prefillInfraService = params.infraServiceId ?? ''
   const cronError           = params.cronError
+  const composeError        = params.composeError
 
   const db      = getDb()
   const [repos, agentList] = await Promise.all([
@@ -62,7 +63,10 @@ export default async function NewJobPage({
             />
           </div>
 
-          <SourceConfigSection defaultSourceType={prefillSourceType || 'filesystem'} />
+          <SourceConfigSection
+            defaultSourceType={prefillSourceType || 'filesystem'}
+            composeError={composeError}
+          />
 
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>

@@ -68,6 +68,13 @@ export async function createJob(formData: FormData): Promise<void> {
     redirect(`/jobs/new?cronError=${encodeURIComponent(`Invalid cron expression "${schedule}". ${cronCheck.error}. Examples: "0 2 * * *" (daily 2am), "*/15 * * * *" (every 15min).`)}`)
   }
 
+  if (sourceType === 'compose_project') {
+    const raw = (formData.get('composeConfig') as string | null)?.trim() ?? ''
+    let ok = false
+    try { const p = JSON.parse(raw) as { services?: unknown }; ok = Array.isArray(p.services) && (p.services as unknown[]).length > 0 } catch { /* ok stays false */ }
+    if (!ok) redirect(`/jobs/new?composeError=${encodeURIComponent('Discover and configure at least one service before saving.')}`)
+  }
+
   const db = getDb()
   const id = crypto.randomUUID()
   await db.insert(backupJobs).values({
@@ -156,6 +163,13 @@ export async function updateJob(id: string, formData: FormData): Promise<void> {
   const cronCheck = validateCron(schedule)
   if (!cronCheck.valid) {
     redirect(`/jobs/${id}/edit?cronError=${encodeURIComponent(`Invalid cron expression "${schedule}". ${cronCheck.error}. Examples: "0 2 * * *" (daily 2am), "*/15 * * * *" (every 15min).`)}`)
+  }
+
+  if (sourceType === 'compose_project') {
+    const raw = (formData.get('composeConfig') as string | null)?.trim() ?? ''
+    let ok = false
+    try { const p = JSON.parse(raw) as { services?: unknown }; ok = Array.isArray(p.services) && (p.services as unknown[]).length > 0 } catch { /* ok stays false */ }
+    if (!ok) redirect(`/jobs/${id}/edit?composeError=${encodeURIComponent('Discover and configure at least one service before saving.')}`)
   }
 
   const db = getDb()

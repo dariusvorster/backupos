@@ -27,7 +27,7 @@ const hintStyle: React.CSSProperties = {
   fontSize: 11, color: 'var(--fg-dim)', marginTop: 4,
 }
 
-import type { DetectedResources } from '@backupos/agent-protocol'
+import type { DetectedResources, ComposeProjectConfig } from '@backupos/agent-protocol'
 import { ComposeProjectFields } from './compose-project-fields'
 
 type Cfg = Record<string, unknown>
@@ -317,12 +317,22 @@ const DETECTABLE = new Set(['filesystem', 'docker_volume', 'database'])
 export function SourceConfigSection({
   defaultSourceType,
   initialConfig,
+  composeError,
 }: {
   defaultSourceType?: string
   initialConfig?: string
+  composeError?: string
 }) {
   const cfg: Cfg = (() => {
     try { return JSON.parse(initialConfig ?? '{}') as Cfg } catch { return {} }
+  })()
+
+  const composeInitialConfig: ComposeProjectConfig | undefined = (() => {
+    if (defaultSourceType !== 'compose_project') return undefined
+    try {
+      const p = JSON.parse(initialConfig ?? '{}') as ComposeProjectConfig
+      return Array.isArray(p.services) ? p : undefined
+    } catch { return undefined }
   })()
   const [selected, setSelected] = useState(defaultSourceType ?? 'filesystem')
   const [detecting, setDetecting] = useState(false)
@@ -404,7 +414,9 @@ export function SourceConfigSection({
           <div style={{ fontSize: 11, color: 'var(--err)', marginTop: 4 }}>{detectError}</div>
         )}
         {selected === 'filesystem'      && <FilesystemFields cfg={cfg} detected={detected} />}
-        {selected === 'compose_project' && <ComposeProjectFields />}
+        {selected === 'compose_project' && (
+          <ComposeProjectFields initialConfig={composeInitialConfig} serverError={composeError} />
+        )}
         {selected === 'docker_volume'   && <DockerVolumeFields cfg={cfg} detected={detected} />}
         {selected === 'database'       && <DatabaseFields cfg={cfg} detected={detected} />}
         {selected === 'proxmox_vm'     && <ProxmoxFields label="VM" cfg={cfg} />}

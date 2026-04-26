@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import type { ComposeProjectConfig, ComposeServiceConfig } from '@backupos/agent-protocol'
 
 type QuiescenceType = 'none' | 'pause' | 'stop' | 'apphook'
 type ApphookType = 'postgres' | 'mysql' | 'redis' | 'sqlite'
@@ -75,6 +76,43 @@ function buildConfig(projectName: string, listing: Listing, services: ServiceSta
   }
 }
 
+function synthesizeListing(config: ComposeProjectConfig): Listing {
+  return {
+    name: config.projectName,
+    composeFilePath: config.composeFilePath,
+    services: config.services.map(s => ({
+      name: s.serviceName,
+      image: '',
+      containerStatus: '(saved)',
+      volumes: s.includedVolumes.map(v => ({ type: 'volume' as const, name: v, target: '' })),
+      binds: s.includedBindMounts ?? [],
+      defaultQuiescence: s.quiescence,
+      defaultApphookType: s.apphookType,
+    })),
+  }
+}
+
+function hydrateService(s: ComposeServiceConfig): ServiceState {
+  const q = s.quiescence
+  const at = (s.apphookType ?? 'postgres') as ApphookType
+  const d = APPHOOK_DEFAULTS[at] ?? APPHOOK_DEFAULTS.postgres!
+  return {
+    name: s.serviceName,
+    image: '',
+    containerStatus: '(saved)',
+    quiescence: q,
+    apphookType: at,
+    apphookUsername:    s.apphookConfig?.username    ?? '',
+    apphookPasswordEnv: s.apphookConfig?.passwordEnv ?? '',
+    apphookDatabase:    s.apphookConfig?.database    ?? d.database,
+    apphookHost:        s.apphookConfig?.host        ?? '',
+    apphookPort:        s.apphookConfig?.port ? String(s.apphookConfig.port) : (d.port > 0 ? String(d.port) : ''),
+    includedVolumes: s.includedVolumes,
+    allVolumes: s.includedVolumes.map(v => ({ name: v, target: '' })),
+    binds: s.includedBindMounts ?? [],
+  }
+}
+
 function initService(s: ListingService): ServiceState {
   const q = (s.defaultQuiescence ?? 'stop') as QuiescenceType
   const at = (s.defaultApphookType ?? 'postgres') as ApphookType
@@ -91,12 +129,21 @@ function initService(s: ListingService): ServiceState {
   }
 }
 
-export function ComposeProjectFields() {
-  const [projectName, setProjectName] = useState('')
+export function ComposeProjectFields({
+  initialConfig,
+  serverError,
+}: {
+  initialConfig?: ComposeProjectConfig
+  serverError?: string
+} = {}) {
+  const initialListing = initialConfig?.services?.length ? synthesizeListing(initialConfig) : undefined
+  const [projectName, setProjectName] = useState(initialConfig?.projectName ?? '')
   const [discovering, setDiscovering] = useState(false)
   const [discoverError, setDiscoverError] = useState<string | undefined>()
-  const [listing, setListing] = useState<Listing | undefined>()
-  const [services, setServices] = useState<ServiceState[]>([])
+  const [listing, setListing] = useState<Listing | undefined>(initialListing)
+  const [services, setServices] = useState<ServiceState[]>(
+    initialConfig?.services?.length ? initialConfig.services.map(hydrateService) : [],
+  )
 
   const discover = async () => {
     const agentId = document.querySelector<HTMLSelectElement>('select[name="agentId"]')?.value
@@ -112,7 +159,19 @@ export function ComposeProjectFields() {
       if (!res.ok) { setDiscoverError((body as { error?: string }).error ?? 'Discovery failed'); return }
       const l = body as Listing
       setListing(l)
-      setServices(l.services.map(initService))
+      setServices(prev => l.services.map(newSvc => {
+        const existing = prev.find(s => s.name === newSvc.name)
+        if (existing) {
+          return {
+            ...existing,
+            image: newSvc.image,
+            containerStatus: newSvc.containerStatus,
+            allVolumes: newSvc.volumes.filter(v => v.type === 'volume').map(v => ({ name: v.name, target: v.target })),
+            binds: newSvc.binds,
+          }
+        }
+        return initService(newSvc)
+      }))
     } catch { setDiscoverError('Network error — check the agent is connected') }
     finally { setDiscovering(false) }
   }
@@ -148,6 +207,20 @@ export function ComposeProjectFields() {
         <div style={{ fontSize: 12, color: 'var(--err)', marginBottom: 8, padding: '6px 10px',
           background: 'color-mix(in srgb, var(--err) 10%, transparent)', borderRadius: 'var(--radius-sm)' }}>
           {discoverError}
+        </div>
+      )}
+
+      {serverError && (
+        <div style={{ fontSize: 12, color: 'var(--err)', marginBottom: 8, padding: '6px 10px',
+          background: 'color-mix(in srgb, var(--err) 10%, transparent)', borderRadius: 'var(--radius-sm)' }}>
+          {serverError}
+        </div>
+      )}
+
+      {!listing && (
+        <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginBottom: 8, padding: '6px 10px',
+          background: 'var(--surf3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+          No services discovered yet. Enter the project name above and click "Discover services".
         </div>
       )}
 
