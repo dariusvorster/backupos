@@ -3768,10 +3768,26 @@ var wrapper_default = import_websocket.default;
 var os = __toESM(require("os"));
 var import_crypto = require("crypto");
 var import_fs2 = require("fs");
-var import_child_process3 = require("child_process");
+var import_child_process2 = require("child_process");
+
+// ../engine/dist/exec-allowed.js
+var import_node_child_process = require("node:child_process");
+var ALLOWED_COMMANDS = /* @__PURE__ */ new Set(["restic", "systemctl", "df", "hostname", "uname"]);
+function isAbsolutePathOfAllowed(command) {
+  for (const allowed of ALLOWED_COMMANDS) {
+    if (command.endsWith(`/${allowed}`))
+      return true;
+  }
+  return false;
+}
+function spawnAllowed(command, args, options) {
+  if (!ALLOWED_COMMANDS.has(command) && !isAbsolutePathOfAllowed(command)) {
+    throw new Error(`[exec-allowed] command "${command}" is not in the allowlist`);
+  }
+  return (0, import_node_child_process.spawn)(command, args, options ?? {});
+}
 
 // ../engine/dist/restic.js
-var import_child_process = require("child_process");
 var MAX_LOG_BYTES = 1e6;
 function buildRunLog(stdout, stderr) {
   const logLines = [];
@@ -3989,7 +4005,7 @@ var ResticEngine = class {
   }
   // Non-blocking — caller must unmount when done
   mount(snapshotId, mountPoint) {
-    (0, import_child_process.spawn)(this.binary, ["mount", snapshotId, mountPoint], {
+    spawnAllowed(this.binary, ["mount", snapshotId, mountPoint], {
       env: this.buildEnv(),
       detached: true,
       stdio: "ignore"
@@ -4006,7 +4022,7 @@ var ResticEngine = class {
   }
   runStreaming(args, onLine, extraEnv, timeoutMs, signal) {
     return new Promise((resolve, reject) => {
-      const proc = (0, import_child_process.spawn)(this.binary, args, {
+      const proc = spawnAllowed(this.binary, args, {
         env: this.buildEnv(extraEnv),
         stdio: ["ignore", "pipe", "pipe"]
       });
@@ -4123,11 +4139,11 @@ function getSystemUptimeSeconds() {
 }
 
 // src/capabilities.ts
-var import_child_process2 = require("child_process");
+var import_child_process = require("child_process");
 var import_util = require("util");
 var import_fs = require("fs");
 var http = __toESM(require("http"));
-var execFileAsync = (0, import_util.promisify)(import_child_process2.execFile);
+var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 async function binaryExists(name) {
   try {
     await execFileAsync(name, ["--version"], { timeout: 2e3 });
@@ -4251,7 +4267,7 @@ async function selfUpdate() {
     (0, import_fs2.writeFileSync)(tmp, buf);
     (0, import_fs2.renameSync)(tmp, scriptPath);
     console.log("[agent] Bundle updated \u2014 restarting \u2026");
-    (0, import_child_process3.spawn)(process.execPath, process.argv.slice(1), {
+    (0, import_child_process2.spawn)(process.execPath, process.argv.slice(1), {
       env: process.env,
       detached: true,
       stdio: "inherit"
@@ -4289,7 +4305,7 @@ var VERSION = "0.1.0";
 var PROTOCOL_VERSION = "1";
 async function queryResticVersion() {
   return new Promise((resolve) => {
-    const proc = (0, import_child_process3.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
+    const proc = (0, import_child_process2.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     proc.stdout?.on("data", (d) => {
       out += d.toString();
@@ -4409,6 +4425,8 @@ async function handleMessage(raw) {
     }
   } else if (msg.type === "verify_repo") {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars);
+  } else if (msg.type === "run_compose_backup") {
+    send({ type: "backup_failed", jobId: msg.jobId, error: "compose backup execution not implemented yet (Task 7)", detail: "" });
   } else if (msg.type === "list_compose_project") {
     void (async () => {
       try {
