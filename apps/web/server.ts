@@ -272,14 +272,14 @@ void app.prepare().then(() => {
       return
     }
 
-    // Cancel a run by runId — testing / admin use
-    const cancelRunMatch = parsed.pathname?.match(/^\/internal\/cancel-run\/([^/]+)$/)
+    // Cancel a run by runId
+    const cancelRunMatch = parsed.pathname?.match(/^\/api\/runs\/([^/]+)\/cancel$/)
     if (req.method === 'POST' && cancelRunMatch) {
       void (async () => {
-        const auth = req.headers['x-internal-token']
-        if (auth !== process.env['BACKUPOS_INTERNAL_TOKEN']) {
+        const session = await requireSession(req)
+        if (!session) {
           res.writeHead(401, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ ok: false, reason: 'unauthorized' }))
+          res.end(JSON.stringify({ error: 'unauthorized' }))
           return
         }
         const runId = cancelRunMatch[1]!
