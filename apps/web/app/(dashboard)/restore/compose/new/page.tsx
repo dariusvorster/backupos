@@ -4,7 +4,8 @@ import type { ComposeProjectConfig } from '@backupos/agent-protocol'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ComposeRestoreNewPage() {
+export default async function ComposeRestoreNewPage({ searchParams }: { searchParams: Promise<{ confirmError?: string }> }) {
+  const { confirmError } = await searchParams
   const db = getDb()
 
   const jobs = await db
@@ -48,7 +49,7 @@ export default async function ComposeRestoreNewPage() {
         Restore a previously backed-up compose project from a snapshot.
         Default mode is side-by-side (safe). In-place requires explicit confirmation.
       </p>
-      <ComposeRestoreWizard jobs={jobData} />
+      <ComposeRestoreWizard jobs={jobData} initialError={confirmError} />
     </div>
   )
 }

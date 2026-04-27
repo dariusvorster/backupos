@@ -22,7 +22,7 @@ function fmt(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-export function ComposeRestoreWizard({ jobs }: { jobs: JobOption[] }) {
+export function ComposeRestoreWizard({ jobs, initialError }: { jobs: JobOption[]; initialError?: string }) {
   const [selectedJobId, setSelectedJobId]   = useState(jobs[0]?.id ?? '')
   const [selectedRunId, setSelectedRunId]   = useState(jobs[0]?.runs[0]?.id ?? '')
   const [mode, setMode]                     = useState<'in_place' | 'side_by_side'>('side_by_side')
@@ -87,10 +87,11 @@ export function ComposeRestoreWizard({ jobs }: { jobs: JobOption[] }) {
   return (
     <form action={triggerComposeRestore} onSubmit={handleSubmit}>
       {/* Hidden fields for server action */}
-      <input type="hidden" name="jobId"      value={selectedJobId} />
-      <input type="hidden" name="sourceRunId" value={selectedRun?.id ?? ''} />
-      <input type="hidden" name="mode"       value={mode} />
-      <input type="hidden" name="restoreComposeFile" value={restoreComposeFile ? '1' : '0'} />
+      <input type="hidden" name="jobId"                value={selectedJobId} />
+      <input type="hidden" name="sourceRunId"          value={selectedRun?.id ?? ''} />
+      <input type="hidden" name="mode"                 value={mode} />
+      <input type="hidden" name="restoreComposeFile"   value={restoreComposeFile ? '1' : '0'} />
+      <input type="hidden" name="confirmedProjectName" value={confirmText} />
 
       <div style={section}>
         <label htmlFor="compose-job" style={lbl}>Compose job</label>
@@ -207,10 +208,10 @@ export function ComposeRestoreWizard({ jobs }: { jobs: JobOption[] }) {
         </label>
       </div>
 
-      {validationError && (
+      {(validationError ?? initialError) && (
         <div style={{ fontSize: 12, color: 'var(--err)', marginBottom: 12, padding: '6px 10px',
           background: 'color-mix(in srgb, var(--err) 10%, transparent)', borderRadius: 'var(--radius-sm)' }}>
-          {validationError}
+          {validationError ?? initialError}
         </div>
       )}
 

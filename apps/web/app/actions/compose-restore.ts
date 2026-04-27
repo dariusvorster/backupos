@@ -13,7 +13,8 @@ export async function triggerComposeRestore(formData: FormData): Promise<void> {
   const rawMode = (formData.get('mode') as string | null)?.trim()
   const mode: 'in_place' | 'side_by_side' = rawMode === 'in_place' ? 'in_place' : 'side_by_side'
   const sideBySideProjectName = (formData.get('sideBySideProjectName') as string | null)?.trim() || undefined
-  const restoreComposeFile    = formData.get('restoreComposeFile') === '1'
+  const restoreComposeFile     = formData.get('restoreComposeFile') === '1'
+  const confirmedProjectName  = (formData.get('confirmedProjectName') as string | null)?.trim() ?? ''
 
   if (!jobId || !sourceRunId) redirect('/restore/compose/new')
 
@@ -50,6 +51,10 @@ export async function triggerComposeRestore(formData: FormData): Promise<void> {
 
   const snapshotIds   = sourceRun.snapshotIds ? (JSON.parse(sourceRun.snapshotIds) as string[]) : []
   const composeConfig = JSON.parse(job.sourceConfig) as ComposeProjectConfig
+
+  if (mode === 'in_place' && confirmedProjectName !== composeConfig.projectName) {
+    redirect(`/restore/compose/new?confirmError=${encodeURIComponent('In-place restore requires typing the project name exactly to confirm.')}`)
+  }
 
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, job.repositoryId!)).limit(1)
   if (!repo) redirect(`/jobs/${jobId}`)
