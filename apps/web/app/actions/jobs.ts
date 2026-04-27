@@ -208,46 +208,77 @@ export async function retryRun(jobId: string): Promise<void> {
   })
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, jobId))
 
-  if (job.agentId) {
-    const [repo] = await db.select().from(repositories)
-      .where(eq(repositories.id, job.repositoryId!)).limit(1)
-    if (repo) {
-      const cfg      = JSON.parse(decryptField(repo.config)) as Record<string, string>
-      const password = decryptField(repo.resticPassword)
-      if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
-      const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
+  if (!job.agentId) {
+    await db.update(backupRuns).set({
+      status:       'failed',
+      completedAt:  now,
+      errorMessage: 'job has no agent assigned — set an agent on this job',
+    }).where(eq(backupRuns.id, runId))
+    await db.update(backupJobs).set({ lastRunStatus: 'failed' }).where(eq(backupJobs.id, jobId))
+    redirect(`/jobs/${jobId}`)
+  }
 
-      let result: { ok: boolean; reason?: string; knownIds?: string[] }
-      if (job.sourceType === 'compose_project') {
-        const composeConfig = JSON.parse(job.sourceConfig) as import('@backupos/agent-protocol').ComposeProjectConfig
-        result = await dispatchToAgent(job.agentId, {
-          type:         'run_compose_backup',
-          jobId,
-          runId,
-          config:       composeConfig,
-          repoId:       job.repositoryId!,
-          repoUrl:      cfg['repositoryUrl'] ?? '',
-          repoPassword: password,
-          envVars:      cfg,
-        })
-      } else {
-        const srcConfig = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
-        const paths = job.sourceType === 'docker_volume'
-          ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
-          : (srcConfig.paths ?? [])
-        result = await dispatchToAgent(job.agentId, {
-          type:   'run_backup',
-          jobId,
-          runId,
-          config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
-        })
-      }
-      if (!result.ok) {
-        console.error('[retryRun] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
-      }
-    }
+  const { connectedAgentIds } = await import('@/lib/ws-state')
+  if (!connectedAgentIds().includes(job.agentId)) {
+    await db.update(backupRuns).set({
+      status:       'failed',
+      completedAt:  now,
+      errorMessage: `agent ${job.agentId} is not connected — backup deferred until agent reconnects`,
+    }).where(eq(backupRuns.id, runId))
+    await db.update(backupJobs).set({ lastRunStatus: 'failed' }).where(eq(backupJobs.id, jobId))
+    redirect(`/jobs/${jobId}`)
+  }
+
+  const [repo] = await db.select().from(repositories)
+    .where(eq(repositories.id, job.repositoryId!)).limit(1)
+  if (!repo) {
+    await db.update(backupRuns).set({
+      status:       'failed',
+      completedAt:  now,
+      errorMessage: `repository ${job.repositoryId} not found`,
+    }).where(eq(backupRuns.id, runId))
+    redirect(`/jobs/${jobId}`)
+  }
+
+  const cfg      = JSON.parse(decryptField(repo.config)) as Record<string, string>
+  const password = decryptField(repo.resticPassword)
+  if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
+  const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
+
+  let result: { ok: boolean; reason?: string; knownIds?: string[] }
+  if (job.sourceType === 'compose_project') {
+    const composeConfig = JSON.parse(job.sourceConfig) as import('@backupos/agent-protocol').ComposeProjectConfig
+    result = await dispatchToAgent(job.agentId, {
+      type:         'run_compose_backup',
+      jobId,
+      runId,
+      config:       composeConfig,
+      repoId:       job.repositoryId!,
+      repoUrl:      cfg['repositoryUrl'] ?? '',
+      repoPassword: password,
+      envVars:      cfg,
+    })
   } else {
-    void import('@/lib/scheduler').then(({ executeRun }) => executeRun(jobId, runId))
+    const srcConfig = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
+    const paths = job.sourceType === 'docker_volume'
+      ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
+      : (srcConfig.paths ?? [])
+    result = await dispatchToAgent(job.agentId, {
+      type:   'run_backup',
+      jobId,
+      runId,
+      config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
+    })
+  }
+
+  if (!result.ok) {
+    await db.update(backupRuns).set({
+      status:       'failed',
+      completedAt:  now,
+      errorMessage: `dispatch failed: ${result.reason ?? 'unknown'}`,
+    }).where(eq(backupRuns.id, runId))
+    await db.update(backupJobs).set({ lastRunStatus: 'failed' }).where(eq(backupJobs.id, jobId))
+    console.error('[retryRun] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
   }
 
   redirect(`/jobs/${jobId}`)
