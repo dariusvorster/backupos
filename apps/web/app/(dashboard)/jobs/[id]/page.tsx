@@ -117,6 +117,19 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         >
           Edit
         </Link>
+        {job.sourceType === 'compose_project' && (
+          <Link
+            href={`/restore/compose/new?jobId=${job.id}`}
+            style={{
+              padding: '6px 16px', fontSize: 13,
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+              background: 'var(--surf2)', color: 'var(--fg)',
+              textDecoration: 'none', display: 'inline-flex', alignItems: 'center',
+            }}
+          >
+            Restore
+          </Link>
+        )}
       </div>
 
       {/* Deprecation banner for legacy docker_volume jobs */}

@@ -22,12 +22,13 @@ function fmt(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-export function ComposeRestoreWizard({ jobs, initialError }: { jobs: JobOption[]; initialError?: string }) {
-  const [selectedJobId, setSelectedJobId]   = useState(jobs[0]?.id ?? '')
-  const [selectedRunId, setSelectedRunId]   = useState(jobs[0]?.runs[0]?.id ?? '')
+export function ComposeRestoreWizard({ jobs, initialError, initialJobId }: { jobs: JobOption[]; initialError?: string; initialJobId?: string }) {
+  const initialJob = (initialJobId ? jobs.find(j => j.id === initialJobId) : undefined) ?? jobs[0]
+  const [selectedJobId, setSelectedJobId]   = useState(initialJob?.id ?? '')
+  const [selectedRunId, setSelectedRunId]   = useState(initialJob?.runs[0]?.id ?? '')
   const [mode, setMode]                     = useState<'in_place' | 'side_by_side'>('side_by_side')
   const [newProjectName, setNewProjectName] = useState(() => {
-    const proj = jobs[0]?.projectName ?? ''
+    const proj = initialJob?.projectName ?? ''
     return proj ? `${proj}-restored` : ''
   })
   const [restoreComposeFile, setRestoreComposeFile] = useState(true)
