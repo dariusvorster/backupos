@@ -70,7 +70,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div>
-      <AutoRefresh intervalMs={10_000} />
+      <AutoRefresh intervalMs={activeRun ? 3_000 : 10_000} />
       <div style={{ marginBottom: 24 }}>
         <Link href="/jobs" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Jobs</Link>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginTop: 8 }}>{job.name}</h1>
@@ -181,7 +181,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               display: 'inline-block', animation: 'pulse 1.5s infinite',
             }} />
             <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--accent)' }}>
-              Backup in progress
+              {activeRun.runType === 'restore' ? 'Restore' : 'Backup'} in progress
             </span>
             <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>
               · Started {activeRun.startedAt ? activeRun.startedAt.toISOString().slice(11, 19) : '—'}
@@ -359,6 +359,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border2)' }}>
                 <th style={th}>Status</th>
+                <th style={th}>Type</th>
                 <th style={th}>Started</th>
                 <th style={{ ...th, textAlign: 'right' }}>Duration</th>
                 <th style={{ ...th, textAlign: 'right' }}>Data added</th>
@@ -374,6 +375,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   <td style={{ padding: '12px 20px' }}>
                     <Link href={`/jobs/${id}/runs/${run.id}`} style={{ display: 'flex', textDecoration: 'none' }}>
                       <Badge status={run.status as BadgeStatus} />
+                    </Link>
+                  </td>
+                  <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)' }}>
+                    <Link href={`/jobs/${id}/runs/${run.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                      {run.runType === 'restore' ? 'Restore' : 'Backup'}
                     </Link>
                   </td>
                   <td style={{ padding: '12px 20px', fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)' }}>
