@@ -8,8 +8,27 @@ import { Note }              from '@/components/mdx/note'
 import { Tip }               from '@/components/mdx/tip'
 import { FeatureComparison } from '@/components/mdx/feature-comparison'
 import { GlossaryTable }     from '@/components/mdx/glossary-table'
+import { Warning }           from '@/components/mdx/warning'
+import { makeStub }          from '@/components/mdx/stub'
 
-const mdxComponents = { Note, Tip, FeatureComparison, GlossaryTable }
+const AlertTriggers   = makeStub('AlertTriggers')
+const HealthFactors   = makeStub('HealthFactors')
+const HealthGrades    = makeStub('HealthGrades')
+const JobPhases       = makeStub('JobPhases')
+const OtherBackends   = makeStub('OtherBackends')
+const PlanComparison  = makeStub('PlanComparison')
+const RepoFields      = makeStub('RepoFields')
+const RetentionPolicy = makeStub('RetentionPolicy')
+const RunPhases       = makeStub('RunPhases')
+const SourceTypes     = makeStub('SourceTypes')
+const StepTypes       = makeStub('StepTypes')
+
+const mdxComponents = {
+  Note, Tip, FeatureComparison, GlossaryTable,
+  Warning,
+  AlertTriggers, HealthFactors, HealthGrades, JobPhases, OtherBackends,
+  PlanComparison, RepoFields, RetentionPolicy, RunPhases, SourceTypes, StepTypes,
+}
 
 const DOCS_ROOT = resolve(process.cwd(), '../../packages/docs-content/content')
 
