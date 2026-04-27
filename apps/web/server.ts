@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { parse } from 'url'
+import type { IncomingMessage } from 'http'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
@@ -13,7 +14,26 @@ import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTe
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
 import { sendAlert } from './lib/alerts'
+import { auth } from './lib/auth'
 import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
+
+async function requireSession(req: IncomingMessage): Promise<{ userId: string } | null> {
+  const headers = new Headers()
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (typeof value === 'string') {
+      headers.set(key, value)
+    } else if (Array.isArray(value)) {
+      headers.set(key, value.join(', '))
+    }
+  }
+  try {
+    const session = await auth.api.getSession({ headers })
+    if (!session?.user?.id) return null
+    return { userId: session.user.id }
+  } catch {
+    return null
+  }
+}
 
 const dev  = process.env.NODE_ENV !== 'production'
 const port = parseInt(process.env.PORT ?? '3000', 10)
@@ -57,35 +77,57 @@ void app.prepare().then(() => {
     // Handle agent-detect directly so it shares the same ws-state singleton as the WS handler
     const forceUpdateMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/force-update$/)
     if (req.method === 'POST' && forceUpdateMatch) {
-      const agentId = forceUpdateMatch[1]!
-      console.log('[force-update] requested agentId=%s connected=%s all=%j', agentId, connectedAgentIds().includes(agentId), connectedAgentIds())
-      const sent = dispatch(agentId, { type: 'force_update' })
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify(sent ? { ok: true } : { ok: false, error: 'Agent not connected' }))
+      void (async () => {
+        const session = await requireSession(req)
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'unauthorized' }))
+          return
+        }
+        const agentId = forceUpdateMatch[1]!
+        console.log('[force-update] requested agentId=%s connected=%s all=%j', agentId, connectedAgentIds().includes(agentId), connectedAgentIds())
+        const sent = dispatch(agentId, { type: 'force_update' })
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(sent ? { ok: true } : { ok: false, error: 'Agent not connected' }))
+      })()
       return
     }
 
     const detectMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/detect$/)
     if (req.method === 'POST' && detectMatch) {
-      const agentId = detectMatch[1]!
-      console.log('[detect] request agentId=%s connected=%s', agentId, connectedAgentIds().includes(agentId), 'all:', connectedAgentIds())
-      requestDetect(agentId)
-        .then(resources => {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify(resources))
-        })
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : 'Detection failed'
-          res.writeHead(503, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: message }))
-        })
+      void (async () => {
+        const session = await requireSession(req)
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'unauthorized' }))
+          return
+        }
+        const agentId = detectMatch[1]!
+        console.log('[detect] request agentId=%s connected=%s', agentId, connectedAgentIds().includes(agentId), 'all:', connectedAgentIds())
+        requestDetect(agentId)
+          .then(resources => {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify(resources))
+          })
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : 'Detection failed'
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: message }))
+          })
+      })()
       return
     }
 
     const listComposeMatch = parsed.pathname?.match(/^\/api\/agents\/([^/]+)\/list-compose$/)
     if (req.method === 'POST' && listComposeMatch) {
-      const agentId2 = listComposeMatch[1]!
       void (async () => {
+        const session = await requireSession(req)
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'unauthorized' }))
+          return
+        }
+        const agentId2 = listComposeMatch[1]!
         let body: { projectName?: string } = {}
         try {
           const chunks: Buffer[] = []
@@ -114,8 +156,14 @@ void app.prepare().then(() => {
     // Test repo connection via agent
     const testRepoMatch = parsed.pathname?.match(/^\/api\/repos\/([^/]+)\/test$/)
     if (req.method === 'POST' && testRepoMatch) {
-      const repoId = testRepoMatch[1]!
       void (async () => {
+        const session = await requireSession(req)
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'unauthorized' }))
+          return
+        }
+        const repoId = testRepoMatch[1]!
         const db2 = getDb()
         const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
         if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
@@ -137,6 +185,12 @@ void app.prepare().then(() => {
     // Test mount with raw config (no repo saved yet — used from the new-repo form)
     if (req.method === 'POST' && parsed.pathname === '/api/mount/test') {
       void (async () => {
+        const session = await requireSession(req)
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'unauthorized' }))
+          return
+        }
         let body: { mountConfig?: MountConfig } = {}
         try {
           const chunks: Buffer[] = []
@@ -156,8 +210,14 @@ void app.prepare().then(() => {
     // Test NAS mount via agent
     const testMountMatch = parsed.pathname?.match(/^\/api\/repos\/([^/]+)\/test-mount$/)
     if (req.method === 'POST' && testMountMatch) {
-      const repoId = testMountMatch[1]!
       void (async () => {
+        const session = await requireSession(req)
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'unauthorized' }))
+          return
+        }
+        const repoId = testMountMatch[1]!
         const db2 = getDb()
         const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
         if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
