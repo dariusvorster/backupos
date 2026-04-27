@@ -6,9 +6,12 @@
 #   3. Run: docker compose -f docker-compose.yml up -d
 #
 # Mounts control what this agent can do:
-#   - Docker socket     enables: docker capability + compose backup/restore
-#   - docker/volumes    enables: reading volume data for compose source type
-#   - /host             enables: filesystem source backups of host paths
+#   - Docker socket          enables: docker capability + compose backup/restore
+#   - docker/volumes         enables: reading volume data for compose source type
+#   - /host                  enables: filesystem source backups of host paths
+#   - Repository path(s)     REQUIRED if your repository is filesystem-based
+#                            (e.g. /mnt/backupos, /srv/restic, /var/restic)
+#                            S3/SFTP/restic-rest repositories don't need a mount.
 #
 # Comment out mounts you don't want — capability detection adapts at startup.
 #
@@ -44,6 +47,18 @@ services:
 
       # Docker volumes — required to read volume data during compose backups.
       - /var/lib/docker/volumes:/var/lib/docker/volumes:rw
+
+      # Restic repository (REQUIRED for filesystem-path repos):
+      # If your BackupOS repository is configured with a filesystem path like
+      # /mnt/backupos or /srv/restic, you MUST mount that path here. The agent
+      # writes snapshots to this exact path inside the container, so the path
+      # inside and outside the container must match.
+      #
+      # Example for a repository at /mnt/backupos on the host:
+      # - /mnt/backupos:/mnt/backupos:rw
+      #
+      # For S3/SFTP/restic-rest repositories, no mount is needed — these are
+      # accessed over the network using credentials in the BackupOS repository config.
 
       # Host filesystem — uncomment to enable filesystem source backups.
       # Backup paths configured in BackupOS should use /host/<path> as the
