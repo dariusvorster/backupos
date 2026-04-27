@@ -7,6 +7,7 @@ import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage, BackupJobConfig } from '@backupos/agent-protocol'
 import { getSystemUptimeSeconds } from './system-uptime'
 import { detectCapabilities } from './capabilities'
+import { resolveHostPrefix, applyHostPrefixAll } from './lib/host-prefix'
 
 function requireEnv(name: string): string {
   const v = process.env[name]
@@ -89,6 +90,12 @@ async function ensureRepoInitialized(engine: ResticEngine, repoId: string): Prom
   }
 }
 const BINARY          = process.env['RESTIC_BINARY_PATH']
+const HOST_PREFIX     = resolveHostPrefix()
+if (HOST_PREFIX) {
+  console.log(`[agent] host prefix active: ${HOST_PREFIX} (filesystem paths will be rewritten)`)
+} else {
+  console.log('[agent] host prefix inactive (running as host agent or opted out)')
+}
 const VERSION         = '0.1.0'
 const PROTOCOL_VERSION = '1'
 
@@ -263,8 +270,11 @@ async function runBackup(jobId: string, runId: string, config: BackupJobConfig):
   const ctrl = new AbortController()
   activeJobs.set(jobId, { ctrl, runId, phase: 'starting', lastResticEventAt: Date.now(), cancelled: false })
 
+  const paths   = applyHostPrefixAll(config.paths,   HOST_PREFIX)
+  const exclude = config.exclude ? applyHostPrefixAll(config.exclude, HOST_PREFIX) : config.exclude
+
   send({ type: 'backup_start', jobId, config })
-  console.log(`[agent] Starting backup for job ${jobId} — paths: ${config.paths.join(', ')}`)
+  console.log(`[agent] Starting backup for job ${jobId} — paths: ${paths.join(', ')}`)
 
   let runLog = ''
 
@@ -283,8 +293,8 @@ async function runBackup(jobId: string, runId: string, config: BackupJobConfig):
     await ensureRepoInitialized(engine, config.repoId)
 
     const result = await engine.backup({
-      paths:   config.paths,
-      exclude: config.exclude,
+      paths,
+      exclude,
       tags:    config.tags,
       signal:  ctrl.signal,
       onProgress: (s) => {
