@@ -65,7 +65,7 @@ export async function createJob(formData: FormData): Promise<void> {
 
   const cronCheck = validateCron(schedule)
   if (!cronCheck.valid) {
-    redirect(`/jobs/new?cronError=${encodeURIComponent(`Invalid cron expression "${schedule}". ${cronCheck.error}. Examples: "0 2 * * *" (daily 2am), "*/15 * * * *" (every 15min).`)}`)
+    redirect(`/jobs/new?cronError=${encodeURIComponent(cronCheck.error)}`)
   }
 
   if (sourceType === 'compose_project') {
@@ -162,7 +162,7 @@ export async function updateJob(id: string, formData: FormData): Promise<void> {
 
   const cronCheck = validateCron(schedule)
   if (!cronCheck.valid) {
-    redirect(`/jobs/${id}/edit?cronError=${encodeURIComponent(`Invalid cron expression "${schedule}". ${cronCheck.error}. Examples: "0 2 * * *" (daily 2am), "*/15 * * * *" (every 15min).`)}`)
+    redirect(`/jobs/${id}/edit?cronError=${encodeURIComponent(cronCheck.error)}`)
   }
 
   if (sourceType === 'compose_project') {
