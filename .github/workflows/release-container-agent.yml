@@ -56,8 +56,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build agent bundle
-        run: pnpm --filter @backupos/agent build
+      - name: Build all packages (dep-ordered)
+        run: pnpm -r build
 
       - name: Stage bundle for image build
         run: cp apps/web/public/agent/bundle.js apps/agent-container/bundle.js
