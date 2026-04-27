@@ -1,0 +1,9 @@
+{
+  "name": "@backupos/agent-container",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build:container": "cp ../web/public/agent/bundle.js ./bundle.js && docker build -t backupos/agent:dev .",
+    "build:container:clean": "cp ../web/public/agent/bundle.js ./bundle.js && docker build --no-cache -t backupos/agent:dev ."
+  }
+}

@@ -1,0 +1,61 @@
+# BackupOS Agent — Docker Compose template
+#
+# Usage:
+#   1. Copy this file to your host
+#   2. Set BACKUPOS_URL and BACKUPOS_TOKEN below (or export them as env vars)
+#   3. Run: docker compose -f docker-compose.yml up -d
+#
+# Mounts control what this agent can do:
+#   - Docker socket     enables: docker capability + compose backup/restore
+#   - docker/volumes    enables: reading volume data for compose source type
+#   - /host             enables: filesystem source backups of host paths
+#
+# Comment out mounts you don't want — capability detection adapts at startup.
+#
+# Extending with apphook binaries (pg_dump, mysqldump, redis-cli, sqlite3):
+#   The base image does not include database client tools. To enable apphook
+#   quiescence (dump-based backup), extend the image:
+#
+#     FROM backupos/agent:latest
+#     RUN apk add postgresql-client mysql-client redis sqlite
+#
+#   Then set image: your-custom-image below.
+
+services:
+  backupos-agent:
+    image: backupos/agent:latest
+    container_name: backupos-agent
+    restart: unless-stopped
+
+    environment:
+      # REQUIRED: WebSocket URL of the BackupOS server (no trailing slash).
+      # Use ws:// for plain or wss:// for TLS.
+      BACKUPOS_URL: ws://your-backupos-server:3093/ws/agent
+
+      # REQUIRED: enrollment token from the BackupOS UI (Agents → New Agent).
+      BACKUPOS_TOKEN: your-enrollment-token-here
+
+      # Optional: override Docker socket path if not using the default unix socket.
+      # DOCKER_HOST: tcp://docker-host:2375
+
+    volumes:
+      # Docker socket — required for compose source type and docker capability.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Docker volumes — required to read volume data during compose backups.
+      - /var/lib/docker/volumes:/var/lib/docker/volumes:rw
+
+      # Host filesystem — uncomment to enable filesystem source backups.
+      # Backup paths configured in BackupOS should use /host/<path> as the
+      # agent-side path (e.g. /host/etc for the host's /etc).
+      # - /:/host:ro
+
+      # Persistent agent state: enrollment token, bundle hash for self-update.
+      - backupos-agent-state:/var/lib/backupos
+
+      # Restic cache: speeds up subsequent backup operations.
+      - backupos-agent-cache:/var/cache/restic
+
+volumes:
+  backupos-agent-state:
+  backupos-agent-cache:
