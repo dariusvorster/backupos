@@ -28,7 +28,7 @@ export async function initScheduler(): Promise<void> {
     }
 
     cron.schedule(job.schedule, () => { void runJob(db, job, 'cron') }, { timezone: 'UTC' })
-    void stampNextRun(db, job.id, job.schedule)
+    void stampNextRunIfMissing(db, job.id, job.schedule)
     console.log(`[scheduler] Scheduled "${job.name}" (${job.schedule})`)
   }
 
@@ -57,6 +57,16 @@ function nextRunDate(schedule: string): Date | null {
 }
 
 async function stampNextRun(db: Db, jobId: string, schedule: string): Promise<void> {
+  const next = nextRunDate(schedule)
+  if (next) {
+    await db.update(backupJobs).set({ nextRunAt: next }).where(eq(backupJobs.id, jobId))
+  }
+}
+
+async function stampNextRunIfMissing(db: Db, jobId: string, schedule: string): Promise<void> {
+  const [row] = await db.select({ nextRunAt: backupJobs.nextRunAt })
+    .from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (row && row.nextRunAt !== null) return
   const next = nextRunDate(schedule)
   if (next) {
     await db.update(backupJobs).set({ nextRunAt: next }).where(eq(backupJobs.id, jobId))
