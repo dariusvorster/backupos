@@ -35,7 +35,7 @@ export default async function ComposeRestoreNewPage() {
       agentId:     job.agentId,
       runs: runs.map(r => ({
         id:          r.id,
-        startedAt:   r.startedAt.toISOString(),
+        startedAt:   r.startedAt ? r.startedAt.toISOString() : new Date(0).toISOString(),
         snapshotIds: r.snapshotIds ? (JSON.parse(r.snapshotIds) as string[]) : [],
       })),
     }

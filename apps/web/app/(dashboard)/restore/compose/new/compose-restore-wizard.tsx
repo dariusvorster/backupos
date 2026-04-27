@@ -50,6 +50,11 @@ export function ComposeRestoreWizard({ jobs }: { jobs: JobOption[] }) {
   }
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (!selectedRun) {
+      e.preventDefault()
+      setValidationError('Select a valid snapshot.')
+      return
+    }
     if (mode === 'in_place') {
       const projectName = selectedJob?.projectName ?? ''
       if (!confirmChecked) {
@@ -88,8 +93,8 @@ export function ComposeRestoreWizard({ jobs }: { jobs: JobOption[] }) {
       <input type="hidden" name="restoreComposeFile" value={restoreComposeFile ? '1' : '0'} />
 
       <div style={section}>
-        <label style={lbl}>Compose job</label>
-        <select value={selectedJobId} onChange={e => handleJobChange(e.target.value)} style={inp}>
+        <label htmlFor="compose-job" style={lbl}>Compose job</label>
+        <select id="compose-job" value={selectedJobId} onChange={e => handleJobChange(e.target.value)} style={inp}>
           {jobs.map(j => (
             <option key={j.id} value={j.id}>{j.name} ({j.projectName})</option>
           ))}
@@ -97,11 +102,12 @@ export function ComposeRestoreWizard({ jobs }: { jobs: JobOption[] }) {
       </div>
 
       <div style={section}>
-        <label style={lbl}>Snapshot to restore</label>
+        <label htmlFor="snapshot-select" style={lbl}>Snapshot to restore</label>
         {runs.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>No successful runs for this job yet.</div>
         ) : (
           <select
+            id="snapshot-select"
             value={selectedRun?.id ?? ''}
             onChange={e => setSelectedRunId(e.target.value)}
             style={inp}
@@ -125,7 +131,7 @@ export function ComposeRestoreWizard({ jobs }: { jobs: JobOption[] }) {
               borderRadius: 'var(--radius-sm)',
               background: mode === m ? 'color-mix(in srgb, var(--surf2) 70%, var(--accent) 8%)' : 'var(--surf2)',
             }}>
-              <input type="radio" name="_mode_ui" value={m} checked={mode === m} onChange={() => {
+              <input type="radio" value={m} checked={mode === m} onChange={() => {
                 setMode(m)
                 setConfirmChecked(false)
                 setConfirmText('')
@@ -148,8 +154,9 @@ export function ComposeRestoreWizard({ jobs }: { jobs: JobOption[] }) {
 
       {mode === 'side_by_side' && (
         <div style={section}>
-          <label style={lbl}>New project name</label>
+          <label htmlFor="new-project-name" style={lbl}>New project name</label>
           <input
+            id="new-project-name"
             type="text"
             name="sideBySideProjectName"
             value={newProjectName}

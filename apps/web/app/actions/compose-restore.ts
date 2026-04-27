@@ -10,7 +10,8 @@ import type { ComposeProjectConfig } from '@backupos/agent-protocol'
 export async function triggerComposeRestore(formData: FormData): Promise<void> {
   const jobId                 = (formData.get('jobId')                 as string | null)?.trim() ?? ''
   const sourceRunId           = (formData.get('sourceRunId')           as string | null)?.trim() ?? ''
-  const mode                  = (formData.get('mode')                  as 'in_place' | 'side_by_side' | null) ?? 'side_by_side'
+  const rawMode = (formData.get('mode') as string | null)?.trim()
+  const mode: 'in_place' | 'side_by_side' = rawMode === 'in_place' ? 'in_place' : 'side_by_side'
   const sideBySideProjectName = (formData.get('sideBySideProjectName') as string | null)?.trim() || undefined
   const restoreComposeFile    = formData.get('restoreComposeFile') === '1'
 
@@ -45,7 +46,7 @@ export async function triggerComposeRestore(formData: FormData): Promise<void> {
   }
 
   const [sourceRun] = await db.select().from(backupRuns).where(eq(backupRuns.id, sourceRunId)).limit(1)
-  if (!sourceRun) redirect(`/jobs/${jobId}`)
+  if (!sourceRun || sourceRun.jobId !== jobId) redirect(`/jobs/${jobId}`)
 
   const snapshotIds   = sourceRun.snapshotIds ? (JSON.parse(sourceRun.snapshotIds) as string[]) : []
   const composeConfig = JSON.parse(job.sourceConfig) as ComposeProjectConfig
