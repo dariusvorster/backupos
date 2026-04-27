@@ -27,4 +27,4 @@ RUN mkdir -p /var/lib/backupos
 # sees the child exit and Docker's restart: unless-stopped policy brings the container
 # back up with the updated bundle.
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["/usr/local/bin/node", "/app/agent.js"]
+CMD ["/usr/local/bin/node", "/app/agent.js", "run"]
