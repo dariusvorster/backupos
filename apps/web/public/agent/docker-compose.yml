@@ -26,7 +26,8 @@
 
 services:
   backupos-agent:
-    image: backupos/agent:latest
+    # To pin to a specific version, replace 'latest' with e.g. 'v0.1.0'.
+    image: ghcr.io/dariusvorster/backupos-agent:latest
     container_name: backupos-agent
     restart: unless-stopped
 
