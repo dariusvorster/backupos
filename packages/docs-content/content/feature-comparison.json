@@ -1,0 +1,18 @@
+{
+  "columns": [
+    { "key": "backupos", "label": "BackupOS" },
+    { "key": "restic_alone", "label": "restic alone" },
+    { "key": "borg", "label": "Borg" },
+    { "key": "rsnapshot", "label": "rsnapshot" }
+  ],
+  "rows": [
+    { "feature": "Multi-host backup", "backupos": true, "restic_alone": false, "borg": false, "rsnapshot": false },
+    { "feature": "Web UI", "backupos": true, "restic_alone": false, "borg": false, "rsnapshot": false },
+    { "feature": "Scheduled backups", "backupos": true, "restic_alone": "via cron", "borg": "via cron", "rsnapshot": true },
+    { "feature": "Application-aware quiescence", "backupos": true, "restic_alone": false, "borg": false, "rsnapshot": false },
+    { "feature": "Docker / Compose project support", "backupos": true, "restic_alone": false, "borg": false, "rsnapshot": false },
+    { "feature": "Container deployment", "backupos": true, "restic_alone": "manual", "borg": "manual", "rsnapshot": "manual" },
+    { "feature": "Self-hosted", "backupos": true, "restic_alone": true, "borg": true, "rsnapshot": true },
+    { "feature": "Open source", "backupos": true, "restic_alone": true, "borg": true, "rsnapshot": true }
+  ]
+}

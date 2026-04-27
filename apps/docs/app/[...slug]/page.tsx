@@ -4,6 +4,12 @@ import { notFound }      from 'next/navigation'
 import { MDXRemote }     from 'next-mdx-remote/rsc'
 import { nav }           from '@backupos/docs-content'
 import type { Metadata } from 'next'
+import { Note }              from '@/components/mdx/note'
+import { Tip }               from '@/components/mdx/tip'
+import { FeatureComparison } from '@/components/mdx/feature-comparison'
+import { GlossaryTable }     from '@/components/mdx/glossary-table'
+
+const mdxComponents = { Note, Tip, FeatureComparison, GlossaryTable }
 
 const DOCS_ROOT = resolve(process.cwd(), '../../packages/docs-content/content')
 
@@ -58,5 +64,5 @@ export default async function DocsPage({
   const source = readDocSource(filePath)
   if (!source) notFound()
 
-  return <MDXRemote source={source} />
+  return <MDXRemote source={source} components={mdxComponents} />
 }
