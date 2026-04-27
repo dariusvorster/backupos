@@ -167,10 +167,25 @@ function DockerVolumeFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedRe
   const hasDetected = detected !== undefined
   const saved      = (cfg.volumes as string[] | undefined) ?? []
 
+  const legacyNote = (
+    <div style={{
+      marginTop: 12, padding: '8px 12px',
+      backgroundColor: 'color-mix(in srgb, var(--accent) 6%, var(--surf2))',
+      border: '1px solid color-mix(in srgb, var(--accent) 25%, var(--border))',
+      borderRadius: 'var(--radius-sm)',
+      fontSize: 12, color: 'var(--fg-mute)',
+    }}>
+      <strong style={{ color: 'var(--fg)' }}>Legacy.</strong>{' '}
+      For new backup jobs of Docker workloads, use{' '}
+      <strong style={{ color: 'var(--fg)' }}>Compose project</strong> instead — it backs up the full stack with quiescence and restore support.
+    </div>
+  )
+
   if (hasDetected && volumes && volumes.length > 0) {
     return (
       <div style={{ marginTop: 16 }}>
-        <label style={labelStyle}>Select volumes to back up</label>
+        {legacyNote}
+        <label style={{ ...labelStyle, marginTop: 12 }}>Select volumes to back up</label>
         <ChecklistPicker
           name="volumes"
           items={volumes}
@@ -184,8 +199,9 @@ function DockerVolumeFields({ cfg, detected }: { cfg: Cfg; detected?: DetectedRe
 
   return (
     <div style={{ marginTop: 16 }}>
+      {legacyNote}
       {hasDetected && (
-        <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 8, marginBottom: 8 }}>
           No named Docker volumes found on this agent. If your containers use bind mounts, use the <strong>Filesystem</strong> source type instead.
         </div>
       )}

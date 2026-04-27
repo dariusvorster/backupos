@@ -119,6 +119,37 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Link>
       </div>
 
+      {/* Deprecation banner for legacy docker_volume jobs */}
+      {job.sourceType === 'docker_volume' && (
+        <div style={{
+          backgroundColor: 'color-mix(in srgb, var(--accent) 6%, var(--surf))',
+          border: '1px solid color-mix(in srgb, var(--accent) 25%, var(--border))',
+          borderRadius: 'var(--radius)',
+          padding: '14px 20px',
+          marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 6 }}>
+            This job uses the legacy &ldquo;Docker volume&rdquo; source type.
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--fg-mute)', lineHeight: 1.6 }}>
+            For new backup jobs of Docker workloads, we recommend using{' '}
+            <strong style={{ color: 'var(--fg)' }}>Compose project</strong> instead, which provides:
+          </div>
+          <ul style={{ margin: '8px 0 8px 20px', padding: 0, fontSize: 12, color: 'var(--fg-mute)', lineHeight: 1.9 }}>
+            <li>Backup of an entire compose project as one coherent unit</li>
+            <li>Per-service quiescence: stop, pause, or app-aware (postgres/mysql/redis/sqlite)</li>
+            <li>Backup of the compose YAML alongside the volumes</li>
+            <li>Side-by-side or in-place restore</li>
+          </ul>
+          <div style={{ fontSize: 12, color: 'var(--fg-dim)' }}>
+            Existing docker_volume jobs continue to work.{' '}
+            <a href="/jobs/new?sourceType=compose_project" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+              New jobs should use Compose project →
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* Live run banner */}
       {activeRun && (
         <Link
