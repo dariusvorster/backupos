@@ -8,6 +8,7 @@ import type { AgentMessage, ServerMessage, BackupJobConfig } from '@backupos/age
 import { getSystemUptimeSeconds } from './system-uptime'
 import { detectCapabilities } from './capabilities'
 import { resolveHostPrefix, applyHostPrefixAll } from './lib/host-prefix'
+import { runMountRepository } from './handlers/mountRepository'
 
 function requireEnv(name: string): string {
   const v = process.env[name]
@@ -245,6 +246,9 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       const { runComposeRestore } = await import('./handlers/composeRestore')
       await runComposeRestore(msg, send, activeJobs, BINARY)
     })()
+
+  } else if (msg.type === 'mount_repository') {
+    void runMountRepository(msg, send)
 
   } else if (msg.type === 'list_compose_project') {
     void (async () => {

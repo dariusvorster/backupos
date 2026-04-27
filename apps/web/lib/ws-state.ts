@@ -135,6 +135,50 @@ export function resolveTestMount(requestId: string, result: MountTestResult): vo
 
 declare global {
   // eslint-disable-next-line no-var
+  var __bkp_pending_mount_repos: Map<string, { resolve: () => void; reject: (err: Error) => void }> | undefined
+}
+
+const pendingMountRepos: Map<string, { resolve: () => void; reject: (err: Error) => void }> =
+  (globalThis.__bkp_pending_mount_repos ??= new Map())
+
+export function requestMountRepository(
+  agentId: string,
+  repoId: string,
+  nfsServer: string,
+  nfsExport: string,
+  nfsOptions: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID()
+    pendingMountRepos.set(requestId, { resolve, reject })
+    const sent = dispatch(agentId, {
+      type: 'mount_repository', requestId, repoId, nfsServer, nfsExport, nfsOptions,
+    })
+    if (!sent) {
+      pendingMountRepos.delete(requestId)
+      reject(new Error(`agent ${agentId} not connected`))
+      return
+    }
+    // NFS mount can be slow — allow 60s
+    setTimeout(() => {
+      if (pendingMountRepos.has(requestId)) {
+        pendingMountRepos.delete(requestId)
+        reject(new Error('mount request timed out after 60s'))
+      }
+    }, 60_000)
+  })
+}
+
+export function resolveMountRepository(requestId: string, error?: string): void {
+  const pending = pendingMountRepos.get(requestId)
+  if (!pending) return
+  pendingMountRepos.delete(requestId)
+  if (error) pending.reject(new Error(error))
+  else pending.resolve()
+}
+
+declare global {
+  // eslint-disable-next-line no-var
   var __bkp_pending_compose_lists: Map<string, (r: ComposeProjectListing) => void> | undefined
 }
 
