@@ -1,17 +1,10 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, eq, and, or, lt, lte, isNotNull, isNull } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, eq, and, or, lt, lte, isNotNull, isNull } from '@backupos/db'
 import { decryptField } from './repo-crypto'
-import { ResticEngine } from '@backupos/engine'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
 import type { ServerMessage, MountConfig, ComposeProjectConfig } from '@backupos/agent-protocol'
-
-interface RepoConfig {
-  repositoryUrl: string
-  password: string
-  envVars?: Record<string, string>
-}
 
 interface SourceConfig {
   paths?:    string[]
@@ -19,15 +12,6 @@ interface SourceConfig {
   exclude?:  string[]
 }
 
-function resolveBackupPaths(sourceType: string, srcConfig: SourceConfig): string[] {
-  if (sourceType === 'filesystem' || sourceType === 'windows_system') {
-    return srcConfig.paths ?? []
-  }
-  if (sourceType === 'docker_volume') {
-    return (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
-  }
-  return []
-}
 
 export async function initScheduler(): Promise<void> {
   const db = getDb()
@@ -80,14 +64,6 @@ async function stampNextRun(db: Db, jobId: string, schedule: string): Promise<vo
   }
 }
 
-// executeRun performs local restic execution for an already-inserted backupRun row.
-// Called only for no-agent manual retries (retryRun in jobs.ts when job.agentId is null).
-export async function executeRun(jobId: string, runId: string): Promise<void> {
-  const db = getDb()
-  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
-  if (!job || !job.repositoryId) return
-  await runJobCore(db, job, runId)
-}
 
 async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<boolean> {
   if (!job.agentId || !job.repositoryId) return false
@@ -123,8 +99,12 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
       envVars:      cfg,
     }
   } else {
-    const srcConfig   = JSON.parse(job.sourceConfig) as SourceConfig
-    const paths       = resolveBackupPaths(job.sourceType, srcConfig)
+    const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
+    const paths = job.sourceType === 'filesystem' || job.sourceType === 'windows_system'
+      ? (srcConfig.paths ?? [])
+      : job.sourceType === 'docker_volume'
+        ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
+        : []
     if (paths.length === 0) {
       await db.update(backupRuns).set({ status: 'failed', completedAt: now, errorMessage: 'No backup paths resolved' }).where(eq(backupRuns.id, runId))
       return false
@@ -240,137 +220,6 @@ async function triggerTick(db: Db): Promise<void> {
   }
 }
 
-function fmtBytes(b: number): string {
-  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`
-  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`
-  return `${(b / 1024 ** 3).toFixed(2)} GB`
-}
-
-// Core local backup execution — updates an existing backupRun row identified by runId.
-async function runJobCore(db: Db, job: Job, runId: string): Promise<void> {
-  if (!job.repositoryId) {
-    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage: 'Job has no repository configured' }).where(eq(backupRuns.id, runId))
-    return
-  }
-
-  const [repo] = await db.select().from(repositories).where(eq(repositories.id, job.repositoryId)).limit(1)
-  if (!repo) {
-    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage: 'Repository not found' }).where(eq(backupRuns.id, runId))
-    return
-  }
-
-  const cfg       = JSON.parse(decryptField(repo.config)) as Record<string, string>
-  const srcConfig = JSON.parse(job.sourceConfig) as SourceConfig
-  const paths     = resolveBackupPaths(job.sourceType, srcConfig)
-  if (paths.length === 0) {
-    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage: 'No backup paths configured' }).where(eq(backupRuns.id, runId))
-    return
-  }
-
-  // Accumulate log lines + latest progress for periodic DB flush
-  const logLines: string[] = []
-  let lastProgress: { pct: number; bytesDone: number; bytesTotal: number; filesDone: number; filesTotal: number } | null = null
-
-  const flushToDB = async () => {
-    const update: Record<string, unknown> = { log: logLines.join('\n') }
-    if (lastProgress) {
-      update['progressPct']  = lastProgress.pct
-      update['bytesDone']    = lastProgress.bytesDone
-      update['bytesTotal']   = lastProgress.bytesTotal
-      update['filesDone']    = lastProgress.filesDone
-      update['filesTotal']   = lastProgress.filesTotal
-    }
-    await db.update(backupRuns).set(update).where(eq(backupRuns.id, runId))
-  }
-
-  const flushInterval = setInterval(() => { void flushToDB() }, 2000)
-
-  try {
-    const engine = new ResticEngine({
-      repositoryUrl: cfg['repositoryUrl'] ?? '',
-      password:      decryptField(repo.resticPassword),
-      envVars:       cfg,
-      binaryPath:    process.env['RESTIC_BINARY_PATH'],
-    })
-
-    const tags   = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
-    const result = await engine.backup({
-      paths,
-      exclude: srcConfig.exclude,
-      tags,
-      onProgress: (s) => {
-        lastProgress = s
-        const pctStr  = (s.pct * 100).toFixed(1)
-        const eta     = s.secondsRemaining != null ? ` ETA ${s.secondsRemaining}s` : ''
-        logLines.push(`[${new Date().toISOString().slice(11, 19)}] ${pctStr}% — ${fmtBytes(s.bytesDone)} / ${fmtBytes(s.bytesTotal)} · ${s.filesDone}/${s.filesTotal} files${eta}`)
-      },
-    })
-
-    clearInterval(flushInterval)
-
-    await db.update(backupRuns).set({
-      status:          'success',
-      completedAt:     new Date(),
-      snapshotId:      result.snapshotId,
-      filesNew:        result.filesNew,
-      filesChanged:    result.filesChanged,
-      filesUnmodified: result.filesUnmodified,
-      dataAdded:       result.dataAdded,
-      totalSize:       result.totalSize,
-      duration:        result.duration,
-      log:             logLines.join('\n'),
-      progressPct:     1,
-      bytesDone:       result.totalSize,
-      bytesTotal:      result.totalSize,
-    }).where(eq(backupRuns.id, runId))
-
-    const jobHasRetention = job.keepLast || job.keepDaily || job.keepWeekly || job.keepMonthly || job.keepYearly
-    const retentionPolicy = jobHasRetention
-      ? {
-          keepLast:    job.keepLast    ?? undefined,
-          keepDaily:   job.keepDaily   ?? undefined,
-          keepWeekly:  job.keepWeekly  ?? undefined,
-          keepMonthly: job.keepMonthly ?? undefined,
-          keepYearly:  job.keepYearly  ?? undefined,
-        }
-      : await (async () => {
-          const [defaults] = await db.select().from(backupDefaults).limit(1).all()
-          if (!defaults) return null
-          const hasAny = defaults.keepLast || defaults.keepDaily || defaults.keepWeekly || defaults.keepMonthly || defaults.keepYearly
-          if (!hasAny) return null
-          return {
-            keepLast:    defaults.keepLast    ?? undefined,
-            keepDaily:   defaults.keepDaily   ?? undefined,
-            keepWeekly:  defaults.keepWeekly  ?? undefined,
-            keepMonthly: defaults.keepMonthly ?? undefined,
-            keepYearly:  defaults.keepYearly  ?? undefined,
-          }
-        })()
-
-    if (retentionPolicy) {
-      const tags2  = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
-      const forget = await engine.forget({ ...retentionPolicy, keepTags: tags2 })
-      await db.update(backupRuns).set({
-        snapshotsRemoved: forget.removed,
-        snapshotsKept:    forget.kept,
-      }).where(eq(backupRuns.id, runId))
-    }
-
-    const nextRun = nextRunDate(job.schedule)
-    await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'success', ...(nextRun ? { nextRunAt: nextRun } : {}) })
-      .where(eq(backupJobs.id, job.id))
-
-  } catch (err) {
-    clearInterval(flushInterval)
-    const errorMessage = String(err)
-    await db.update(backupRuns).set({ status: 'failed', completedAt: new Date(), errorMessage, log: logLines.join('\n') || null })
-      .where(eq(backupRuns.id, runId))
-    const nextRun = nextRunDate(job.schedule)
-    await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'failed', ...(nextRun ? { nextRunAt: nextRun } : {}) })
-      .where(eq(backupJobs.id, job.id))
-    await sendAlert('backup_failed', { jobId: job.id, jobName: job.name, error: errorMessage })
-  }
-}
 
 async function markRunFailed(db: Db, runId: string, errorMessage: string): Promise<void> {
   await db.update(backupRuns).set({

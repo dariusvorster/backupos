@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { getDb, backupJobs, backupRuns, repositories, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
 import { decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
+import { connectedAgentIds } from '@/lib/ws-state'
 import { validateCron } from '@/lib/cron-validate'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
@@ -193,61 +194,74 @@ export async function retryRun(jobId: string): Promise<void> {
   const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
   if (!job || !job.repositoryId) { redirect(`/jobs/${jobId}`) }
 
+  // INVARIANT: all backup execution happens on agents — same policy as scheduler.runJob
+  if (!job.agentId) {
+    const runId = crypto.randomUUID()
+    await db.insert(backupRuns).values({
+      id: runId, jobId, repositoryId: job.repositoryId,
+      status: 'failed', trigger: 'manual', startedAt: now, completedAt: now,
+      errorMessage: 'job has no agent assigned — set an agent on this job',
+    })
+    await db.update(backupJobs).set({ lastRunAt: now, lastRunStatus: 'failed' }).where(eq(backupJobs.id, jobId))
+    redirect(`/jobs/${jobId}`)
+  }
+
+  if (!connectedAgentIds().includes(job.agentId)) {
+    const runId = crypto.randomUUID()
+    await db.insert(backupRuns).values({
+      id: runId, jobId, repositoryId: job.repositoryId, agentId: job.agentId,
+      status: 'failed', trigger: 'manual', startedAt: now, completedAt: now,
+      errorMessage: `agent ${job.agentId} is not connected — backup deferred until agent reconnects`,
+    })
+    await db.update(backupJobs).set({ lastRunAt: now, lastRunStatus: 'failed' }).where(eq(backupJobs.id, jobId))
+    redirect(`/jobs/${jobId}`)
+  }
+
   const bandwidthLimitKbps = await resolveBandwidthLimitKbps(db, jobId)
   const runId = crypto.randomUUID()
 
   await db.insert(backupRuns).values({
-    id:           runId,
-    jobId,
-    repositoryId: job.repositoryId,
-    agentId:      job.agentId ?? null,
-    status:       'running',
-    trigger:      'manual',
-    startedAt:    now,
-    bandwidthLimitKbps,
+    id: runId, jobId, repositoryId: job.repositoryId, agentId: job.agentId,
+    status: 'running', trigger: 'manual', startedAt: now, bandwidthLimitKbps,
   })
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, jobId))
 
-  if (job.agentId) {
-    const [repo] = await db.select().from(repositories)
-      .where(eq(repositories.id, job.repositoryId!)).limit(1)
-    if (repo) {
-      const cfg      = JSON.parse(decryptField(repo.config)) as Record<string, string>
-      const password = decryptField(repo.resticPassword)
-      if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
-      const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
+  const [repo] = await db.select().from(repositories)
+    .where(eq(repositories.id, job.repositoryId!)).limit(1)
+  if (repo) {
+    const cfg      = JSON.parse(decryptField(repo.config)) as Record<string, string>
+    const password = decryptField(repo.resticPassword)
+    if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
+    const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
 
-      let result: { ok: boolean; reason?: string; knownIds?: string[] }
-      if (job.sourceType === 'compose_project') {
-        const composeConfig = JSON.parse(job.sourceConfig) as import('@backupos/agent-protocol').ComposeProjectConfig
-        result = await dispatchToAgent(job.agentId, {
-          type:         'run_compose_backup',
-          jobId,
-          runId,
-          config:       composeConfig,
-          repoId:       job.repositoryId!,
-          repoUrl:      cfg['repositoryUrl'] ?? '',
-          repoPassword: password,
-          envVars:      cfg,
-        })
-      } else {
-        const srcConfig = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
-        const paths = job.sourceType === 'docker_volume'
-          ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
-          : (srcConfig.paths ?? [])
-        result = await dispatchToAgent(job.agentId, {
-          type:   'run_backup',
-          jobId,
-          runId,
-          config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
-        })
-      }
-      if (!result.ok) {
-        console.error('[retryRun] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
-      }
+    let result: { ok: boolean; reason?: string; knownIds?: string[] }
+    if (job.sourceType === 'compose_project') {
+      const composeConfig = JSON.parse(job.sourceConfig) as import('@backupos/agent-protocol').ComposeProjectConfig
+      result = await dispatchToAgent(job.agentId, {
+        type:         'run_compose_backup',
+        jobId,
+        runId,
+        config:       composeConfig,
+        repoId:       job.repositoryId!,
+        repoUrl:      cfg['repositoryUrl'] ?? '',
+        repoPassword: password,
+        envVars:      cfg,
+      })
+    } else {
+      const srcConfig = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
+      const paths = job.sourceType === 'docker_volume'
+        ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
+        : (srcConfig.paths ?? [])
+      result = await dispatchToAgent(job.agentId, {
+        type:   'run_backup',
+        jobId,
+        runId,
+        config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
+      })
     }
-  } else {
-    void import('@/lib/scheduler').then(({ executeRun }) => executeRun(jobId, runId))
+    if (!result.ok) {
+      console.error('[retryRun] dispatch failed reason=%s knownIds=%j', result.reason, result.knownIds)
+    }
   }
 
   redirect(`/jobs/${jobId}`)
