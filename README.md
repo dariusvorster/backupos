@@ -226,6 +226,38 @@ docker exec backupos sqlite3 /app/data/backupos.db ".backup '/app/data/backupos.
 
 ---
 
+## Releasing
+
+Releases are tagged with semantic version (e.g. `v0.2.0`). Pushing a tag in `vX.Y.Z` format triggers two GitHub Actions workflows:
+
+- `release-container-agent.yml` builds and publishes the agent image
+- `docker-release.yml` builds and publishes the BackupOS server image
+
+Both publish multi-arch (linux/amd64 + linux/arm64) to GitHub Container Registry:
+
+- `ghcr.io/dariusvorster/backupos-agent:vX.Y.Z`
+- `ghcr.io/dariusvorster/backupos-web:vX.Y.Z`
+
+### First-publish visibility
+
+When a container package is first created on ghcr.io, GitHub creates it with **private visibility** by default — even when the source repo is public. After the first successful publish of a new package name, the maintainer must manually change visibility to public:
+
+1. Go to https://github.com/users/dariusvorster/packages/container/PACKAGE_NAME/settings
+2. Scroll to the "Danger Zone" section
+3. Click "Change visibility" → select "Public" → confirm by typing the package name
+
+Subsequent publishes inherit public visibility — this is a one-time step per package.
+
+### Cutting a release
+
+1. Update `CHANGELOG.md` — move "Unreleased" entries to a new dated `## [X.Y.Z] - YYYY-MM-DD` section
+2. Commit: `git commit -am "chore: update CHANGELOG for vX.Y.Z release"`
+3. Tag and push: `git tag vX.Y.Z && git push --tags`
+4. Wait for both workflows to complete (~5 min for agent, ~25 min for server image)
+5. Create the GitHub Release: `gh release create vX.Y.Z --title "vX.Y.Z — YYYY-MM-DD" --notes-file <changelog-section> --latest`
+
+---
+
 ## License
 
 MIT
