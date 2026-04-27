@@ -1,0 +1,14 @@
+{
+  "terms": [
+    { "term": "Snapshot", "definition": "A point-in-time backup of data, stored as deduplicated chunks in a repository." },
+    { "term": "Repository", "definition": "The destination where snapshots are stored — local disk, NFS mount, S3 bucket, or restic-rest server." },
+    { "term": "Job", "definition": "A configured backup task: a source (what to back up), a destination (which repository), a schedule, and a retention policy." },
+    { "term": "Run", "definition": "A single execution of a job. Records start/end time, status, files backed up, and any errors." },
+    { "term": "Source", "definition": "The data being backed up. Source types include filesystem paths, Docker volumes, compose projects, and Proxmox VMs." },
+    { "term": "Agent", "definition": "A small program running on a host that executes backup and restore commands. Can run as a host process (systemd) or in a container." },
+    { "term": "Quiescence", "definition": "Putting an application into a consistent state before backup. Strategies include 'stop' (halt the container), 'pause' (suspend), and 'apphook' (database-aware dump)." },
+    { "term": "Apphook", "definition": "An application-aware backup hook that produces a consistent dump of a database (postgres, mysql, redis, sqlite) without stopping the container." },
+    { "term": "Snapshot retention", "definition": "Rules for how many snapshots to keep over time — typically expressed as N daily, N weekly, N monthly. Older snapshots are pruned." },
+    { "term": "Restic", "definition": "The deduplicating, encrypting backup engine BackupOS uses under the hood. BackupOS provides scheduling, multi-host coordination, and a UI on top of restic." }
+  ]
+}
