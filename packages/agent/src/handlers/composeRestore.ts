@@ -1,10 +1,6 @@
-import * as fs from 'fs/promises'
-import * as os from 'os'
-import * as path from 'path'
 import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
-import { listComposeContainers, stopContainer, startContainer, waitForRunning } from '../docker-client'
-import { spawnAllowed } from '../exec-allowed'
+import { listComposeContainers, startContainer, waitForRunning } from '../docker-client'
 
 type SendFn = (msg: AgentMessage) => void
 type RunMsg = Extract<ServerMessage, { type: 'run_compose_restore' }>
@@ -23,21 +19,13 @@ export async function runComposeRestore(
   activeJobs: Map<string, ActiveJobRef>,
   binaryPath: string | undefined,
 ): Promise<void> {
-  const { jobId, runId, repoUrl, repoPassword, envVars, config } = msg
-  const { mode, snapshotIds, composeConfig, restoreComposeFile, sideBySideProjectName } = config
+  const { jobId, config, repoUrl, repoPassword, envVars } = msg
 
-  if (activeJobs.has(jobId)) {
-    console.warn(`[agent] run_compose_restore: job ${jobId} already active — ignoring`)
-    return
-  }
-
-  const ctrl = new AbortController()
-  activeJobs.set(jobId, { ctrl, runId, phase: 'starting', lastResticEventAt: Date.now(), cancelled: false })
+  activeJobs.set(jobId, { ctrl: new AbortController(), runId: msg.runId, phase: 'starting', lastResticEventAt: Date.now(), cancelled: false })
 
   const logLines: string[] = []
-  const tmpDir = path.join(os.tmpdir(), 'backupos-restore', jobId)
 
-  const setPhase = (phase: string): void => {
+  function setPhase(phase: string): void {
     const j = activeJobs.get(jobId)
     if (j) { j.phase = phase; j.lastResticEventAt = Date.now() }
   }
@@ -49,139 +37,95 @@ export async function runComposeRestore(
     binaryPath,
   })
 
-  const services = composeConfig.services?.filter(s => s.included) ?? []
-
-  // The compose file snapshot, if present, is appended after all service snapshots
-  const serviceSnapshotIds = snapshotIds.slice(0, services.length)
-  const composeFileSnapshotId = restoreComposeFile && snapshotIds.length > services.length
-    ? snapshotIds[services.length]
-    : undefined
-
-  if (serviceSnapshotIds.length !== services.length) {
-    send({
-      type:   'backup_failed',
-      jobId,
-      error:  `service/snapshot count mismatch: ${services.length} services vs ${serviceSnapshotIds.length} snapshots`,
-      detail: '',
-    })
-    activeJobs.delete(jobId)
-    return
-  }
-
-  // For in-place: track stopped container IDs for best-effort restart on failure
-  const stoppedContainerIds: string[] = []
-
   try {
-    await fs.mkdir(tmpDir, { recursive: true })
+    const services = config.composeConfig.services?.filter(s => s.included) ?? []
 
-    if (mode === 'in_place') {
-      setPhase('quiescing')
-      for (const service of services) {
-        const containers = await listComposeContainers(composeConfig.projectName)
-        const target = containers.find(c => (c.Labels['com.docker.compose.service'] ?? '') === service.serviceName)
-        if (target) {
-          await stopContainer(target.Id)
-          stoppedContainerIds.push(target.Id)
-          logLines.push(`[restore] stopped "${service.serviceName}"`)
-        } else {
-          logLines.push(`[restore] WARN: "${service.serviceName}" not found — skipping stop`)
-        }
-      }
+    if (config.snapshotIds.length !== services.length) {
+      throw new Error(
+        `snapshot count mismatch: got ${config.snapshotIds.length} snapshots for ${services.length} services`,
+      )
     }
 
-    setPhase('uploading')
-
+    // Restore each service's volumes from its snapshot
     for (let i = 0; i < services.length; i++) {
       const service = services[i]!
-      const snapshotId = serviceSnapshotIds[i]!
+      const snapshotId = config.snapshotIds[i]!
 
-      for (const origVolName of service.includedVolumes) {
-        const sourcePath = `/var/lib/docker/volumes/${origVolName}/_data`
-
-        if (mode === 'in_place') {
-          await makeEngine().restore(snapshotId, '/', [sourcePath])
-          logLines.push(`[restore] restored "${service.serviceName}" vol ${origVolName} (in-place)`)
-        } else {
-          // side_by_side: restore to tmpDir, create new volume, copy contents
-          const newVolName = origVolName.startsWith(`${composeConfig.projectName}_`)
-            ? `${sideBySideProjectName!}${origVolName.slice(composeConfig.projectName.length)}`
-            : `${sideBySideProjectName!}_${origVolName}`
-
-          await spawnAllowed('docker', ['volume', 'create', newVolName])
-
-          await makeEngine().restore(snapshotId, tmpDir, [sourcePath])
-
-          // tmpDir/<sourcePath> contains the restored files
-          const restoreDest = path.join(tmpDir, 'var', 'lib', 'docker', 'volumes', origVolName, '_data')
-          const newVolPath  = `/var/lib/docker/volumes/${newVolName}/_data`
-          await spawnAllowed('cp', ['-a', `${restoreDest}/.`, `${newVolPath}/`])
-
-          logLines.push(`[restore] restored "${service.serviceName}" ${origVolName} → ${newVolName} (side-by-side)`)
-        }
+      if (service.includedVolumes.length === 0) {
+        logLines.push(`[compose] SKIP: "${service.serviceName}" — no included volumes`)
+        continue
       }
-    }
 
-    // Optional compose file restore
-    if (composeFileSnapshotId && composeConfig.composeFilePath) {
-      if (mode === 'in_place') {
-        await makeEngine().restore(composeFileSnapshotId, '/', [composeConfig.composeFilePath])
-        logLines.push(`[restore] restored compose file to ${composeConfig.composeFilePath}`)
+      setPhase('uploading')
+
+      // Determine target volume path based on mode
+      let targetBase: string
+      if (config.mode === 'in_place') {
+        targetBase = '/var/lib/docker/volumes'
       } else {
-        logLines.push(`[restore] NOTE: compose file restore skipped for side-by-side mode — original file unchanged`)
+        // side_by_side mode: restore to a differently-named project
+        const newProjectName = config.sideBySideProjectName ?? `${config.composeConfig.projectName}-restored`
+        targetBase = `/var/lib/docker/volumes/${newProjectName}`
+      }
+
+      try {
+        logLines.push(`[compose] Restoring "${service.serviceName}" from snapshot ${snapshotId.slice(0, 8)}…`)
+
+        // Restore via restic to target base (restic restores relative paths)
+        await makeEngine().restore(snapshotId, targetBase, service.includedVolumes)
+
+        logLines.push(`[compose] Restored "${service.serviceName}" (${service.includedVolumes.length} volume(s))`)
+      } catch (err) {
+        const e = err instanceof Error ? err.message : String(err)
+        logLines.push(`[compose] FAIL: restore "${service.serviceName}" from ${snapshotId.slice(0, 8)} → ${e}`)
+        throw new Error(`restore failed for "${service.serviceName}": ${e}`)
       }
     }
 
-    if (mode === 'in_place') {
-      setPhase('resuming')
-      for (const containerId of stoppedContainerIds) {
+    // Restore compose file if requested
+    if (config.restoreComposeFile && config.composeConfig.composeFilePath) {
+      if (config.snapshotIds.length > 0) {
+        setPhase('uploading')
         try {
-          await startContainer(containerId)
-          await waitForRunning(containerId, 30_000)
+          logLines.push(`[compose] Restoring compose file from snapshot…`)
+          await makeEngine().restore(config.snapshotIds[0]!, '/tmp', ['compose.yml'])
+          logLines.push(`[compose] Restored compose file`)
         } catch (err) {
-          logLines.push(`[restore] WARN: failed to restart container ${containerId}: ${err instanceof Error ? err.message : String(err)}`)
+          logLines.push(`[compose] WARN: restore of compose file failed → ${err instanceof Error ? err.message : String(err)}`)
         }
       }
-      logLines.push('[restore] in-place restore complete — all services restarted')
-    } else {
-      logLines.push(`[restore] side-by-side complete. Original "${composeConfig.projectName}" stack untouched. New volumes prefixed with "${sideBySideProjectName}".`)
+    }
+
+    // If in side-by-side mode, start the containers with the new project name
+    if (config.mode === 'side_by_side' && config.sideBySideProjectName) {
+      setPhase('resuming')
+      const containers = await listComposeContainers(config.sideBySideProjectName)
+
+      for (const container of containers) {
+        try {
+          await startContainer(container.Id)
+          await waitForRunning(container.Id, 30_000)
+          logLines.push(`[compose] Started container ${container.Names[0] ?? container.Id.slice(0, 12)}`)
+        } catch (err) {
+          logLines.push(`[compose] WARN: failed to start ${container.Names[0] ?? container.Id.slice(0, 12)} → ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
     }
 
     setPhase('finalizing')
     send({
-      type:       'backup_complete',
-      jobId,
-      snapshotId: serviceSnapshotIds[0] ?? 'restored',
-      snapshotIds: serviceSnapshotIds,
-      stats: {
-        filesNew:            0,
-        filesChanged:        0,
-        filesUnmodified:     0,
-        dataAdded:           0,
-        totalFilesProcessed: 0,
-        totalBytesProcessed: 0,
-        durationMs:          0,
-      },
-      log: logLines.join('\n').slice(0, 1_000_000) || undefined,
+      type: 'restore_complete',
+      restoreId: jobId,
+      success: true,
     })
 
   } catch (err) {
-    if (mode === 'in_place' && stoppedContainerIds.length > 0) {
-      logLines.push('[restore] FATAL: restore failed mid-flight — attempting best-effort restart of stopped services')
-      for (const containerId of stoppedContainerIds) {
-        await startContainer(containerId).catch(re => {
-          logLines.push(`[restore] WARN: restart failed for container ${containerId}: ${re instanceof Error ? re.message : String(re)}`)
-        })
-      }
-    }
     send({
-      type:   'backup_failed',
-      jobId,
-      error:  err instanceof Error ? err.message : String(err),
-      detail: err instanceof Error && err.stack ? err.stack : '',
-      log:    logLines.join('\n').slice(0, 1_000_000) || undefined,
+      type: 'restore_complete',
+      restoreId: jobId,
+      success: false,
     })
   } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
     activeJobs.delete(jobId)
   }
 }

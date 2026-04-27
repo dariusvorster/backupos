@@ -4160,7 +4160,8 @@ var init_exec_allowed2 = __esm({
       "mysqldump",
       "redis-cli",
       "sqlite3",
-      "docker"
+      "docker",
+      "cp"
     ]);
   }
 });
@@ -4488,6 +4489,109 @@ var init_composeBackup = __esm({
     init_dist();
     init_docker_client();
     init_apphooks();
+  }
+});
+
+// src/handlers/composeRestore.ts
+var composeRestore_exports = {};
+__export(composeRestore_exports, {
+  runComposeRestore: () => runComposeRestore
+});
+async function runComposeRestore(msg, send2, activeJobs2, binaryPath) {
+  const { jobId, config, repoUrl, repoPassword, envVars } = msg;
+  activeJobs2.set(jobId, { ctrl: new AbortController(), runId: msg.runId, phase: "starting", lastResticEventAt: Date.now(), cancelled: false });
+  const logLines = [];
+  function setPhase(phase) {
+    const j = activeJobs2.get(jobId);
+    if (j) {
+      j.phase = phase;
+      j.lastResticEventAt = Date.now();
+    }
+  }
+  const makeEngine = () => new ResticEngine({
+    repositoryUrl: repoUrl,
+    password: repoPassword,
+    envVars: envVars ?? {},
+    binaryPath
+  });
+  try {
+    const services = config.composeConfig.services?.filter((s) => s.included) ?? [];
+    if (config.snapshotIds.length !== services.length) {
+      throw new Error(
+        `snapshot count mismatch: got ${config.snapshotIds.length} snapshots for ${services.length} services`
+      );
+    }
+    for (let i = 0; i < services.length; i++) {
+      const service = services[i];
+      const snapshotId = config.snapshotIds[i];
+      if (service.includedVolumes.length === 0) {
+        logLines.push(`[compose] SKIP: "${service.serviceName}" \u2014 no included volumes`);
+        continue;
+      }
+      setPhase("uploading");
+      let targetBase;
+      if (config.mode === "in_place") {
+        targetBase = "/var/lib/docker/volumes";
+      } else {
+        const newProjectName = config.sideBySideProjectName ?? `${config.composeConfig.projectName}-restored`;
+        targetBase = `/var/lib/docker/volumes/${newProjectName}`;
+      }
+      try {
+        logLines.push(`[compose] Restoring "${service.serviceName}" from snapshot ${snapshotId.slice(0, 8)}\u2026`);
+        await makeEngine().restore(snapshotId, targetBase, service.includedVolumes);
+        logLines.push(`[compose] Restored "${service.serviceName}" (${service.includedVolumes.length} volume(s))`);
+      } catch (err) {
+        const e = err instanceof Error ? err.message : String(err);
+        logLines.push(`[compose] FAIL: restore "${service.serviceName}" from ${snapshotId.slice(0, 8)} \u2192 ${e}`);
+        throw new Error(`restore failed for "${service.serviceName}": ${e}`);
+      }
+    }
+    if (config.restoreComposeFile && config.composeConfig.composeFilePath) {
+      if (config.snapshotIds.length > 0) {
+        setPhase("uploading");
+        try {
+          logLines.push(`[compose] Restoring compose file from snapshot\u2026`);
+          await makeEngine().restore(config.snapshotIds[0], "/tmp", ["compose.yml"]);
+          logLines.push(`[compose] Restored compose file`);
+        } catch (err) {
+          logLines.push(`[compose] WARN: restore of compose file failed \u2192 ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+    if (config.mode === "side_by_side" && config.sideBySideProjectName) {
+      setPhase("resuming");
+      const containers = await listComposeContainers(config.sideBySideProjectName);
+      for (const container of containers) {
+        try {
+          await startContainer(container.Id);
+          await waitForRunning(container.Id, 3e4);
+          logLines.push(`[compose] Started container ${container.Names[0] ?? container.Id.slice(0, 12)}`);
+        } catch (err) {
+          logLines.push(`[compose] WARN: failed to start ${container.Names[0] ?? container.Id.slice(0, 12)} \u2192 ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+    setPhase("finalizing");
+    send2({
+      type: "restore_complete",
+      restoreId: jobId,
+      success: true
+    });
+  } catch (err) {
+    send2({
+      type: "restore_complete",
+      restoreId: jobId,
+      success: false
+    });
+  } finally {
+    activeJobs2.delete(jobId);
+  }
+}
+var init_composeRestore = __esm({
+  "src/handlers/composeRestore.ts"() {
+    "use strict";
+    init_dist();
+    init_docker_client();
   }
 });
 
@@ -4858,6 +4962,11 @@ async function handleMessage(raw) {
     void (async () => {
       const { runComposeBackup: runComposeBackup2 } = await Promise.resolve().then(() => (init_composeBackup(), composeBackup_exports));
       await runComposeBackup2(msg, send, activeJobs, BINARY, ensureRepoInitialized);
+    })();
+  } else if (msg.type === "run_compose_restore") {
+    void (async () => {
+      const { runComposeRestore: runComposeRestore2 } = await Promise.resolve().then(() => (init_composeRestore(), composeRestore_exports));
+      await runComposeRestore2(msg, send, activeJobs, BINARY);
     })();
   } else if (msg.type === "list_compose_project") {
     void (async () => {
