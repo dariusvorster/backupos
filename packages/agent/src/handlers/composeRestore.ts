@@ -102,7 +102,7 @@ export async function runComposeRestore(
         const sourcePath = `/var/lib/docker/volumes/${origVolName}/_data`
 
         if (mode === 'in_place') {
-          await makeEngine().restore(snapshotId, '/', [sourcePath])
+          await makeEngine().restore(snapshotId, '/', [sourcePath], ctrl.signal)
           logLines.push(`[restore] restored "${service.serviceName}" vol ${origVolName} (in-place)`)
         } else {
           // side_by_side: restore to tmpDir, create new volume, copy contents
@@ -118,7 +118,7 @@ export async function runComposeRestore(
 
           await spawnAllowed('docker', ['volume', 'create', newVolName])
 
-          await makeEngine().restore(snapshotId, tmpDir, [sourcePath])
+          await makeEngine().restore(snapshotId, tmpDir, [sourcePath], ctrl.signal)
 
           // tmpDir/<sourcePath> contains the restored files
           const restoreDest = path.join(tmpDir, 'var', 'lib', 'docker', 'volumes', origVolName, '_data')
@@ -133,7 +133,7 @@ export async function runComposeRestore(
     // Optional compose file restore
     if (composeFileSnapshotId && composeConfig.composeFilePath) {
       if (mode === 'in_place') {
-        await makeEngine().restore(composeFileSnapshotId, '/', [composeConfig.composeFilePath])
+        await makeEngine().restore(composeFileSnapshotId, '/', [composeConfig.composeFilePath], ctrl.signal)
         logLines.push(`[restore] restored compose file to ${composeConfig.composeFilePath}`)
       } else {
         logLines.push(`[restore] NOTE: compose file restore skipped for side-by-side mode — original file unchanged`)

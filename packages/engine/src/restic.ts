@@ -180,12 +180,13 @@ export class ResticEngine {
     snapshotId: string,
     target: string,
     include?: string[],
+    signal?: AbortSignal,
   ): Promise<RestoreResult> {
     const args = ['restore', snapshotId, '--target', target]
     if (include) for (const p of include) args.push('--include', p)
 
     const before = Date.now()
-    const result = await this.run(args, undefined, 14_400_000)
+    const result = await this.run(args, undefined, 14_400_000, signal)
     if (result.exitCode !== 0) throw new ResticError('restore', result)
 
     const match = result.stderr.match(/(\d+) files? restored/)
@@ -257,8 +258,9 @@ export class ResticEngine {
     args: string[],
     extraEnv?: Record<string, string>,
     timeoutMs?: number,
+    signal?: AbortSignal,
   ): Promise<ExecResult> {
-    return this.runStreaming(args, undefined, extraEnv, timeoutMs)
+    return this.runStreaming(args, undefined, extraEnv, timeoutMs, signal)
   }
 
   private runStreaming(
