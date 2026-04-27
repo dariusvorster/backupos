@@ -7,6 +7,7 @@ export const ALLOWED_COMMANDS = new Set([
   'redis-cli',
   'sqlite3',
   'docker',
+  'cp',
 ])
 
 export function spawnAllowed(

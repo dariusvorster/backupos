@@ -159,6 +159,9 @@ export const backupRuns = sqliteTable('backup_runs', {
 
   // Resolved at trigger time — agent applies this limit (null = unlimited)
   bandwidthLimitKbps: integer('bandwidth_limit_kbps'),
+
+  // 'backup' (default) or 'restore'
+  runType: text('run_type').default('backup'),
 }, t => ({
   jobIdIdx:     index('backup_runs_job_id_idx').on(t.jobId),
   startedAtIdx: index('backup_runs_started_at_idx').on(t.startedAt),

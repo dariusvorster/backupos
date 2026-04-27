@@ -3724,8 +3724,8 @@ var init_restic = __esm({
         let backupResult;
         try {
           const args = ["backup", "--json", "--no-scan"];
-          for (const path2 of opts.paths)
-            args.push(path2);
+          for (const path3 of opts.paths)
+            args.push(path3);
           if (opts.tags)
             for (const t of opts.tags)
               args.push("--tag", t);
@@ -4051,14 +4051,14 @@ function getOpts() {
   }
   throw new Error(`Unsupported DOCKER_HOST: ${h}`);
 }
-function dockerReq(method, path2, body) {
+function dockerReq(method, path3, body) {
   return new Promise((resolve, reject) => {
     const opts = getOpts();
     const payload = body ? JSON.stringify(body) : void 0;
-    const timer = setTimeout(() => reject(new Error(`Docker ${method} ${path2} timeout`)), 3e4);
+    const timer = setTimeout(() => reject(new Error(`Docker ${method} ${path3} timeout`)), 3e4);
     const reqOpts = {
       method,
-      path: path2,
+      path: path3,
       ...opts,
       headers: payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}
     };
@@ -4076,7 +4076,7 @@ function dockerReq(method, path2, body) {
             resolve(data);
           }
         } else {
-          reject(new Error(`Docker ${method} ${path2} \u2192 HTTP ${res.statusCode ?? "?"}: ${data}`));
+          reject(new Error(`Docker ${method} ${path3} \u2192 HTTP ${res.statusCode ?? "?"}: ${data}`));
         }
       });
     });
@@ -4160,7 +4160,8 @@ var init_exec_allowed2 = __esm({
       "mysqldump",
       "redis-cli",
       "sqlite3",
-      "docker"
+      "docker",
+      "cp"
     ]);
   }
 });
@@ -4491,6 +4492,168 @@ var init_composeBackup = __esm({
   }
 });
 
+// src/handlers/composeRestore.ts
+var composeRestore_exports = {};
+__export(composeRestore_exports, {
+  runComposeRestore: () => runComposeRestore
+});
+async function runComposeRestore(msg, send2, activeJobs2, binaryPath) {
+  const { jobId, runId, repoUrl, repoPassword, envVars, config } = msg;
+  const { mode, snapshotIds, composeConfig, restoreComposeFile, sideBySideProjectName } = config;
+  if (activeJobs2.has(jobId)) {
+    console.warn(`[agent] run_compose_restore: job ${jobId} already active \u2014 ignoring`);
+    return;
+  }
+  const ctrl = new AbortController();
+  activeJobs2.set(jobId, { ctrl, runId, phase: "starting", lastResticEventAt: Date.now(), cancelled: false });
+  const logLines = [];
+  const tmpDir = path2.join(os2.tmpdir(), "backupos-restore", jobId);
+  const setPhase = (phase) => {
+    const j = activeJobs2.get(jobId);
+    if (j) {
+      j.phase = phase;
+      j.lastResticEventAt = Date.now();
+    }
+  };
+  const makeEngine = () => new ResticEngine({
+    repositoryUrl: repoUrl,
+    password: repoPassword,
+    envVars: envVars ?? {},
+    binaryPath
+  });
+  const services = composeConfig.services?.filter((s) => s.included) ?? [];
+  const serviceSnapshotIds = snapshotIds.slice(0, services.length);
+  const composeFileSnapshotId = restoreComposeFile && snapshotIds.length > services.length ? snapshotIds[services.length] : void 0;
+  if (serviceSnapshotIds.length !== services.length) {
+    send2({
+      type: "backup_failed",
+      jobId,
+      error: `service/snapshot count mismatch: ${services.length} services vs ${serviceSnapshotIds.length} snapshots`,
+      detail: ""
+    });
+    activeJobs2.delete(jobId);
+    return;
+  }
+  const stoppedContainerIds = [];
+  try {
+    await fs2.mkdir(tmpDir, { recursive: true });
+    if (mode === "in_place") {
+      setPhase("quiescing");
+      for (const service of services) {
+        const containers = await listComposeContainers(composeConfig.projectName);
+        const target = containers.find((c) => (c.Labels["com.docker.compose.service"] ?? "") === service.serviceName);
+        if (target) {
+          await stopContainer(target.Id);
+          stoppedContainerIds.push(target.Id);
+          logLines.push(`[restore] stopped "${service.serviceName}"`);
+        } else {
+          logLines.push(`[restore] WARN: "${service.serviceName}" not found \u2014 skipping stop`);
+        }
+      }
+    }
+    setPhase("uploading");
+    for (let i = 0; i < services.length; i++) {
+      const service = services[i];
+      const snapshotId = serviceSnapshotIds[i];
+      for (const origVolName of service.includedVolumes) {
+        if (!/^[a-zA-Z0-9_.-]+$/.test(origVolName)) {
+          throw new Error(`unsafe volume name: "${origVolName}"`);
+        }
+        const sourcePath = `/var/lib/docker/volumes/${origVolName}/_data`;
+        if (mode === "in_place") {
+          await makeEngine().restore(snapshotId, "/", [sourcePath]);
+          logLines.push(`[restore] restored "${service.serviceName}" vol ${origVolName} (in-place)`);
+        } else {
+          if (!/^[a-zA-Z0-9_.-]+$/.test(sideBySideProjectName)) {
+            throw new Error(`unsafe sideBySideProjectName: "${sideBySideProjectName}"`);
+          }
+          if (!/^[a-zA-Z0-9_.-]+$/.test(composeConfig.projectName)) {
+            throw new Error(`unsafe projectName: "${composeConfig.projectName}"`);
+          }
+          const newVolName = origVolName.startsWith(`${composeConfig.projectName}_`) ? `${sideBySideProjectName}${origVolName.slice(composeConfig.projectName.length)}` : `${sideBySideProjectName}_${origVolName}`;
+          await spawnAllowed2("docker", ["volume", "create", newVolName]);
+          await makeEngine().restore(snapshotId, tmpDir, [sourcePath]);
+          const restoreDest = path2.join(tmpDir, "var", "lib", "docker", "volumes", origVolName, "_data");
+          const newVolPath = `/var/lib/docker/volumes/${newVolName}/_data`;
+          await spawnAllowed2("cp", ["-a", `${restoreDest}/.`, `${newVolPath}/`]);
+          logLines.push(`[restore] restored "${service.serviceName}" ${origVolName} \u2192 ${newVolName} (side-by-side)`);
+        }
+      }
+    }
+    if (composeFileSnapshotId && composeConfig.composeFilePath) {
+      if (mode === "in_place") {
+        await makeEngine().restore(composeFileSnapshotId, "/", [composeConfig.composeFilePath]);
+        logLines.push(`[restore] restored compose file to ${composeConfig.composeFilePath}`);
+      } else {
+        logLines.push(`[restore] NOTE: compose file restore skipped for side-by-side mode \u2014 original file unchanged`);
+      }
+    }
+    if (mode === "in_place") {
+      setPhase("resuming");
+      for (const containerId of stoppedContainerIds) {
+        try {
+          await startContainer(containerId);
+          await waitForRunning(containerId, 3e4);
+        } catch (err) {
+          logLines.push(`[restore] WARN: failed to restart container ${containerId}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      logLines.push("[restore] in-place restore complete \u2014 all services restarted");
+    } else {
+      logLines.push(`[restore] side-by-side complete. Original "${composeConfig.projectName}" stack untouched. New volumes prefixed with "${sideBySideProjectName}".`);
+    }
+    setPhase("finalizing");
+    send2({
+      type: "backup_complete",
+      jobId,
+      snapshotId: serviceSnapshotIds[0] ?? "restored",
+      snapshotIds: serviceSnapshotIds,
+      stats: {
+        filesNew: 0,
+        filesChanged: 0,
+        filesUnmodified: 0,
+        dataAdded: 0,
+        totalFilesProcessed: 0,
+        totalBytesProcessed: 0,
+        durationMs: 0
+      },
+      log: logLines.join("\n").slice(0, 1e6) || void 0
+    });
+  } catch (err) {
+    if (mode === "in_place" && stoppedContainerIds.length > 0) {
+      logLines.push("[restore] FATAL: restore failed mid-flight \u2014 attempting best-effort restart of stopped services");
+      for (const containerId of stoppedContainerIds) {
+        await startContainer(containerId).then(() => waitForRunning(containerId, 3e4)).catch((re) => {
+          logLines.push(`[restore] WARN: restart failed for container ${containerId}: ${re instanceof Error ? re.message : String(re)}`);
+        });
+      }
+    }
+    send2({
+      type: "backup_failed",
+      jobId,
+      error: err instanceof Error ? err.message : String(err),
+      detail: err instanceof Error && err.stack ? err.stack : "",
+      log: logLines.join("\n").slice(0, 1e6) || void 0
+    });
+  } finally {
+    await fs2.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+    });
+    activeJobs2.delete(jobId);
+  }
+}
+var fs2, os2, path2;
+var init_composeRestore = __esm({
+  "src/handlers/composeRestore.ts"() {
+    "use strict";
+    fs2 = __toESM(require("fs/promises"));
+    os2 = __toESM(require("os"));
+    path2 = __toESM(require("path"));
+    init_dist();
+    init_docker_client();
+    init_exec_allowed2();
+  }
+});
+
 // src/handlers/listCompose.ts
 var listCompose_exports = {};
 __export(listCompose_exports, {
@@ -4549,7 +4712,7 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
 
 // src/agent.ts
-var os2 = __toESM(require("os"));
+var os3 = __toESM(require("os"));
 var import_crypto = require("crypto");
 var import_fs2 = require("fs");
 var import_child_process3 = require("child_process");
@@ -4581,7 +4744,7 @@ async function binaryExists(name) {
     return false;
   }
 }
-function dockerRequest(dockerHost, path2) {
+function dockerRequest(dockerHost, path3) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("timeout")), 5e3);
     const done = () => clearTimeout(timeout);
@@ -4594,7 +4757,7 @@ function dockerRequest(dockerHost, path2) {
     };
     if (dockerHost.startsWith("unix://")) {
       const req = http.request(
-        { socketPath: dockerHost.slice("unix://".length), path: path2, method: "GET" },
+        { socketPath: dockerHost.slice("unix://".length), path: path3, method: "GET" },
         handler
       );
       req.on("error", (e) => {
@@ -4605,7 +4768,7 @@ function dockerRequest(dockerHost, path2) {
     } else if (dockerHost.startsWith("tcp://")) {
       const u = new URL(dockerHost);
       const req = http.request(
-        { host: u.hostname, port: parseInt(u.port || "2375"), path: path2, method: "GET" },
+        { host: u.hostname, port: parseInt(u.port || "2375"), path: path3, method: "GET" },
         handler
       );
       req.on("error", (e) => {
@@ -4760,7 +4923,7 @@ void queryResticVersion().then((v) => {
   RESTIC_VERSION = v;
 });
 function getIp() {
-  const ifaces = os2.networkInterfaces();
+  const ifaces = os3.networkInterfaces();
   for (const iface of Object.values(ifaces)) {
     for (const addr of iface ?? []) {
       if (addr.family === "IPv4" && !addr.internal) return addr.address;
@@ -4800,10 +4963,10 @@ function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
     send({ type: "ping" });
-    const memTotal = os2.totalmem();
-    const memFree = os2.freemem();
-    const cpuCount = os2.cpus().length || 1;
-    const cpuLoad = (os2.loadavg()[0] ?? 0) / cpuCount * 100;
+    const memTotal = os3.totalmem();
+    const memFree = os3.freemem();
+    const cpuCount = os3.cpus().length || 1;
+    const cpuLoad = (os3.loadavg()[0] ?? 0) / cpuCount * 100;
     send({
       type: "metrics",
       metrics: {
@@ -4858,6 +5021,11 @@ async function handleMessage(raw) {
     void (async () => {
       const { runComposeBackup: runComposeBackup2 } = await Promise.resolve().then(() => (init_composeBackup(), composeBackup_exports));
       await runComposeBackup2(msg, send, activeJobs, BINARY, ensureRepoInitialized);
+    })();
+  } else if (msg.type === "run_compose_restore") {
+    void (async () => {
+      const { runComposeRestore: runComposeRestore2 } = await Promise.resolve().then(() => (init_composeRestore(), composeRestore_exports));
+      await runComposeRestore2(msg, send, activeJobs, BINARY);
     })();
   } else if (msg.type === "list_compose_project") {
     void (async () => {
@@ -4970,7 +5138,7 @@ function connect() {
     const hello = {
       type: "hello",
       token: TOKEN,
-      hostname: os2.hostname(),
+      hostname: os3.hostname(),
       ip: getIp(),
       agentVersion: VERSION,
       protocolVersion: PROTOCOL_VERSION,
@@ -4981,7 +5149,7 @@ function connect() {
       osInfo: {
         os: process.platform,
         arch: process.arch,
-        kernel: os2.release()
+        kernel: os3.release()
       }
     };
     ws.send(JSON.stringify(hello));

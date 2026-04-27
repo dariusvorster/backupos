@@ -190,6 +190,13 @@
       "when": 1746057600000,
       "tag": "0026_snapshot_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1777161600000,
+      "tag": "0027_run_type",
+      "breakpoints": true
     }
   ]
 }

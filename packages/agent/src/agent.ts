@@ -233,6 +233,12 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       await runComposeBackup(msg, send, activeJobs, BINARY, ensureRepoInitialized)
     })()
 
+  } else if (msg.type === 'run_compose_restore') {
+    void (async () => {
+      const { runComposeRestore } = await import('./handlers/composeRestore')
+      await runComposeRestore(msg, send, activeJobs, BINARY)
+    })()
+
   } else if (msg.type === 'list_compose_project') {
     void (async () => {
       try {

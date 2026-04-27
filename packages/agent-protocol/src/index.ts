@@ -117,9 +117,11 @@ export interface ComposeProjectConfig {
 }
 
 export interface ComposeRestoreConfig {
-  projectName: string
-  newProjectName?: string   // omit for in-place; set for side-by-side
-  snapshotId: string
+  mode: 'in_place' | 'side_by_side'
+  snapshotIds: string[]              // one per included service, same order as composeConfig.services
+  composeConfig: ComposeProjectConfig
+  restoreComposeFile: boolean
+  sideBySideProjectName?: string     // required when mode === 'side_by_side'
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────
@@ -161,4 +163,4 @@ export type ServerMessage =
   | { type: 'force_update' }
   | { type: 'list_compose_project'; requestId: string; projectName: string }
   | { type: 'run_compose_backup'; jobId: string; runId: string; config: ComposeProjectConfig; repoId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
-  | { type: 'run_compose_restore'; jobId: string; runId: string; config: ComposeRestoreConfig; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
+  | { type: 'run_compose_restore'; jobId: string; runId: string; repoId: string; config: ComposeRestoreConfig; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
