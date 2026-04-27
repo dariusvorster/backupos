@@ -96,6 +96,9 @@ export async function runComposeRestore(
       const snapshotId = serviceSnapshotIds[i]!
 
       for (const origVolName of service.includedVolumes) {
+        if (!/^[a-zA-Z0-9_.-]+$/.test(origVolName)) {
+          throw new Error(`unsafe volume name: "${origVolName}"`)
+        }
         const sourcePath = `/var/lib/docker/volumes/${origVolName}/_data`
 
         if (mode === 'in_place') {
@@ -103,6 +106,12 @@ export async function runComposeRestore(
           logLines.push(`[restore] restored "${service.serviceName}" vol ${origVolName} (in-place)`)
         } else {
           // side_by_side: restore to tmpDir, create new volume, copy contents
+          if (!/^[a-zA-Z0-9_.-]+$/.test(sideBySideProjectName!)) {
+            throw new Error(`unsafe sideBySideProjectName: "${sideBySideProjectName}"`)
+          }
+          if (!/^[a-zA-Z0-9_.-]+$/.test(composeConfig.projectName)) {
+            throw new Error(`unsafe projectName: "${composeConfig.projectName}"`)
+          }
           const newVolName = origVolName.startsWith(`${composeConfig.projectName}_`)
             ? `${sideBySideProjectName!}${origVolName.slice(composeConfig.projectName.length)}`
             : `${sideBySideProjectName!}_${origVolName}`
@@ -168,9 +177,11 @@ export async function runComposeRestore(
     if (mode === 'in_place' && stoppedContainerIds.length > 0) {
       logLines.push('[restore] FATAL: restore failed mid-flight — attempting best-effort restart of stopped services')
       for (const containerId of stoppedContainerIds) {
-        await startContainer(containerId).catch(re => {
-          logLines.push(`[restore] WARN: restart failed for container ${containerId}: ${re instanceof Error ? re.message : String(re)}`)
-        })
+        await startContainer(containerId)
+          .then(() => waitForRunning(containerId, 30_000))
+          .catch(re => {
+            logLines.push(`[restore] WARN: restart failed for container ${containerId}: ${re instanceof Error ? re.message : String(re)}`)
+          })
       }
     }
     send({
