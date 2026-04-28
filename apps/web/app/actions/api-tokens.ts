@@ -5,7 +5,7 @@ import { randomBytes, createHash } from 'crypto'
 import { getDb, apiTokens, eq } from '@backupos/db'
 import { headers } from 'next/headers'
 
-export async function createApiToken(formData: FormData): Promise<{ token?: string; error?: string }> {
+export async function createApiToken(formData: FormData): Promise<{ token?: string; id?: string; error?: string }> {
   const { auth } = await import('@/lib/auth')
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session) return { error: 'Not authenticated' }
@@ -21,8 +21,9 @@ export async function createApiToken(formData: FormData): Promise<{ token?: stri
   const expiresStr = formData.get('expires') as string | null
   const expiresAt = expiresStr ? new Date(expiresStr) : null
 
+  const id = randomBytes(8).toString('hex')
   await db.insert(apiTokens).values({
-    id:          randomBytes(8).toString('hex'),
+    id,
     userId:      session.user.id,
     name,
     tokenHash:   hash,
@@ -32,7 +33,7 @@ export async function createApiToken(formData: FormData): Promise<{ token?: stri
   })
 
   revalidatePath('/settings/api-tokens')
-  return { token: raw }
+  return { token: raw, id }
 }
 
 export async function revokeApiToken(id: string) {

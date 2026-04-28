@@ -23,9 +23,21 @@ export function ApiTokensClient({ initial }: { initial: Token[] }) {
     setError('')
     setNewToken(null)
     const fd = new FormData(e.currentTarget)
+    const name = String(fd.get('name') ?? '').trim()
+    const expiresStr = fd.get('expires') as string | null
     const result = await createApiToken(fd)
     if (result.error) { setError(result.error); return }
-    if (result.token) setNewToken(result.token)
+    if (result.token && result.id) {
+      setNewToken(result.token)
+      setTokens(prev => [...prev, {
+        id:          result.id!,
+        name,
+        tokenPrefix: result.token!.slice(0, 12),
+        lastUsedAt:  null,
+        expiresAt:   expiresStr ? new Date(expiresStr) : null,
+        createdAt:   new Date(),
+      }])
+    }
     ;(e.target as HTMLFormElement).reset()
   }
 
