@@ -1,10 +1,17 @@
 import { betterAuth }     from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { getDb, user, session, account, verification } from '@backupos/db'
+import { isPrivateOrigin } from './private-origin'
+
+const explicitTrusted = process.env['BETTER_AUTH_TRUSTED_ORIGINS']
+  ?.split(',').map(s => s.trim()).filter(Boolean) ?? []
 
 export const auth = betterAuth({
   baseURL: process.env['BETTER_AUTH_URL'],
-  trustedOrigins: process.env['BETTER_AUTH_TRUSTED_ORIGINS']?.split(',').map(s => s.trim()) ?? [],
+  trustedOrigins: (request?: Request) => {
+    const origin = request?.headers.get('origin') ?? ''
+    return isPrivateOrigin(origin) ? [...explicitTrusted, origin] : explicitTrusted
+  },
   database: drizzleAdapter(getDb(), {
     provider: 'sqlite',
     schema: { user, session, account, verification },
