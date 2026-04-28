@@ -34,6 +34,8 @@ export async function createRepository(formData: FormData): Promise<{ error: str
   const id = crypto.randomUUID()
 
   const config: Record<string, string> = {}
+  let nfsServer: string | undefined
+  let nfsExport: string | undefined
 
   if (backend === 'local') {
     const path = (formData.get('path') as string)?.trim()
@@ -95,6 +97,8 @@ export async function createRepository(formData: FormData): Promise<{ error: str
     const mountPoint = `/mnt/backupos/${id}`
     config['repositoryUrl'] = repoPath ? `${mountPoint}/${repoPath}` : mountPoint
     config['mountConfig']   = JSON.stringify({ type: 'nfs', host, remotePath, mountPoint, repoPath: repoPath || '' })
+    nfsServer = host
+    nfsExport = remotePath
   } else if (backend === 'smb') {
     const smbShare = (formData.get('smbShare') as string)?.trim()
     const username = (formData.get('username') as string)?.trim()
@@ -117,6 +121,9 @@ export async function createRepository(formData: FormData): Promise<{ error: str
     resticPassword: encryptField(password),
     group,
     createdAt:      new Date(),
+    nfsServer:      nfsServer,
+    nfsExport:      nfsExport,
+    nfsOptions:     nfsServer ? 'vers=3,soft,timeo=50' : undefined,
   })
   redirect(`/repositories/${id}`)
 }
@@ -132,6 +139,9 @@ export async function updateRepository(id: string, formData: FormData): Promise<
   if (!repo) return { error: 'Repository not found' }
 
   const config: Record<string, string> = parseRepoConfig(repo.config)
+  let updatedNfsServer: string | null = null
+  let updatedNfsExport: string | null = null
+  let updatedNfsOptions: string | null = null
 
   if (repo.backend === 'local') {
     const path = (formData.get('path') as string)?.trim()
@@ -192,6 +202,9 @@ export async function updateRepository(id: string, formData: FormData): Promise<
     const mountPoint = (existing['mountPoint'] as string) || `/mnt/backupos/${id}`
     config['repositoryUrl'] = repoPath ? `${mountPoint}/${repoPath}` : mountPoint
     config['mountConfig']   = JSON.stringify({ ...existing, type: 'nfs', host, remotePath, mountPoint, repoPath: repoPath || '' })
+    updatedNfsServer  = host
+    updatedNfsExport  = remotePath
+    updatedNfsOptions = 'vers=3,soft,timeo=50'
   } else if (repo.backend === 'smb') {
     const smbShare  = (formData.get('smbShare') as string)?.trim()
     const username  = (formData.get('username') as string)?.trim()
@@ -209,7 +222,12 @@ export async function updateRepository(id: string, formData: FormData): Promise<
     config['mountConfig']   = JSON.stringify({ ...existing, type: 'smb', host: parsed.host, remotePath: parsed.remotePath, mountPoint, username: user, password, repoPath: repoPath || '' })
   }
 
-  const updates: Record<string, unknown> = { name, group, config: encryptField(JSON.stringify(config)) }
+  const updates: Record<string, unknown> = {
+    name, group, config: encryptField(JSON.stringify(config)),
+    nfsServer:  updatedNfsServer,
+    nfsExport:  updatedNfsExport,
+    nfsOptions: updatedNfsOptions,
+  }
   if (password) updates['resticPassword'] = encryptField(password)
   await db.update(repositories).set(updates).where(eq(repositories.id, id))
   revalidatePath(`/repositories/${id}`)
