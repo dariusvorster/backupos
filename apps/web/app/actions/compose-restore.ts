@@ -5,6 +5,7 @@ import { getDb, backupJobs, backupRuns, repositories, eq } from '@backupos/db'
 import { decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { connectedAgentIds } from '@/lib/ws-state'
+import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import type { ComposeProjectConfig } from '@backupos/agent-protocol'
 
 export async function triggerComposeRestore(formData: FormData): Promise<void> {
@@ -62,6 +63,18 @@ export async function triggerComposeRestore(formData: FormData): Promise<void> {
   const cfg      = JSON.parse(decryptField(repo.config)) as Record<string, string>
   const password = decryptField(repo.resticPassword)
   if (!password) throw new Error(`triggerComposeRestore: failed to decrypt repo password for ${repo.id}`)
+
+  try {
+    await ensureRepoMountedOnAgent(job.agentId!, job.repositoryId!)
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    await db.insert(backupRuns).values({
+      id: crypto.randomUUID(), jobId, repositoryId: job.repositoryId!, agentId: job.agentId!,
+      status: 'failed', trigger: 'manual', startedAt: now, completedAt: now,
+      runType: 'restore', errorMessage: `NFS mount failed: ${errorMessage}`,
+    })
+    redirect(`/jobs/${jobId}`)
+  }
 
   const runId = crypto.randomUUID()
   await db.insert(backupRuns).values({

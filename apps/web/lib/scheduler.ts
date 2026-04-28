@@ -4,6 +4,7 @@ import { getDb, backupJobs, backupRuns, repositories, agents, eq, and, or, lt, l
 import { decryptField } from './repo-crypto'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
+import { ensureRepoMountedOnAgent } from './repo-mount'
 import type { ServerMessage, MountConfig, ComposeProjectConfig } from '@backupos/agent-protocol'
 
 interface SourceConfig {
@@ -132,6 +133,16 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
         mountConfig,
       },
     }
+  }
+
+  try {
+    await ensureRepoMountedOnAgent(job.agentId, job.repositoryId)
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    await db.update(backupRuns).set({
+      status: 'failed', completedAt: now, errorMessage: `NFS mount failed: ${errorMessage}`,
+    }).where(eq(backupRuns.id, runId))
+    return false
   }
 
   const sent = dispatch(job.agentId, msg)

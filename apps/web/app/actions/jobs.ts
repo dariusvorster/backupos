@@ -6,6 +6,7 @@ import { getDb, backupJobs, backupRuns, repositories, bandwidthProfiles, bandwid
 import { decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { validateCron } from '@/lib/cron-validate'
+import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
   const str = (k: string) => (fd.get(k) as string | null)?.trim() || undefined
@@ -244,6 +245,17 @@ export async function retryRun(jobId: string): Promise<void> {
   const password = decryptField(repo.resticPassword)
   if (!password) throw new Error(`dispatch: failed to decrypt repo password for repository ${repo.id}`)
   const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${jobId}`]
+
+  try {
+    await ensureRepoMountedOnAgent(job.agentId, job.repositoryId!)
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    await db.update(backupRuns).set({
+      status: 'failed', completedAt: now, errorMessage: `NFS mount failed: ${errorMessage}`,
+    }).where(eq(backupRuns.id, runId))
+    await db.update(backupJobs).set({ lastRunStatus: 'failed' }).where(eq(backupJobs.id, jobId))
+    redirect(`/jobs/${jobId}`)
+  }
 
   let result: { ok: boolean; reason?: string; knownIds?: string[] }
   if (job.sourceType === 'compose_project') {

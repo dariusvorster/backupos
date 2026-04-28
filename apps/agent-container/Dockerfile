@@ -3,7 +3,7 @@ FROM node:20-alpine
 # restic  — required for backup/restore
 # tini    — proper PID 1 / signal handling (ensures Docker stop/restart works correctly)
 # curl    — used by the agent's bundle self-update download
-RUN apk add --no-cache restic tini curl ca-certificates
+RUN apk add --no-cache restic tini curl ca-certificates nfs-utils
 
 # The agent runs as root inside the container so it can read mounted Docker volumes
 # (which are root-owned) and so docker-cli operations against /var/run/docker.sock work.

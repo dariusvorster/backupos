@@ -10,7 +10,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository } from './lib/ws-state'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
 import { sendAlert } from './lib/alerts'
@@ -605,6 +605,12 @@ void app.prepare().then(() => {
 
         } else if (msg.type === 'test_mount_result') {
           resolveTestMount(msg.requestId, { ok: msg.ok, error: msg.error })
+
+        } else if (msg.type === 'mount_complete') {
+          resolveMountRepository(msg.requestId)
+
+        } else if (msg.type === 'mount_failed') {
+          resolveMountRepository(msg.requestId, msg.error)
 
         } else if (msg.type === 'compose_project_listing') {
           resolveListCompose(msg.requestId, msg.project)
