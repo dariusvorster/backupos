@@ -22,18 +22,7 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
-  apps/agent-linux:
-    dependencies:
-      '@backupos/agent-protocol':
-        specifier: workspace:*
-        version: link:../../packages/agent-protocol
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.17
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
+  apps/agent-container: {}
 
   apps/agent-windows:
     dependencies:
