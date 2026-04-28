@@ -6,14 +6,23 @@ import { getDb } from '@backupos/db'
 import type { Context } from '@backupos/api'
 import { dispatch } from '../../../../lib/ws-state'
 import { auth } from '@/lib/auth'
+import { validateApiToken } from '@/lib/api-token-auth'
 
 async function createContext({ req }: { req: Request }): Promise<Context> {
   const session = await auth.api.getSession({ headers: req.headers })
-  return {
-    db:       getDb(),
-    user:     session?.user ?? null,
-    dispatch,
+  if (session) {
+    return { db: getDb(), user: session.user, dispatch }
   }
+
+  const authHeader = req.headers.get('authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    const tokenUser = await validateApiToken(authHeader.slice(7))
+    if (tokenUser) {
+      return { db: getDb(), user: tokenUser, dispatch }
+    }
+  }
+
+  return { db: getDb(), user: null, dispatch }
 }
 
 const handler = (req: Request) =>

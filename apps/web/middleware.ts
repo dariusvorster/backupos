@@ -33,8 +33,19 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const token = request.cookies.get(SESSION_COOKIE)
-  if (!token) {
+  // API routes: accept Bearer token OR session cookie; never redirect to /login
+  if (pathname.startsWith('/api/')) {
+    // Edge runtime has no DB access, so Bearer presence bypasses the /login redirect
+    // but does NOT constitute validation. Route handlers must call validateApiToken
+    // from @/lib/api-token-auth themselves before treating the request as authenticated.
+    const authHeader = request.headers.get('authorization')
+    if (authHeader?.startsWith('Bearer ') || request.cookies.get(SESSION_COOKIE)) {
+      return NextResponse.next()
+    }
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  if (!request.cookies.get(SESSION_COOKIE)) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('next', pathname)
     return NextResponse.redirect(loginUrl)
