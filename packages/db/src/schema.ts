@@ -486,6 +486,7 @@ export const user = sqliteTable('user', {
   notifyWeekly:    integer('notify_weekly',     { mode: 'boolean' }).notNull().default(true),
   notifyUpdates:   integer('notify_updates',    { mode: 'boolean' }).notNull().default(false),
   twoFactorEnabled: integer('two_factor_enabled', { mode: 'boolean' }).notNull().default(false),
+  role:             text('role').notNull().default('admin'),
 })
 
 export const session = sqliteTable('session', {
