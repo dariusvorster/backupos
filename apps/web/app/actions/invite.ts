@@ -18,6 +18,7 @@ export async function createInvite(
 ): Promise<{ id?: string; link?: string; error?: string }> {
   const currentUser = await getCurrentUser()
   if (!currentUser) return { error: 'Not authenticated' }
+  if (currentUser.role !== 'admin') return { error: 'Admin role required to invite users' }
 
   const email = (formData.get('email') as string | null)?.trim()
   const name  = (formData.get('name')  as string | null)?.trim() || null
@@ -125,6 +126,7 @@ export async function createUserDirect(formData: FormData): Promise<{
 }> {
   const currentUser = await getCurrentUser()
   if (!currentUser) return { error: 'Not authenticated' }
+  if (currentUser.role !== 'admin') return { error: 'Admin role required to create users' }
 
   const name  = (formData.get('name')  as string | null)?.trim() || ''
   const email = (formData.get('email') as string | null)?.trim() || ''

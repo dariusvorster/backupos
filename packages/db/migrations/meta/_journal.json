@@ -232,6 +232,13 @@
       "when": 1746057601000,
       "tag": "0032_encrypt_smtp_password",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1746144000000,
+      "tag": "0033_add_user_role",
+      "breakpoints": true
     }
   ]
 }
