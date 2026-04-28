@@ -261,14 +261,15 @@ export async function retryRun(jobId: string): Promise<void> {
   if (job.sourceType === 'compose_project') {
     const composeConfig = JSON.parse(job.sourceConfig) as import('@backupos/agent-protocol').ComposeProjectConfig
     result = await dispatchToAgent(job.agentId, {
-      type:         'run_compose_backup',
+      type:               'run_compose_backup',
       jobId,
       runId,
-      config:       composeConfig,
-      repoId:       job.repositoryId!,
-      repoUrl:      cfg['repositoryUrl'] ?? '',
-      repoPassword: password,
-      envVars:      cfg,
+      config:             composeConfig,
+      repoId:             job.repositoryId!,
+      repoUrl:            cfg['repositoryUrl'] ?? '',
+      repoPassword:       password,
+      envVars:            cfg,
+      bandwidthLimitKbps,
     })
   } else {
     const srcConfig = JSON.parse(job.sourceConfig) as { paths?: string[]; volumes?: string[]; exclude?: string[] }
@@ -276,10 +277,11 @@ export async function retryRun(jobId: string): Promise<void> {
       ? (srcConfig.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`)
       : (srcConfig.paths ?? [])
     result = await dispatchToAgent(job.agentId, {
-      type:   'run_backup',
+      type:               'run_backup',
       jobId,
       runId,
-      config: { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
+      config:             { repoId: job.repositoryId!, repoUrl: cfg['repositoryUrl'] ?? '', repoPassword: password, paths, exclude: srcConfig.exclude, tags, envVars: cfg },
+      bandwidthLimitKbps,
     })
   }
 

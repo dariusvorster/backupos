@@ -1,6 +1,6 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, eq, and, or, lt, lte, isNotNull, isNull } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, bandwidthProfiles, bandwidthRules, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
@@ -88,9 +88,33 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
   const runId = crypto.randomUUID()
   const now   = new Date()
 
+  // Resolve bandwidth limit: per-job profile first, then global fallback
+  let bandwidthLimitKbps: number | null = null
+  {
+    let profileId = job.bandwidthProfileId ?? null
+    if (!profileId) {
+      const [globalProfile] = await db.select().from(bandwidthProfiles).where(eq(bandwidthProfiles.isGlobal, true)).limit(1)
+      profileId = globalProfile?.id ?? null
+    }
+    if (profileId) {
+      const currentHour = new Date().getHours()
+      const [rule] = await db
+        .select()
+        .from(bandwidthRules)
+        .where(and(
+          eq(bandwidthRules.profileId, profileId),
+          lte(bandwidthRules.startHour, currentHour),
+          gte(bandwidthRules.endHour,   currentHour),
+        ))
+        .limit(1)
+      bandwidthLimitKbps = rule?.limitKbps ?? null
+    }
+  }
+
   await db.insert(backupRuns).values({
     id: runId, jobId: job.id, repositoryId: job.repositoryId,
     agentId: job.agentId, status: 'running', trigger, startedAt: now,
+    bandwidthLimitKbps,
   })
   await db.update(backupJobs).set({ lastRunAt: now }).where(eq(backupJobs.id, job.id))
 
@@ -98,14 +122,15 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
   if (job.sourceType === 'compose_project') {
     const composeConfig = JSON.parse(job.sourceConfig) as ComposeProjectConfig
     msg = {
-      type:         'run_compose_backup',
-      jobId:        job.id,
+      type:               'run_compose_backup',
+      jobId:              job.id,
       runId,
-      config:       composeConfig,
-      repoId:       job.repositoryId ?? '',
-      repoUrl:      cfg['repositoryUrl'] ?? '',
-      repoPassword: password,
-      envVars:      cfg,
+      config:             composeConfig,
+      repoId:             job.repositoryId ?? '',
+      repoUrl:            cfg['repositoryUrl'] ?? '',
+      repoPassword:       password,
+      envVars:            cfg,
+      bandwidthLimitKbps,
     }
   } else {
     const srcConfig   = JSON.parse(job.sourceConfig) as SourceConfig
@@ -119,8 +144,8 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
     const tags        = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
     const mountConfig = cfg['mountConfig'] ? (JSON.parse(cfg['mountConfig']) as MountConfig) : undefined
     msg = {
-      type:   'run_backup',
-      jobId:  job.id,
+      type:               'run_backup',
+      jobId:              job.id,
       runId,
       config: {
         repoId:       job.repositoryId ?? '',
@@ -132,6 +157,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
         envVars:      cfg,
         mountConfig,
       },
+      bandwidthLimitKbps,
     }
   }
 

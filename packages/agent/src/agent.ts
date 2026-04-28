@@ -218,7 +218,7 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
     // heartbeat acknowledged
 
   } else if (msg.type === 'run_backup') {
-    void runBackup(msg.jobId, msg.runId, msg.config)
+    void runBackup(msg.jobId, msg.runId, msg.config, msg.bandwidthLimitKbps)
 
   } else if (msg.type === 'cancel_backup') {
     const job = activeJobs.get(msg.jobId)
@@ -265,7 +265,7 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
   }
 }
 
-async function runBackup(jobId: string, runId: string, config: BackupJobConfig): Promise<void> {
+async function runBackup(jobId: string, runId: string, config: BackupJobConfig, bandwidthLimitKbps?: number | null): Promise<void> {
   if (activeJobs.has(jobId)) {
     console.warn(`[agent] Job ${jobId} already running — ignoring duplicate dispatch`)
     return
@@ -288,10 +288,11 @@ async function runBackup(jobId: string, runId: string, config: BackupJobConfig):
     }
 
     const engine = new ResticEngine({
-      repositoryUrl: config.repoUrl,
-      password:      config.repoPassword,
-      envVars:       config.envVars ?? {},
-      binaryPath:    BINARY,
+      repositoryUrl:      config.repoUrl,
+      password:           config.repoPassword,
+      envVars:            config.envVars ?? {},
+      binaryPath:         BINARY,
+      bandwidthLimitKbps: bandwidthLimitKbps ?? undefined,
     })
 
     await ensureRepoInitialized(engine, config.repoId)

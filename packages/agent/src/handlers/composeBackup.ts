@@ -50,7 +50,7 @@ export async function runComposeBackup(
   binaryPath: string | undefined,
   ensureRepo: EnsureRepoFn,
 ): Promise<void> {
-  const { jobId, runId, config, repoId, repoUrl, repoPassword, envVars } = msg
+  const { jobId, runId, config, repoId, repoUrl, repoPassword, envVars, bandwidthLimitKbps } = msg
   const ctrl = new AbortController()
 
   activeJobs.set(jobId, { ctrl, runId, phase: 'starting', lastResticEventAt: Date.now(), cancelled: false })
@@ -65,10 +65,11 @@ export async function runComposeBackup(
   }
 
   const makeEngine = () => new ResticEngine({
-    repositoryUrl: repoUrl,
-    password:      repoPassword,
-    envVars:       envVars ?? {},
+    repositoryUrl:      repoUrl,
+    password:           repoPassword,
+    envVars:            envVars ?? {},
     binaryPath,
+    bandwidthLimitKbps: bandwidthLimitKbps ?? undefined,
   })
 
   const tmpDir = path.join(os.tmpdir(), 'backupos-apphooks', jobId)

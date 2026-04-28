@@ -3,6 +3,7 @@ export interface ResticConfig {
   password: string
   envVars: Record<string, string>  // backend credentials (AWS_*, etc.)
   binaryPath?: string              // defaults to 'restic' in PATH
+  bandwidthLimitKbps?: number | null
 }
 
 export interface BackupProgressStatus {

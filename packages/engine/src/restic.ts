@@ -73,6 +73,10 @@ export class ResticEngine {
       if (opts.excludeFile)   args.push('--exclude-file', opts.excludeFile)
       if (opts.oneFileSystem) args.push('--one-file-system')
       if (opts.useVSS)        args.push('--use-fs-snapshot')
+      if (this.config.bandwidthLimitKbps && this.config.bandwidthLimitKbps > 0) {
+        args.push('--limit-upload',   String(this.config.bandwidthLimitKbps))
+        args.push('--limit-download', String(this.config.bandwidthLimitKbps))
+      }
 
       const result = await this.runStreaming(
         args,
@@ -164,6 +168,10 @@ export class ResticEngine {
   async check(readData = false): Promise<CheckResult> {
     const args = ['check']
     if (readData) args.push('--read-data')
+    if (this.config.bandwidthLimitKbps && this.config.bandwidthLimitKbps > 0) {
+      args.push('--limit-upload',   String(this.config.bandwidthLimitKbps))
+      args.push('--limit-download', String(this.config.bandwidthLimitKbps))
+    }
 
     const result = await this.run(args, undefined, 1_800_000)
     const ok = result.exitCode === 0
@@ -184,6 +192,10 @@ export class ResticEngine {
   ): Promise<RestoreResult> {
     const args = ['restore', snapshotId, '--target', target]
     if (include) for (const p of include) args.push('--include', p)
+    if (this.config.bandwidthLimitKbps && this.config.bandwidthLimitKbps > 0) {
+      args.push('--limit-upload',   String(this.config.bandwidthLimitKbps))
+      args.push('--limit-download', String(this.config.bandwidthLimitKbps))
+    }
 
     const before = Date.now()
     const result = await this.run(args, undefined, 14_400_000, signal)
