@@ -68,6 +68,14 @@ async function fireEmail(type: AlertType, message: string): Promise<void> {
   const [cfg] = await db.select().from(smtpConfig).where(eq(smtpConfig.id, 'singleton')).limit(1)
   if (!cfg?.enabled || !cfg.host || !cfg.fromEmail) return
 
+  const recipients = cfg.toAddresses
+    ? cfg.toAddresses.split(',').map(s => s.trim()).filter(Boolean)
+    : []
+  if (recipients.length === 0) {
+    console.warn('[alerts] SMTP is enabled but no recipients configured — skipping email delivery')
+    return
+  }
+
   const transporter = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port ?? 587,
@@ -77,7 +85,7 @@ async function fireEmail(type: AlertType, message: string): Promise<void> {
 
   await transporter.sendMail({
     from: `${cfg.fromName} <${cfg.fromEmail}>`,
-    to: cfg.fromEmail,
+    to:   recipients,
     subject: `[BackupOS] ${type.replace(/_/g, ' ')}`,
     text: message,
   })

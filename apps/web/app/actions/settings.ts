@@ -37,16 +37,25 @@ export async function saveSmtpConfig(formData: FormData) {
     password = encryptField(rawPassword)
   }
 
+  const rawTo = (formData.get('toAddresses') as string | null) ?? ''
+  const toAddresses = rawTo
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .join(',') || null
+
   const values = {
-    host:      formData.get('host') as string | null,
-    port:      Number(formData.get('port') ?? 587),
-    username:  formData.get('username') as string | null,
+    host:        formData.get('host') as string | null,
+    port:        Number(formData.get('port') ?? 587),
+    username:    formData.get('username') as string | null,
     password,
-    fromName:  String(formData.get('fromName') ?? 'BackupOS'),
-    fromEmail: formData.get('fromEmail') as string | null,
-    tls:       formData.get('tls') === 'on',
-    enabled:   formData.get('enabled') === 'on',
-    updatedAt: new Date(),
+    fromName:    String(formData.get('fromName') ?? 'BackupOS'),
+    fromEmail:   formData.get('fromEmail') as string | null,
+    toAddresses,
+    tls:         formData.get('tls') === 'on',
+    enabled:     formData.get('enabled') === 'on',
+    updatedAt:   new Date(),
   }
   await db.insert(smtpConfig).values({ id: 'singleton', ...values })
     .onConflictDoUpdate({ target: smtpConfig.id, set: values })
