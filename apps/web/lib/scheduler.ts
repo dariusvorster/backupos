@@ -1,10 +1,11 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, bandwidthProfiles, bandwidthRules, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, bandwidthProfiles, bandwidthRules, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
 import { ensureRepoMountedOnAgent } from './repo-mount'
+import { isWithinWindow } from './schedule-window'
 import type { ServerMessage, MountConfig, ComposeProjectConfig } from '@backupos/agent-protocol'
 
 interface SourceConfig {
@@ -72,6 +73,14 @@ async function stampNextRunIfMissing(db: Db, jobId: string, schedule: string): P
   if (next) {
     await db.update(backupJobs).set({ nextRunAt: next }).where(eq(backupJobs.id, jobId))
   }
+}
+
+async function resolveJobWindow(db: Db, job: Job): Promise<{ start: number | null; end: number | null }> {
+  if (job.scheduleStart !== null && job.scheduleEnd !== null) {
+    return { start: job.scheduleStart, end: job.scheduleEnd }
+  }
+  const [defaults] = await db.select().from(backupDefaults).limit(1).all()
+  return { start: defaults?.scheduleStart ?? null, end: defaults?.scheduleEnd ?? null }
 }
 
 async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<boolean> {
@@ -202,6 +211,17 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
 async function runJob(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<void> {
   if (!job.repositoryId) return
 
+  // Cron-triggered jobs are silently deferred when outside the window.
+  // Tick-triggered (manual) jobs have their window check in triggerTick so nextRunAt is
+  // not reset, allowing the tick to retry until the window opens.
+  if (trigger === 'cron') {
+    const { start, end } = await resolveJobWindow(db, job)
+    if (!isWithinWindow(new Date().getHours(), start, end)) {
+      console.log(`[scheduler] deferring "${job.name}" (cron) — outside window ${start ?? '?'}–${end ?? '?'}`)
+      return
+    }
+  }
+
   const now = new Date()
 
   if (!job.agentId) {
@@ -254,6 +274,14 @@ async function triggerTick(db: Db): Promise<void> {
       and(eq(backupRuns.jobId, job.id), eq(backupRuns.status, 'running'))
     ).limit(1).all()
     if (active) continue
+
+    // Check schedule window before resetting nextRunAt — if outside the window, leave
+    // nextRunAt as-is so the next tick (5s) retries until the window opens.
+    const { start, end } = await resolveJobWindow(db, job)
+    if (!isWithinWindow(new Date().getHours(), start, end)) {
+      console.log(`[scheduler] deferring "${job.name}" — outside window ${start ?? '?'}–${end ?? '?'}`)
+      continue
+    }
 
     // Reset nextRunAt before dispatching so the next tick doesn't re-fire
     const next = nextRunDate(job.schedule)
