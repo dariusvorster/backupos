@@ -2,11 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, backupJobs, backupRuns, repositories, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, backupDefaults, bandwidthProfiles, bandwidthRules, eq, inArray, and, lte, gte } from '@backupos/db'
 import { decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { validateCron } from '@/lib/cron-validate'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
+import { isWithinWindow } from '@/lib/schedule-window'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
   const str = (k: string) => (fd.get(k) as string | null)?.trim() || undefined
@@ -195,6 +196,34 @@ export async function retryRun(jobId: string): Promise<void> {
   if (!job || !job.repositoryId) { redirect(`/jobs/${jobId}`) }
 
   const bandwidthLimitKbps = await resolveBandwidthLimitKbps(db, jobId)
+
+  // Resolve schedule window: per-job override → global default
+  const windowStart = job.scheduleStart
+  const windowEnd   = job.scheduleEnd
+  let effectiveStart: number | null = windowStart ?? null
+  let effectiveEnd:   number | null = windowEnd   ?? null
+  if (effectiveStart === null || effectiveEnd === null) {
+    const [defaults] = await db.select().from(backupDefaults).limit(1).all()
+    effectiveStart = defaults?.scheduleStart ?? null
+    effectiveEnd   = defaults?.scheduleEnd   ?? null
+  }
+  if (!isWithinWindow(now.getHours(), effectiveStart, effectiveEnd)) {
+    const windowLabel = `${String(effectiveStart ?? '?').padStart(2, '0')}:00–${String(effectiveEnd ?? '?').padStart(2, '0')}:00`
+    await db.insert(backupRuns).values({
+      id:           crypto.randomUUID(),
+      jobId,
+      repositoryId: job.repositoryId,
+      agentId:      job.agentId ?? null,
+      status:       'failed',
+      trigger:      'manual',
+      startedAt:    now,
+      completedAt:  now,
+      errorMessage: `Outside backup window ${windowLabel} — retry when inside the window or adjust the window at /settings/schedule-windows`,
+    })
+    await db.update(backupJobs).set({ lastRunAt: now, lastRunStatus: 'failed' }).where(eq(backupJobs.id, jobId))
+    redirect(`/jobs/${jobId}`)
+  }
+
   const runId = crypto.randomUUID()
 
   await db.insert(backupRuns).values({

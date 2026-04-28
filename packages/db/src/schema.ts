@@ -109,6 +109,10 @@ export const backupJobs = sqliteTable('backup_jobs', {
   createdAt:     integer('created_at',      { mode: 'timestamp_ms' }).notNull(),
   bandwidthProfileId: text('bandwidth_profile_id').references(() => bandwidthProfiles.id),
 
+  // Per-job schedule window override (0-23 hours; null = use global default)
+  scheduleStart: integer('schedule_start'),
+  scheduleEnd:   integer('schedule_end'),
+
   // Pre-flight checks
   preflightEnabled:    integer('preflight_enabled',    { mode: 'boolean' }).default(true),
   lastPreflightAt:     integer('last_preflight_at',    { mode: 'timestamp_ms' }),
