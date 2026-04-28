@@ -39,6 +39,8 @@ export function isPrivateOrigin(origin: string): boolean {
   // IPv6 loopback
   if (hostname === '[::1]' || hostname === '::1') return true
 
+  if (hostname === 'localhost') return true
+
   // mDNS
   if (hostname.endsWith('.local')) return true
 
