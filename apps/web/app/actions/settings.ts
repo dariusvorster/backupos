@@ -1,8 +1,9 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import nodemailer from 'nodemailer'
 import { getDb, instanceSettings, smtpConfig, backupDefaults } from '@backupos/db'
-import { encryptField } from '@/lib/repo-crypto'
+import { encryptField, decryptField } from '@/lib/repo-crypto'
 
 export async function saveInstanceSettings(formData: FormData) {
   const db = getDb()
@@ -78,4 +79,41 @@ export async function saveBackupDefaults(formData: FormData) {
     .onConflictDoUpdate({ target: backupDefaults.id, set: values })
   const page = formData.get('_page') as string | null
   redirect(page === 'schedule' ? '/settings/schedule-windows?saved=1' : '/settings/retention?saved=1')
+}
+
+export async function testSmtpConnection(): Promise<{ ok: boolean; error?: string; deliveredTo?: string[] }> {
+  const db = getDb()
+  const [cfg] = await db.select().from(smtpConfig).limit(1).all()
+
+  if (!cfg?.enabled || !cfg.host || !cfg.fromEmail) {
+    return { ok: false, error: 'SMTP not configured' }
+  }
+
+  const recipients = cfg.toAddresses
+    ? cfg.toAddresses.split(',').map(s => s.trim()).filter(Boolean)
+    : []
+  if (recipients.length === 0) {
+    return { ok: false, error: 'No recipients configured — add recipients before testing' }
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host:   cfg.host,
+      port:   cfg.port ?? 587,
+      secure: cfg.tls ?? true,
+      auth:   cfg.username ? { user: cfg.username, pass: cfg.password ? decryptField(cfg.password) : '' } : undefined,
+    })
+
+    await transporter.sendMail({
+      from:    `${cfg.fromName} <${cfg.fromEmail}>`,
+      to:      recipients,
+      subject: '[BackupOS] Test email — SMTP configuration verified',
+      text:    `This is a test email from BackupOS confirming your SMTP configuration is working correctly.\n\nSent at ${new Date().toISOString()}.`,
+    })
+
+    return { ok: true, deliveredTo: recipients }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: message }
+  }
 }

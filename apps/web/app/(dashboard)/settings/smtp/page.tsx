@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/user'
 import { getDb, smtpConfig } from '@backupos/db'
-import { saveSmtpConfig } from '@/app/actions/settings'
+import { saveSmtpConfig, testSmtpConnection } from '@/app/actions/settings'
+import { SmtpTestButton } from './test-button'
 
 export default async function SmtpSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await getCurrentUser()
@@ -95,9 +96,16 @@ export default async function SmtpSettingsPage({ searchParams }: { searchParams:
           </label>
         </div>
 
-        <button type="submit" style={{ padding: '8px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-          Save changes
-        </button>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <button type="submit" style={{ padding: '8px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            Save changes
+          </button>
+          <SmtpTestButton
+            testAction={testSmtpConnection}
+            disabled={!(cfg?.enabled && cfg?.host && cfg?.fromEmail && cfg?.toAddresses)}
+            disabledReason={!cfg?.enabled ? 'SMTP is not enabled' : !cfg?.toAddresses ? 'No recipients configured' : 'SMTP not fully configured'}
+          />
+        </div>
       </form>
     </div>
   )
