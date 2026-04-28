@@ -520,13 +520,16 @@ export const verification = sqliteTable('verification', {
   updatedAt:  integer('updated_at', { mode: 'timestamp_ms' }),
 })
 
-export const twoFactorSecrets = sqliteTable('two_factor', {
+export const twoFactor = sqliteTable('two_factor', {
   id:          text('id').primaryKey(),
   secret:      text('secret').notNull(),
-  backupCodes: text('backup_codes').notNull(),
-  userId:      text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
-  createdAt:   integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-})
+  backupCodes: text('backup_codes'),
+  userId:      text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  verified:    integer('verified', { mode: 'boolean' }).default(true),
+}, t => ({
+  userIdIdx: index('two_factor_user_id_idx').on(t.userId),
+  secretIdx: index('two_factor_secret_idx').on(t.secret),
+}))
 
 // ── Instance settings ─────────────────────────────────────────────────────
 export const instanceSettings = sqliteTable('instance_settings', {

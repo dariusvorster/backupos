@@ -1,30 +1,29 @@
 'use client'
 
-import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
 
-export function LoginForm() {
+export default function TwoFactorPage() {
   const router = useRouter()
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [code, setCode]         = useState('')
+  const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [useBackup, setUseBackup] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const form = new FormData(e.currentTarget)
-    const result = await authClient.signIn.email({
-      email:    form.get('email') as string,
-      password: form.get('password') as string,
-    })
+
+    const result = useBackup
+      ? await authClient.twoFactor.verifyBackupCode({ code: code.trim() })
+      : await authClient.twoFactor.verifyTotp({ code: code.trim() })
+
     setLoading(false)
     if (result.error) {
-      setError(result.error.message ?? 'Invalid credentials')
-    } else if (!('twoFactorRedirect' in (result.data ?? {}))) {
-      // twoFactorClient plugin handles the /login/two-factor redirect when 2FA is required;
-      // only push to dashboard when no 2FA redirect is pending
+      setError(result.error.message ?? 'Invalid code — try again')
+    } else {
       router.push('/dashboard')
     }
   }
@@ -32,7 +31,8 @@ export function LoginForm() {
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '8px 12px', boxSizing: 'border-box',
     backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14, outline: 'none',
+    borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 18,
+    letterSpacing: useBackup ? '0.05em' : '0.2em', outline: 'none',
   }
 
   return (
@@ -50,25 +50,35 @@ export function LoginForm() {
           <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--fg)' }}>BackupOS</span>
         </div>
 
-        <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>Sign in</h1>
-        <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 24 }}>Enter your credentials to access BackupOS</p>
+        <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>
+          {useBackup ? 'Use a backup code' : 'Two-factor authentication'}
+        </h1>
+        <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 24 }}>
+          {useBackup
+            ? 'Enter one of your saved backup codes.'
+            : 'Enter the 6-digit code from your authenticator app.'}
+        </p>
 
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6 }}>Email</label>
-            <input name="email" type="email" required placeholder="admin@example.com" style={inputStyle} />
-          </div>
-
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6 }}>Password</label>
-            <input name="password" type="password" required placeholder="••••••••" style={inputStyle} />
+            <input
+              type={useBackup ? 'text' : 'text'}
+              inputMode={useBackup ? 'text' : 'numeric'}
+              maxLength={useBackup ? 20 : 6}
+              placeholder={useBackup ? 'XXXX-XXXX' : '000000'}
+              value={code}
+              onChange={e => setCode(useBackup ? e.target.value : e.target.value.replace(/\D/g, ''))}
+              required
+              autoFocus
+              style={inputStyle}
+            />
           </div>
 
           {error && <p style={{ fontSize: 13, color: 'var(--err)', marginBottom: 16 }}>{error}</p>}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || code.length === 0}
             style={{
               width: '100%', padding: '9px 16px',
               backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
@@ -78,13 +88,20 @@ export function LoginForm() {
               opacity: loading ? 0.7 : 1,
             }}
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? 'Verifying…' : 'Verify'}
           </button>
         </form>
 
         <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginTop: 20, textAlign: 'center' }}>
-          Don&apos;t have an account?{' '}
-          <Link href="/signup" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Create one</Link>
+          {useBackup ? (
+            <button onClick={() => { setUseBackup(false); setCode(''); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13 }}>
+              Use authenticator app instead
+            </button>
+          ) : (
+            <button onClick={() => { setUseBackup(true); setCode(''); setError('') }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13 }}>
+              Use a backup code instead
+            </button>
+          )}
         </p>
       </div>
     </div>
