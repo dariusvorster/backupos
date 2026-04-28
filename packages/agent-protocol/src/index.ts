@@ -155,8 +155,8 @@ export interface DetectedResources {
 export type ServerMessage =
   | { type: 'welcome'; agentId: string; serverVersion: string; bundleHash?: string }
   | { type: 'pong' }
-  | { type: 'run_backup'; jobId: string; runId: string; config: BackupJobConfig }
-  | { type: 'run_restore'; restoreId: string; specYaml: string; snapshotId: string }
+  | { type: 'run_backup'; jobId: string; runId: string; config: BackupJobConfig; bandwidthLimitKbps?: number | null }
+  | { type: 'run_restore'; restoreId: string; specYaml: string; snapshotId: string; bandwidthLimitKbps?: number | null }
   | { type: 'cancel_backup'; jobId: string; runId: string }
   | { type: 'verify_repo'; repoId: string; repoUrl: string; repoPassword: string; readData: boolean; envVars?: Record<string, string> }
   | { type: 'list_resources'; requestId: string }
@@ -164,6 +164,6 @@ export type ServerMessage =
   | { type: 'test_mount'; requestId: string; mountConfig: MountConfig }
   | { type: 'force_update' }
   | { type: 'list_compose_project'; requestId: string; projectName: string }
-  | { type: 'run_compose_backup'; jobId: string; runId: string; config: ComposeProjectConfig; repoId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
+  | { type: 'run_compose_backup'; jobId: string; runId: string; config: ComposeProjectConfig; repoId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; bandwidthLimitKbps?: number | null }
   | { type: 'run_compose_restore'; jobId: string; runId: string; repoId: string; config: ComposeRestoreConfig; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
   | { type: 'mount_repository'; requestId: string; repoId: string; nfsServer: string; nfsExport: string; nfsOptions: string }
