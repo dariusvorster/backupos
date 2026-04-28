@@ -1,6 +1,6 @@
 import { redirect }       from 'next/navigation'
 import { getCurrentUser } from '@/lib/user'
-import { getDb, user, invite } from '@backupos/db'
+import { getDb, user, invite, smtpConfig } from '@backupos/db'
 import { UsersClient }    from './client'
 
 export default async function UsersPage() {
@@ -28,8 +28,9 @@ export default async function UsersPage() {
     }).from(invite).all(),
   ])
 
-  const baseUrl       = process.env['NEXT_PUBLIC_BASE_URL'] ?? 'http://localhost:3000'
-  const smtpConfigured = !!process.env['SMTP_HOST']
+  const baseUrl = process.env['NEXT_PUBLIC_BASE_URL'] ?? 'http://localhost:3000'
+  const [smtp] = await db.select().from(smtpConfig).limit(1).all()
+  const smtpConfigured = !!(smtp?.enabled && smtp.host && smtp.fromEmail)
 
   return (
     <UsersClient
