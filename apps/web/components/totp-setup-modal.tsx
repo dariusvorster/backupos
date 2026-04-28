@@ -1,42 +1,38 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import QRCode from 'react-qr-code'
-import { initTotp, enableTotp } from '@/app/actions/totp'
+import { authClient } from '@/lib/auth-client'
 
 interface Props { onClose: () => void; onEnabled: () => void }
 
 export function TotpSetupModal({ onClose, onEnabled }: Props) {
   const [step, setStep]               = useState<1 | 2 | 3>(1)
   const [uri, setUri]                 = useState('')
-  const [secret, setSecret]           = useState('')
   const [code, setCode]               = useState('')
   const [backupCodes, setBackupCodes] = useState<string[]>([])
   const [error, setError]             = useState('')
-  const [isPending, startTransition]  = useTransition()
+  const [loading, setLoading]         = useState(false)
 
-  function handleStart() {
+  async function handleInit() {
     setError('')
-    startTransition(async () => {
-      const result = await initTotp()
-      if (result.error) { setError(result.error); return }
-      setUri(result.uri!)
-      setSecret(result.secret!)
-      setStep(2)
-    })
+    setLoading(true)
+    const result = await authClient.twoFactor.enable()
+    setLoading(false)
+    if (result.error) { setError(result.error.message ?? 'Failed to initialise 2FA'); return }
+    if (!result.data) { setError('Unexpected empty response'); return }
+    setUri(result.data.totpURI)
+    setBackupCodes(result.data.backupCodes)
+    setStep(2)
   }
 
-  function handleVerify() {
+  async function handleVerify() {
     setError('')
-    startTransition(async () => {
-      const fd = new FormData()
-      fd.set('secret', secret)
-      fd.set('code', code)
-      const result = await enableTotp(fd)
-      if (result.error) { setError(result.error); return }
-      setBackupCodes(result.backupCodes!)
-      setStep(3)
-    })
+    setLoading(true)
+    const result = await authClient.twoFactor.verifyTotp({ code })
+    setLoading(false)
+    if (result.error) { setError(result.error.message ?? 'Invalid code — try again'); return }
+    setStep(3)
   }
 
   const overlay: React.CSSProperties = {
@@ -71,8 +67,8 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={onClose} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', fontSize: 13, cursor: 'pointer', color: 'var(--fg)' }}>Cancel</button>
-              <button onClick={handleStart} disabled={isPending} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                {isPending ? 'Loading\u2026' : 'Continue \u2192'}
+              <button onClick={handleInit} disabled={loading} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                {loading ? 'Loading…' : 'Continue →'}
               </button>
             </div>
           </>
@@ -88,10 +84,6 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
                 <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 8 }}>
                   Scan with 1Password, Authy, Google Authenticator, or any TOTP app.
                 </p>
-                <p style={{ fontSize: 12, color: 'var(--fg-dim)', marginBottom: 4 }}>Manual entry secret:</p>
-                <code style={{ display: 'block', fontSize: 11, fontFamily: 'monospace', backgroundColor: 'var(--surf2)', padding: '6px 8px', borderRadius: 4, wordBreak: 'break-all', color: 'var(--fg)' }}>
-                  {secret}
-                </code>
               </div>
             </div>
             <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6 }}>
@@ -110,8 +102,8 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
             />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={onClose} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', fontSize: 13, cursor: 'pointer', color: 'var(--fg)' }}>Cancel</button>
-              <button onClick={handleVerify} disabled={isPending || code.length < 6} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                {isPending ? 'Verifying\u2026' : 'Verify & enable'}
+              <button onClick={handleVerify} disabled={loading || code.length < 6} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                {loading ? 'Verifying…' : 'Verify & enable'}
               </button>
             </div>
           </>
@@ -135,7 +127,6 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(backupCodes.join('\n')).catch(() => {
-                    // fallback: select the text manually
                     window.prompt('Copy your backup codes:', backupCodes.join('\n'))
                   })
                 }}
@@ -155,7 +146,7 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
               onClick={() => { onEnabled(); onClose() }}
               style={{ padding: '8px 20px', borderRadius: 'var(--radius-sm)', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
             >
-              Done — I've saved my codes
+              Done — I&apos;ve saved my codes
             </button>
           </>
         )}

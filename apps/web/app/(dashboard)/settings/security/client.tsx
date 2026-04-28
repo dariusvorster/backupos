@@ -3,22 +3,21 @@
 import { useState, useTransition } from 'react'
 import { TotpSetupModal } from '@/components/totp-setup-modal'
 import { changePassword }  from '@/app/actions/user'
-import { disableTotp }     from '@/app/actions/totp'
+import { authClient }      from '@/lib/auth-client'
 
 interface Props {
   twoFactorEnabled: boolean
-  hasTotpRecord:    boolean
 }
 
-export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
-  const [showTotp, setShowTotp]         = useState(false)
-  const [tfEnabled, setTfEnabled]       = useState(twoFactorEnabled)
-  const [disableCode, setDisableCode]   = useState('')
-  const [pwError, setPwError]           = useState('')
-  const [pwSuccess, setPwSuccess]       = useState(false)
-  const [disableError, setDisableError] = useState('')
-  const [isPwPending, startPwTransition]      = useTransition()
-  const [isTotpPending, startTotpTransition]  = useTransition()
+export function SecurityClient({ twoFactorEnabled }: Props) {
+  const [showTotp, setShowTotp]             = useState(false)
+  const [tfEnabled, setTfEnabled]           = useState(twoFactorEnabled)
+  const [disablePassword, setDisablePassword] = useState('')
+  const [pwError, setPwError]               = useState('')
+  const [pwSuccess, setPwSuccess]           = useState(false)
+  const [disableError, setDisableError]     = useState('')
+  const [isPwPending, startPwTransition]    = useTransition()
+  const [isDisablePending, startDisableTransition] = useTransition()
 
   function handlePasswordSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -36,13 +35,11 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
   function handleDisableTotp(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setDisableError('')
-    const fd = new FormData()
-    fd.set('code', disableCode)
-    startTotpTransition(async () => {
-      const result = await disableTotp(fd)
-      if (result.error) { setDisableError(result.error); return }
+    startDisableTransition(async () => {
+      const result = await authClient.twoFactor.disable({ password: disablePassword })
+      if (result.error) { setDisableError(result.error.message ?? 'Failed to disable 2FA'); return }
       setTfEnabled(false)
-      setDisableCode('')
+      setDisablePassword('')
     })
   }
 
@@ -51,10 +48,6 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
     backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
     borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14,
   }
-
-  // hasTotpRecord is retained for potential future use (e.g. showing different UI
-  // when a DB record exists but twoFactorEnabled flag is false)
-  void hasTotpRecord
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -90,7 +83,7 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
               padding: '8px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
               border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
             }}>
-              {isPwPending ? 'Saving\u2026' : 'Update password'}
+              {isPwPending ? 'Saving…' : 'Update password'}
             </button>
           </div>
         </form>
@@ -120,7 +113,7 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
               <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--fg)' }}>TOTP authenticator enabled</span>
             </div>
             <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 12 }}>
-              Enter a TOTP code from your authenticator app to disable two-factor authentication.
+              Enter your password to disable two-factor authentication.
             </p>
             {disableError && (
               <div style={{ padding: '6px 10px', backgroundColor: 'var(--err-dim)', border: '1px solid var(--err)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--err)', marginBottom: 10 }}>
@@ -129,15 +122,15 @@ export function SecurityClient({ twoFactorEnabled, hasTotpRecord }: Props) {
             )}
             <form onSubmit={handleDisableTotp} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
-                type="text" inputMode="numeric" maxLength={6} placeholder="000000"
-                value={disableCode} onChange={e => setDisableCode(e.target.value.replace(/\D/g, ''))}
-                style={{ ...fieldStyle, width: 120, letterSpacing: '0.15em', fontSize: 16 }}
+                type="password" placeholder="Current password"
+                value={disablePassword} onChange={e => setDisablePassword(e.target.value)}
+                style={{ ...fieldStyle, width: 220 }}
               />
-              <button type="submit" disabled={isTotpPending || disableCode.length < 6} style={{
+              <button type="submit" disabled={isDisablePending || disablePassword.length === 0} style={{
                 padding: '8px 14px', backgroundColor: 'var(--err)', color: '#fff',
                 border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}>
-                {isTotpPending ? 'Disabling\u2026' : 'Disable TOTP'}
+                {isDisablePending ? 'Disabling…' : 'Disable TOTP'}
               </button>
             </form>
           </div>

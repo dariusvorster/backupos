@@ -1,6 +1,7 @@
-import { betterAuth }     from 'better-auth'
+import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { getDb, user, session, account, verification } from '@backupos/db'
+import { twoFactor as twoFactorPlugin } from 'better-auth/plugins'
+import { getDb, user, session, account, verification, twoFactor } from '@backupos/db'
 import { isPrivateOrigin } from './private-origin'
 
 const explicitTrusted = process.env['BETTER_AUTH_TRUSTED_ORIGINS']
@@ -12,9 +13,10 @@ export const auth = betterAuth({
     const origin = request?.headers.get('origin') ?? ''
     return isPrivateOrigin(origin) ? [...explicitTrusted, origin] : explicitTrusted
   },
+  plugins: [twoFactorPlugin({ issuer: 'BackupOS' })],
   database: drizzleAdapter(getDb(), {
     provider: 'sqlite',
-    schema: { user, session, account, verification },
+    schema: { user, session, account, verification, twoFactor },
   }),
   emailAndPassword: {
     enabled:    true,
