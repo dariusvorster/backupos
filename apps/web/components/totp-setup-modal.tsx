@@ -8,6 +8,7 @@ interface Props { onClose: () => void; onEnabled: () => void }
 
 export function TotpSetupModal({ onClose, onEnabled }: Props) {
   const [step, setStep]               = useState<1 | 2 | 3>(1)
+  const [password, setPassword]       = useState('')
   const [uri, setUri]                 = useState('')
   const [code, setCode]               = useState('')
   const [backupCodes, setBackupCodes] = useState<string[]>([])
@@ -17,10 +18,11 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
   async function handleInit() {
     setError('')
     setLoading(true)
-    const result = await authClient.twoFactor.enable()
+    const result = await authClient.twoFactor.enable({ password })
     setLoading(false)
     if (result.error) { setError(result.error.message ?? 'Failed to initialise 2FA'); return }
     if (!result.data) { setError('Unexpected empty response'); return }
+    setPassword('')
     setUri(result.data.totpURI)
     setBackupCodes(result.data.backupCodes)
     setStep(2)
@@ -62,12 +64,32 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
 
         {step === 1 && (
           <>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--fg)', marginBottom: 4 }}>
+                Confirm your password
+              </label>
+              <p style={{ fontSize: 12, color: 'var(--fg-mute)', marginBottom: 8 }}>
+                Required to enable 2FA on your account.
+              </p>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoFocus
+                style={{
+                  width: '100%', padding: '8px 12px', boxSizing: 'border-box',
+                  backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14,
+                }}
+              />
+            </div>
             <p style={{ fontSize: 14, color: 'var(--fg-mute)', marginBottom: 20, lineHeight: 1.6 }}>
               Adding a TOTP authenticator protects your account even if your password is leaked. You will need your authenticator app every time you sign in.
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={onClose} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', fontSize: 13, cursor: 'pointer', color: 'var(--fg)' }}>Cancel</button>
-              <button onClick={handleInit} disabled={loading} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={handleInit} disabled={loading || password.length === 0} style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                 {loading ? 'Loading…' : 'Continue →'}
               </button>
             </div>
