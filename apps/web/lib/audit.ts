@@ -13,6 +13,7 @@ export type AuditAction =
   | 'escrow.accessed'
   | 'api_token.created' | 'api_token.revoked'
   | 'settings.updated'
+  | 'user.created'
 
 function canonical(fields: {
   action: string; resourceType: string; resourceId?: string | null;
