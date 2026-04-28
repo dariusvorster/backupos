@@ -32,6 +32,12 @@ export default async function SmtpSettingsPage({ searchParams }: { searchParams:
         </div>
       )}
 
+      {cfg?.enabled && !cfg?.toAddresses && (
+        <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--warn-dim)', border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--warn)' }}>
+          Alerts will not be delivered — no recipients configured. Add at least one address below.
+        </div>
+      )}
+
       <form action={saveSmtpConfig}>
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--border2)' }}>
@@ -75,6 +81,12 @@ export default async function SmtpSettingsPage({ searchParams }: { searchParams:
               <label style={labelStyle}>From email</label>
               <input name="fromEmail" type="email" defaultValue={cfg?.fromEmail ?? ''} placeholder="noreply@example.com" style={inputStyle} />
             </div>
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Send alerts to</label>
+            <input name="toAddresses" type="text" defaultValue={cfg?.toAddresses ?? ''} placeholder="alice@example.com, bob@example.com" style={inputStyle} />
+            <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 4 }}>Comma-separated list of email addresses to receive alerts. Leave blank to disable alert delivery.</div>
           </div>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>

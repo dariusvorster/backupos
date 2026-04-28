@@ -556,9 +556,10 @@ export const smtpConfig = sqliteTable('smtp_config', {
   password:  text('password'),
   fromName:  text('from_name').notNull().default('BackupOS'),
   fromEmail: text('from_email'),
-  tls:       integer('tls',     { mode: 'boolean' }).default(true),
-  enabled:   integer('enabled', { mode: 'boolean' }).default(false),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
+  toAddresses: text('to_addresses'),
+  tls:         integer('tls',     { mode: 'boolean' }).default(true),
+  enabled:     integer('enabled', { mode: 'boolean' }).default(false),
+  updatedAt:   integer('updated_at', { mode: 'timestamp_ms' }),
 })
 
 // ── API tokens ────────────────────────────────────────────────────────────
