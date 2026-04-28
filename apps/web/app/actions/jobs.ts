@@ -142,13 +142,39 @@ async function resolveBandwidthLimitKbps(db: ReturnType<typeof getDb>, jobId: st
 }
 
 export async function triggerJob(id: string): Promise<void> {
-  const db = getDb()
+  const db  = getDb()
+  const now = new Date()
 
   const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, id)).limit(1)
   if (!job || !job.repositoryId) { redirect(`/jobs/${id}`) }
 
+  // Resolve schedule window: per-job override → global default
+  let effectiveStart: number | null = job.scheduleStart ?? null
+  let effectiveEnd:   number | null = job.scheduleEnd   ?? null
+  if (effectiveStart === null || effectiveEnd === null) {
+    const [defaults] = await db.select().from(backupDefaults).limit(1).all()
+    effectiveStart = defaults?.scheduleStart ?? null
+    effectiveEnd   = defaults?.scheduleEnd   ?? null
+  }
+  if (!isWithinWindow(now.getHours(), effectiveStart, effectiveEnd)) {
+    const windowLabel = `${String(effectiveStart ?? '?').padStart(2, '0')}:00–${String(effectiveEnd ?? '?').padStart(2, '0')}:00`
+    await db.insert(backupRuns).values({
+      id:           crypto.randomUUID(),
+      jobId:        id,
+      repositoryId: job.repositoryId,
+      agentId:      job.agentId ?? null,
+      status:       'failed',
+      trigger:      'manual',
+      startedAt:    now,
+      completedAt:  now,
+      errorMessage: `Outside backup window ${windowLabel} — retry when inside the window or adjust the window at /settings/schedule-windows`,
+    })
+    await db.update(backupJobs).set({ lastRunAt: now, lastRunStatus: 'failed' }).where(eq(backupJobs.id, id))
+    redirect(`/jobs/${id}`)
+  }
+
   // Set nextRunAt to now — the scheduler trigger tick (≤5s) picks it up and dispatches
-  await db.update(backupJobs).set({ nextRunAt: new Date() }).where(eq(backupJobs.id, id))
+  await db.update(backupJobs).set({ nextRunAt: now }).where(eq(backupJobs.id, id))
 
   redirect(`/jobs/${id}`)
 }
