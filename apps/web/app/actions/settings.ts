@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { getDb, instanceSettings, smtpConfig, backupDefaults } from '@backupos/db'
+import { encryptField } from '@/lib/repo-crypto'
 
 export async function saveInstanceSettings(formData: FormData) {
   const db = getDb()
@@ -25,11 +26,22 @@ export async function saveInstanceSettings(formData: FormData) {
 
 export async function saveSmtpConfig(formData: FormData) {
   const db = getDb()
+  const rawPassword = (formData.get('password') as string | null) ?? ''
+
+  // If the form submits an empty password, keep the existing encrypted value
+  let password: string | null
+  if (rawPassword === '') {
+    const [existing] = await db.select({ password: smtpConfig.password }).from(smtpConfig).limit(1).all()
+    password = existing?.password ?? null
+  } else {
+    password = encryptField(rawPassword)
+  }
+
   const values = {
     host:      formData.get('host') as string | null,
     port:      Number(formData.get('port') ?? 587),
     username:  formData.get('username') as string | null,
-    password:  formData.get('password') as string | null,
+    password,
     fromName:  String(formData.get('fromName') ?? 'BackupOS'),
     fromEmail: formData.get('fromEmail') as string | null,
     tls:       formData.get('tls') === 'on',
