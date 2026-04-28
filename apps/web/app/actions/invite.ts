@@ -1,10 +1,13 @@
 'use server'
 
-import { getDb, invite, user } from '@backupos/db'
-import { eq, and, isNull }    from '@backupos/db'
-import { auth }               from '@/lib/auth'
-import { getCurrentUser }     from '@/lib/user'
-import { sendInviteEmail }    from '@/lib/mailer'
+import { revalidatePath }           from 'next/cache'
+import { randomBytes }              from 'crypto'
+import { getDb, invite, user }      from '@backupos/db'
+import { eq, and, isNull }          from '@backupos/db'
+import { auth }                     from '@/lib/auth'
+import { getCurrentUser }           from '@/lib/user'
+import { sendInviteEmail }          from '@/lib/mailer'
+import { appendAuditEntry }         from '@/lib/audit'
 
 const BASE_URL = process.env['NEXT_PUBLIC_BASE_URL'] ?? 'http://localhost:3000'
 
@@ -112,6 +115,61 @@ export async function resendInviteEmail(id: string): Promise<{ error?: string }>
   const link = `${BASE_URL}/signup?token=${row.token}`
   await sendInviteEmail({ to: row.email, inviterName: currentUser.name, link })
   return {}
+}
+
+// Creates a user account directly (no invite flow). Admin-only.
+// If no password provided, one is auto-generated and returned once.
+export async function createUserDirect(formData: FormData): Promise<{
+  id?: string; name?: string; email?: string; createdAt?: number
+  tempPassword?: string; error?: string
+}> {
+  const currentUser = await getCurrentUser()
+  if (!currentUser) return { error: 'Not authenticated' }
+
+  const name  = (formData.get('name')  as string | null)?.trim() || ''
+  const email = (formData.get('email') as string | null)?.trim() || ''
+  const rawPw = (formData.get('password') as string | null)?.trim() || null
+
+  if (!name)  return { error: 'Name is required' }
+  if (!email) return { error: 'Email is required' }
+
+  const password     = rawPw ?? randomBytes(12).toString('base64url')
+  const isAutoGenPw  = rawPw === null
+
+  try {
+    await auth.api.signUpEmail({ body: { email, name, password } })
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Could not create account' }
+  }
+
+  const db  = getDb()
+  const now = new Date()
+
+  await db.update(user).set({ emailVerified: true, updatedAt: now }).where(eq(user.email, email))
+
+  const [created] = await db
+    .select({ id: user.id, name: user.name, email: user.email, createdAt: user.createdAt })
+    .from(user).where(eq(user.email, email)).limit(1).all()
+
+  if (!created) return { error: 'User created but could not be retrieved' }
+
+  appendAuditEntry({
+    action:       'user.created',
+    resourceType: 'user',
+    resourceId:   created.id,
+    resourceName: created.email,
+    actor:        currentUser.email,
+    detail:       { createdBy: currentUser.id, direct: true },
+  })
+
+  revalidatePath('/settings/users')
+  return {
+    id:          created.id,
+    name:        created.name,
+    email:       created.email,
+    createdAt:   created.createdAt?.getTime() ?? Date.now(),
+    tempPassword: isAutoGenPw ? password : undefined,
+  }
 }
 
 // Used server-side by the signup page to validate + prefill the invite form.

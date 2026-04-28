@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createInvite, revokeInvite, resendInviteEmail } from '@/app/actions/invite'
+import { createInvite, revokeInvite, resendInviteEmail, createUserDirect } from '@/app/actions/invite'
 
 interface UserRow {
   id:        string
@@ -32,7 +32,8 @@ function fmt(ms: number) {
   return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export function UsersClient({ users, invites: initialInvites, baseUrl, smtpConfigured, currentUserId }: Props) {
+export function UsersClient({ users: initialUsers, invites: initialInvites, baseUrl, smtpConfigured, currentUserId }: Props) {
+  const [users,    setUsers]    = useState(initialUsers)
   const [invites,  setInvites]  = useState(initialInvites)
   const [newLink,  setNewLink]  = useState<string | null>(null)
   const [copied,   setCopied]   = useState(false)
@@ -40,6 +41,12 @@ export function UsersClient({ users, invites: initialInvites, baseUrl, smtpConfi
   const [showForm, setShowForm] = useState(false)
   const [resentId, setResentId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+
+  // Create user directly
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [createError,    setCreateError]    = useState('')
+  const [createdResult,  setCreatedResult]  = useState<{ name: string; email: string; tempPassword?: string } | null>(null)
+  const [createCopied,   setCreateCopied]   = useState(false)
 
   const pendingInvites = invites.filter(i => i.usedAt === null && i.expiresAt > Date.now())
 
@@ -64,6 +71,24 @@ export function UsersClient({ users, invites: initialInvites, baseUrl, smtpConfi
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       usedAt:    null,
       createdAt: Date.now(),
+    }])
+  }
+
+  async function handleCreateUser(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setCreateError('')
+    setCreatedResult(null)
+    const fd     = new FormData(e.currentTarget)
+    const result = await createUserDirect(fd)
+    if (result.error) { setCreateError(result.error); return }
+    setCreatedResult({ name: result.name!, email: result.email!, tempPassword: result.tempPassword })
+    setShowCreateForm(false)
+    ;(e.target as HTMLFormElement).reset()
+    setUsers(prev => [...prev, {
+      id:        result.id!,
+      name:      result.name!,
+      email:     result.email!,
+      createdAt: result.createdAt!,
     }])
   }
 
@@ -109,9 +134,14 @@ export function UsersClient({ users, invites: initialInvites, baseUrl, smtpConfi
             {!smtpConfigured && <span style={{ color: 'var(--warn)' }}> · SMTP not configured — invites are link-only.</span>}
           </p>
         </div>
-        <button style={btnPrimary} onClick={() => setShowForm(f => !f)}>
-          {showForm ? 'Cancel' : 'Invite user'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={btnGhost} onClick={() => { setShowCreateForm(f => !f); setShowForm(false) }}>
+            {showCreateForm ? 'Cancel' : 'Create user'}
+          </button>
+          <button style={btnPrimary} onClick={() => { setShowForm(f => !f); setShowCreateForm(false) }}>
+            {showForm ? 'Cancel' : 'Invite user'}
+          </button>
+        </div>
       </div>
 
       {/* Invite form */}
@@ -134,6 +164,59 @@ export function UsersClient({ users, invites: initialInvites, baseUrl, smtpConfi
               {smtpConfigured ? 'Send invite email + get link' : 'Create invite link'}
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Create user form */}
+      {showCreateForm && (
+        <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>Create user directly</div>
+          <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginBottom: 16 }}>Account is created immediately with email verified. Leave password blank to auto-generate.</div>
+          <form onSubmit={handleCreateUser}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-mute)', marginBottom: 4 }}>Name *</label>
+                <input name="name" type="text" required placeholder="Jane Doe" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-mute)', marginBottom: 4 }}>Email *</label>
+                <input name="email" type="email" required placeholder="jane@example.com" style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-mute)', marginBottom: 4 }}>Initial password (optional — auto-generated if blank)</label>
+              <input name="password" type="password" placeholder="Leave blank to auto-generate" style={inputStyle} />
+            </div>
+            {createError && <div style={{ fontSize: 13, color: 'var(--err)', marginBottom: 12 }}>{createError}</div>}
+            <button type="submit" style={btnPrimary} disabled={pending}>Create account</button>
+          </form>
+        </div>
+      )}
+
+      {/* Create user success banner */}
+      {createdResult && (
+        <div style={{ backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ok)', marginBottom: 6 }}>
+            Account created for {createdResult.name} ({createdResult.email})
+          </div>
+          {createdResult.tempPassword ? (
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginBottom: 4 }}>Temporary password — share securely, shown once:</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--fg)', wordBreak: 'break-all', flex: 1 }}>{createdResult.tempPassword}</div>
+                <button style={btnGhost} onClick={() => {
+                  navigator.clipboard.writeText(createdResult.tempPassword!).then(() => {
+                    setCreateCopied(true)
+                    setTimeout(() => setCreateCopied(false), 2000)
+                  })
+                }}>
+                  {createCopied ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--fg-dim)' }}>User can log in with the password you set.</div>
+          )}
         </div>
       )}
 
