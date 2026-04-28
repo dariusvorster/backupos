@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer'
 import { getDb, alerts, alertChannels, smtpConfig, eq } from '@backupos/db'
+import { decryptField } from './repo-crypto'
 
 type AlertType = 'backup_failed' | 'backup_missed' | 'agent_disconnected'
 
@@ -71,7 +72,7 @@ async function fireEmail(type: AlertType, message: string): Promise<void> {
     host: cfg.host,
     port: cfg.port ?? 587,
     secure: cfg.tls ?? true,
-    auth: cfg.username ? { user: cfg.username, pass: cfg.password ?? '' } : undefined,
+    auth: cfg.username ? { user: cfg.username, pass: cfg.password ? decryptField(cfg.password) : '' } : undefined,
   })
 
   await transporter.sendMail({
