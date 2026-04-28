@@ -15,11 +15,7 @@ export async function updateProfile(formData: FormData): Promise<{ error?: strin
 
   const name          = ((formData.get('name')        ?? '') as string).trim()
   const displayName   = ((formData.get('displayName') ?? '') as string).trim()
-  const phone         = ((formData.get('phone')       ?? '') as string).trim()
-  const timezone      = ((formData.get('timezone')    ?? 'UTC') as string).trim()
-  const language      = ((formData.get('language')    ?? 'en') as string).trim()
   const emailNotify   = formData.get('emailNotify')   === 'on'
-  const smsNotify     = formData.get('smsNotify')     === 'on'
   const notifyAlerts  = formData.get('notifyAlerts')  === 'on'
   const notifyWeekly  = formData.get('notifyWeekly')  === 'on'
   const notifyUpdates = formData.get('notifyUpdates') === 'on'
@@ -30,11 +26,7 @@ export async function updateProfile(formData: FormData): Promise<{ error?: strin
   await db.update(user).set({
     name,
     displayName:  displayName  || null,
-    phone:        phone        || null,
-    timezone,
-    language,
     emailNotify,
-    smsNotify,
     notifyAlerts,
     notifyWeekly,
     notifyUpdates,

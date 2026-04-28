@@ -2,7 +2,7 @@ import { redirect }       from 'next/navigation'
 import { getCurrentUser } from '@/lib/user'
 import { getDb, user }    from '@backupos/db'
 import { eq }             from '@backupos/db'
-import { Avatar }         from '@/components/avatar'
+import { AvatarUpload }   from './avatar-upload'
 import { updateProfile, uploadAvatar, removeAvatar } from '@/app/actions/user'
 
 async function handleUpdateProfile(formData: FormData): Promise<void> {
@@ -23,11 +23,6 @@ async function handleRemoveAvatar(): Promise<void> {
   redirect('/settings/profile?saved=1')
 }
 
-const TIMEZONES = [
-  'UTC', 'Africa/Johannesburg', 'America/New_York', 'America/Chicago',
-  'America/Denver', 'America/Los_Angeles', 'Europe/London',
-  'Europe/Berlin', 'Asia/Tokyo', 'Australia/Sydney',
-]
 
 export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const me = await getCurrentUser()
@@ -51,38 +46,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       {/* Avatar section */}
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)', marginBottom: 16 }}>Avatar</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <Avatar src={profile.image} name={profile.name} size={80} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <form action={handleUploadAvatar}>
-              <label style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '6px 12px', borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)', fontSize: 13, cursor: 'pointer',
-                color: 'var(--fg)', backgroundColor: 'var(--surf2)',
-              }}>
-                Upload image
-                <input
-                  name="avatar" type="file" accept=".jpg,.jpeg,.png,.webp"
-                  style={{ display: 'none' }}
-                />
-              </label>
-              <button type="submit" style={{
-                marginTop: 6, padding: '6px 12px', borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)', fontSize: 13, cursor: 'pointer',
-                color: 'var(--fg)', backgroundColor: 'var(--surf2)', display: 'block',
-              }}>Upload</button>
-            </form>
-            <form action={handleRemoveAvatar}>
-              <button type="submit" style={{
-                padding: '6px 12px', borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)', fontSize: 13, cursor: 'pointer',
-                color: 'var(--fg-mute)', backgroundColor: 'transparent',
-              }}>Remove</button>
-            </form>
-            <p style={{ fontSize: 12, color: 'var(--fg-dim)' }}>Self-hosted: stored locally. Max 1 MB, JPG/PNG/WebP.</p>
-          </div>
-        </div>
+        <AvatarUpload src={profile.image} name={profile.name} uploadAction={handleUploadAvatar} removeAction={handleRemoveAvatar} />
       </section>
 
       <div style={{ borderTop: '1px solid var(--border)', marginBottom: 32 }} />
@@ -94,7 +58,6 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           {([
             { name: 'name',        label: 'Full name',    type: 'text', required: true,  value: profile.name },
             { name: 'displayName', label: 'Display name', type: 'text', required: false, value: profile.displayName ?? '' },
-            { name: 'phone',       label: 'Phone number', type: 'tel',  required: false, value: profile.phone ?? '' },
           ] as const).map(f => (
             <div key={f.name}>
               <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6 }}>
@@ -123,33 +86,10 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6 }}>Timezone</label>
-            <select name="timezone" defaultValue={profile.timezone} style={{
-              width: '100%', padding: '8px 12px', boxSizing: 'border-box',
-              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14,
-            }}>
-              {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6 }}>Language</label>
-            <select name="language" defaultValue={profile.language} style={{
-              width: '100%', padding: '8px 12px', boxSizing: 'border-box',
-              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14,
-            }}>
-              <option value="en">English</option>
-            </select>
-          </div>
-
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)', marginBottom: 16 }}>Contact preferences</h2>
             {([
               { name: 'emailNotify',   label: 'Email notifications (master toggle)', checked: profile.emailNotify },
-              { name: 'smsNotify',     label: 'SMS notifications (requires verified phone)', checked: profile.smsNotify },
               { name: 'notifyAlerts',  label: 'Alerts',          checked: profile.notifyAlerts },
               { name: 'notifyWeekly',  label: 'Weekly summary',  checked: profile.notifyWeekly },
               { name: 'notifyUpdates', label: 'Product updates', checked: profile.notifyUpdates },
