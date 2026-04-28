@@ -5,6 +5,7 @@ const SESSION_COOKIE = 'better-auth.session_token'
 
 const PUBLIC_PATHS = [
   '/login',
+  '/login/two-factor',
   '/signup',
   '/install.sh',
   '/install.ps1',
