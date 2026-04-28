@@ -39,6 +39,10 @@ export const repositories = sqliteTable('repositories', {
   backend:         text('backend').notNull(),   // 's3'|'r2'|'b2'|'sftp'|'local'|'rclone'
   config:          text('config').notNull(),    // JSON, encrypted — backend-specific details
   resticPassword:  text('restic_password').notNull(), // encrypted with ENCRYPTION_KEY
+  // ── NFS agent-mount config (used when backend='nfs' and mode is agent-side) ──
+  nfsServer:       text('nfs_server'),
+  nfsExport:       text('nfs_export'),
+  nfsOptions:      text('nfs_options'),
   sizeBytes:       integer('size_bytes'),
   snapshotCount:   integer('snapshot_count'),
   initializedAt:   integer('initialized_at',    { mode: 'timestamp_ms' }),
