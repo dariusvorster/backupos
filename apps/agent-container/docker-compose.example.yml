@@ -1,0 +1,69 @@
+# BackupOS Agent — Docker Compose template
+#
+# Usage:
+#   1. Copy this file to your host as docker-compose.yml
+#   2. Set BACKUPOS_URL and BACKUPOS_TOKEN below (token from the BackupOS UI:
+#      Agents → New Agent)
+#   3. Run: docker compose up -d
+#
+# Network mode:
+#   This template uses host networking so the container can reach hosts on
+#   other subnets (e.g., your NFS server). If your homelab routes everything
+#   through one subnet, you can remove network_mode: host and Docker bridge
+#   networking will work — but you'll need to add per-subnet routes if your
+#   restic repository (NFS, SFTP, etc.) is on a different network than the
+#   container's bridge.
+#
+# NFS repositories:
+#   When using NFS-backed restic repositories with this container agent,
+#   the agent mounts NFS itself (rather than relying on a host-side mount).
+#   This requires:
+#     - cap_add: SYS_ADMIN (for the mount syscall)
+#     - nfs-utils (already in the image)
+#     - Network reachability to the NFS server (often requires host networking)
+#
+# Apphook quiescence (pg_dump, mysqldump, redis-cli, sqlite3):
+#   The base image does not include database client tools. To enable apphook
+#   quiescence (dump-based backup), extend the image:
+#
+#     FROM ghcr.io/dariusvorster/backupos-agent:latest
+#     RUN apk add postgresql-client mysql-client redis sqlite
+#
+#   Then set image: your-custom-image below.
+
+services:
+  backupos-agent:
+    image: ghcr.io/dariusvorster/backupos-agent:latest
+    container_name: backupos-agent
+    restart: unless-stopped
+    # Host networking: lets the container reach hosts on other subnets
+    # (NFS server, etc.) using the host's routing table directly.
+    # Remove this line if you want bridge networking and your storage is
+    # on the same subnet as the host.
+    network_mode: host
+    environment:
+      # REQUIRED: WebSocket URL of the BackupOS server (no trailing slash).
+      # Use ws:// for plain or wss:// for TLS.
+      BACKUPOS_URL: wss://backupos.example.com/ws/agent
+      # REQUIRED: enrollment token from the BackupOS UI.
+      BACKUPOS_TOKEN: <your-api-token>
+    volumes:
+      # Docker socket — required for compose source type and docker capability.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Docker volumes — required to read volume data during compose backups.
+      - /var/lib/docker/volumes:/var/lib/docker/volumes:ro
+      # Host filesystem — required for filesystem source type in container mode.
+      # The agent detects this mount and automatically prefixes /host onto all
+      # configured backup paths (e.g. /etc → /host/etc).
+      - /:/host:ro
+      # Persistent agent state: enrollment token, bundle hash, restic cache.
+      - backupos-agent-state:/var/lib/backupos
+      - backupos-restic-cache:/var/cache/restic
+    cap_add:
+      - SYS_ADMIN  # Required for NFS mount syscall when using agent-mounted repositories
+    security_opt:
+      - apparmor=unconfined  # Some distros (Ubuntu with AppArmor) need this alongside SYS_ADMIN for NFS
+
+volumes:
+  backupos-agent-state:
+  backupos-restic-cache:
