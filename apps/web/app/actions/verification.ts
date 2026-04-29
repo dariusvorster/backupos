@@ -6,6 +6,7 @@ import { getDb, verificationTests, verificationRuns, backupRuns, backupJobs, rep
 import { decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { connectedAgentIds } from '@/lib/ws-state'
+import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 
 export async function createVerificationTest(data: {
   name: string
@@ -77,9 +78,26 @@ export async function runVerification(testId: string): Promise<void> {
     .set({ lastRunAt: now })
     .where(eq(verificationTests.id, testId))
 
+  try {
+    await ensureRepoMountedOnAgent(agentId, job.repositoryId)
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    await db.update(verificationRuns).set({
+      status:       'failed',
+      completedAt:  new Date(),
+      errorMessage: `NFS mount failed: ${errorMessage}`,
+    }).where(eq(verificationRuns.id, runId))
+    await db.update(verificationTests)
+      .set({ lastResult: 'failed' })
+      .where(eq(verificationTests.id, testId))
+    revalidatePath(`/verification/${testId}`)
+    return
+  }
+
   const result = await dispatchToAgent(agentId, {
     type:              'run_verification',
     verificationRunId: runId,
+    repoId:            job.repositoryId,
     snapshotId:        latestRun.snapshotId,
     repoUrl,
     repoPassword,
