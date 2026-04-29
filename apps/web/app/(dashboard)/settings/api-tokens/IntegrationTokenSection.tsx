@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   createIntegrationToken,
   revokeIntegrationToken,
@@ -124,10 +125,10 @@ function CreateTokenForm({ onCreated }: { onCreated: (token: string) => void }) 
 
       <div>
         <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Expires in</label>
-        <select name="expiresInDays" className="input input-sm">
+        <select name="expiresInDays" defaultValue="90" className="input input-sm">
           <option value="30">30 days</option>
           <option value="60">60 days</option>
-          <option value="90" selected>90 days</option>
+          <option value="90">90 days</option>
           <option value="180">180 days</option>
           <option value="0">Never</option>
         </select>
@@ -143,7 +144,7 @@ function CreateTokenForm({ onCreated }: { onCreated: (token: string) => void }) 
 }
 
 export function IntegrationTokenSection({ initial }: { initial: IntegrationTokenRow[] }) {
-  const [tokens, setTokens] = useState(initial)
+  const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [newToken, setNewToken] = useState<string | null>(null)
   const [rotatedToken, setRotatedToken] = useState<string | null>(null)
@@ -152,14 +153,13 @@ export function IntegrationTokenSection({ initial }: { initial: IntegrationToken
   function handleCreated(raw: string) {
     setNewToken(raw)
     setShowForm(false)
-    // Refresh by reloading — server component will re-query
-    window.location.reload()
+    router.refresh()
   }
 
   function handleRevoke(id: string) {
     startAction(async () => {
       await revokeIntegrationToken(id)
-      window.location.reload()
+      router.refresh()
     })
   }
 
@@ -167,7 +167,7 @@ export function IntegrationTokenSection({ initial }: { initial: IntegrationToken
     startAction(async () => {
       const result = await rotateIntegrationToken(id)
       if (result.token) setRotatedToken(result.token)
-      window.location.reload()
+      router.refresh()
     })
   }
 
@@ -198,11 +198,11 @@ export function IntegrationTokenSection({ initial }: { initial: IntegrationToken
         </div>
       )}
 
-      {tokens.length === 0 && !showForm ? (
+      {initial.length === 0 && !showForm ? (
         <p style={{ fontSize: 13, opacity: 0.5 }}>No integration tokens yet.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {tokens.map(token => {
+          {initial.map(token => {
             const { label, color } = statusBadge(token)
             const scopes: string[] = (() => { try { return JSON.parse(token.scopes) } catch { return [] } })()
             const isActive = !token.revokedAt && !(token.expiresAt && token.expiresAt.getTime() < Date.now())
