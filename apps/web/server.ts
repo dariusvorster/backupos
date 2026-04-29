@@ -14,6 +14,7 @@ import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTe
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
 import { sendAlert } from './lib/alerts'
+import { appendLog } from './lib/logger'
 import { auth } from './lib/auth'
 import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
 
@@ -395,6 +396,7 @@ void app.prepare().then(() => {
           if (msg.bundleHash && BUNDLE_HASH && msg.bundleHash !== BUNDLE_HASH) {
             console.log(`[server] Agent ${agentId} bundle mismatch — sending force_update`)
             ws.send(JSON.stringify({ type: 'force_update' } satisfies ServerMessage))
+            try { appendLog({ level: 'info', component: 'agent', message: `Agent ${agentId} bundle mismatch — force update sent`, entityType: 'agent', entityId: agentId }) } catch (err) { console.error('[logger]', err) }
           }
 
           // Auto-detect capabilities on every connect so the UI is always up to date
@@ -414,6 +416,7 @@ void app.prepare().then(() => {
             resourceType: 'agent', resourceId: agentId,
             actor: agentId, createdAt: new Date(),
           })
+          try { appendLog({ level: 'info', component: 'agent', message: `Agent ${msg.hostname ?? agentId} connected`, entityType: 'agent', entityId: agentId, payload: { ip: msg.ip, agentVersion: msg.agentVersion, protocolVersion: msg.protocolVersion } }) } catch (err) { console.error('[logger]', err) }
 
         } else if (msg.type === 'ping') {
           if (agentId) {
@@ -476,6 +479,7 @@ void app.prepare().then(() => {
             totalSize:       msg.stats.totalBytesProcessed,
             duration:        msg.stats.durationMs,
           }).where(eq(backupRuns.id, run.id))
+          try { appendLog({ level: 'info', component: 'web', message: `Backup succeeded for job ${msg.jobId}`, entityType: 'job', entityId: msg.jobId, payload: { runId: run.id, snapshotId: msg.snapshotId, durationMs: msg.stats.durationMs, sizeBytes: msg.stats.totalBytesProcessed } }) } catch (err) { console.error('[logger]', err) }
 
           const [jobForNext] = await db.select({ schedule: backupJobs.schedule })
             .from(backupJobs).where(eq(backupJobs.id, msg.jobId)).limit(1)
@@ -559,6 +563,7 @@ void app.prepare().then(() => {
             log:          msg.log ?? null,
             errorMessage: msg.error, errorDetail: msg.detail,
           }).where(eq(backupRuns.id, run.id))
+          try { appendLog({ level: 'error', component: 'web', message: `Backup failed for job ${msg.jobId}: ${msg.error}`, entityType: 'job', entityId: msg.jobId, payload: { runId: run.id, errorMessage: msg.error } }) } catch (err) { console.error('[logger]', err) }
 
           await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'failed' })
             .where(eq(backupJobs.id, msg.jobId))
@@ -635,12 +640,14 @@ void app.prepare().then(() => {
               .where(eq(verificationTests.id, run.testId))
           }
           console.log(`[verify] ${msg.verificationRunId} — ${outcome}`)
+          try { appendLog({ level: msg.success ? 'info' : 'error', component: 'web', message: `Verification ${outcome} for run ${msg.verificationRunId}`, entityType: 'job', entityId: run?.testId ?? undefined, payload: { verificationRunId: msg.verificationRunId, ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}) } }) } catch (err) { console.error('[logger]', err) }
 
         } else if (msg.type === 'restore_complete' && agentId) {
           await db.update(restoreRuns).set({
             status:      msg.success ? 'success' : 'failed',
             completedAt: new Date(),
           }).where(eq(restoreRuns.id, msg.restoreId))
+          try { appendLog({ level: msg.success ? 'info' : 'error', component: 'web', message: msg.success ? 'Restore succeeded' : 'Restore failed', entityType: 'restore_run', entityId: msg.restoreId }) } catch (err) { console.error('[logger]', err) }
 
           await db.insert(auditLog).values({
             id: crypto.randomUUID(),
@@ -667,6 +674,7 @@ void app.prepare().then(() => {
             resourceType: 'agent', resourceId: agentId,
             actor: 'system', createdAt: new Date(),
           })
+          try { appendLog({ level: 'info', component: 'agent', message: `Agent ${agentId} disconnected`, entityType: 'agent', entityId: agentId }) } catch (err) { console.error('[logger]', err) }
         }
       })()
     })
