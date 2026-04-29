@@ -578,6 +578,24 @@ export const apiTokens = sqliteTable('api_tokens', {
   createdAt:   integer('created_at',   { mode: 'timestamp_ms' }).notNull(),
 })
 
+// ── Integration tokens ────────────────────────────────────────────────────
+// Scoped API tokens for external consumers (e.g. InfraOS federation)
+export const integrationTokens = sqliteTable('integration_tokens', {
+  id:           text('id').primaryKey(),
+  name:         text('name').notNull(),
+  tokenHash:    text('token_hash').notNull().unique(),
+  tokenPrefix:  text('token_prefix').notNull(),
+  scopes:       text('scopes').notNull(),            // JSON array of scope strings
+  expiresAt:    integer('expires_at',   { mode: 'timestamp_ms' }),
+  createdAt:    integer('created_at',   { mode: 'timestamp_ms' }).notNull(),
+  createdBy:    text('created_by').notNull().references(() => user.id),
+  lastUsedAt:   integer('last_used_at', { mode: 'timestamp_ms' }),
+  revokedAt:    integer('revoked_at',   { mode: 'timestamp_ms' }),
+  rateLimitRpm: integer('rate_limit_rpm').notNull().default(60),
+}, t => ({
+  hashIdx: index('integration_tokens_hash_idx').on(t.tokenHash),
+}))
+
 // ── Backup defaults ───────────────────────────────────────────────────────
 export const backupDefaults = sqliteTable('backup_defaults', {
   id:            text('id').primaryKey().default('singleton'),
