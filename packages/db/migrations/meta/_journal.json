@@ -253,6 +253,13 @@
       "when": 1746748800000,
       "tag": "0035_logging_retention_sweep",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1746835200000,
+      "tag": "0036_seed_logging_config",
+      "breakpoints": true
     }
   ]
 }
