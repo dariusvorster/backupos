@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { getDb, repositories } from '@backupos/db'
 import { eq } from '@backupos/db'
+import { requireAdmin } from '@/lib/user'
 
 export async function saveCostConfig(repoId: string, formData: FormData): Promise<void> {
+  await requireAdmin()
   const costStr   = ((formData.get('costPerGbMonth')    ?? '') as string).trim()
   const budgetStr = ((formData.get('monthlyBudgetCents') ?? '') as string).trim()
 
