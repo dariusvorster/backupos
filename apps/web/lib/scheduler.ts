@@ -8,6 +8,7 @@ import { ensureRepoMountedOnAgent } from './repo-mount'
 import { isWithinWindow } from './schedule-window'
 import type { ServerMessage, MountConfig, ComposeProjectConfig } from '@backupos/agent-protocol'
 import { pruneRetainedLogs } from './retention'
+import { appendLog } from './logger'
 
 interface SourceConfig {
   paths?:    string[]
@@ -197,6 +198,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
   // Reset nextRunAt so the trigger tick doesn't re-fire this job
   await stampNextRun(db, job.id, job.schedule)
   console.log(`[scheduler] Dispatched job "${job.name}" (${job.sourceType}) to agent ${job.agentId}`)
+  try { appendLog({ level: 'info', component: 'web', message: `Backup dispatched for job "${job.name}"`, entityType: 'job', entityId: job.id, payload: { trigger, runId } }) } catch (err) { console.error('[logger]', err) }
   return true
 }
 
@@ -362,6 +364,7 @@ async function checkMissedBackups(db: Db): Promise<void> {
       if (missed && !missedAlertSent.has(job.id)) {
         missedAlertSent.add(job.id)
         await sendAlert('backup_missed', { jobId: job.id, jobName: job.name })
+        try { appendLog({ level: 'warn', component: 'monitor', message: `Missed backup detected for job "${job.name}"`, entityType: 'job', entityId: job.id, payload: { expectedAt: prevExpected.toISOString(), lastRunAt: lastRun?.toISOString() ?? null } }) } catch (err) { console.error('[logger]', err) }
       } else if (!missed) {
         // Clear flag once the job has run successfully again
         missedAlertSent.delete(job.id)
@@ -392,6 +395,7 @@ async function checkAgents(db: Db): Promise<void> {
   for (const agent of stale) {
     await db.update(agents).set({ status: 'disconnected' }).where(eq(agents.id, agent.id))
     await sendAlert('agent_disconnected', { agentId: agent.id, agentName: agent.name })
+    try { appendLog({ level: 'warn', component: 'monitor', message: `Agent ${agent.hostname ?? agent.id} marked stale (no heartbeat)`, entityType: 'agent', entityId: agent.id }) } catch (err) { console.error('[logger]', err) }
   }
 
 }

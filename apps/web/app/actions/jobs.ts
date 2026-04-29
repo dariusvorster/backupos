@@ -8,6 +8,7 @@ import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { validateCron } from '@/lib/cron-validate'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import { isWithinWindow } from '@/lib/schedule-window'
+import { appendLog } from '@/lib/logger'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
   const str = (k: string) => (fd.get(k) as string | null)?.trim() || undefined
@@ -340,7 +341,9 @@ export async function retryRun(jobId: string): Promise<void> {
     })
   }
 
-  if (!result.ok) {
+  if (result.ok) {
+    try { appendLog({ level: 'info', component: 'web', message: `Backup dispatched for job "${job.name}"`, entityType: 'job', entityId: jobId, payload: { trigger: 'manual', runId } }) } catch (err) { console.error('[logger]', err) }
+  } else {
     await db.update(backupRuns).set({
       status:       'failed',
       completedAt:  now,
