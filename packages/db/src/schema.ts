@@ -543,10 +543,10 @@ export const twoFactor = sqliteTable('two_factor', {
 // ── Instance settings ─────────────────────────────────────────────────────
 export const instanceSettings = sqliteTable('instance_settings', {
   id:              text('id').primaryKey().default('singleton'),
-  instanceName:    text('instance_name').notNull().default('BackupOS'),
-  timezone:        text('timezone').notNull().default('UTC'),
-  language:        text('language').notNull().default('en'),
-  dateFormat:      text('date_format').notNull().default('YYYY-MM-DD'),
+  instanceName:    text('instance_name').notNull().default('BackupOS'), // deprecated: removed from UI in #83 — not read by any consumer
+  timezone:        text('timezone').notNull().default('UTC'),           // deprecated: removed from UI in #83 — not read by any consumer
+  language:        text('language').notNull().default('en'),            // deprecated: removed from UI in #83 — not read by any consumer
+  dateFormat:      text('date_format').notNull().default('YYYY-MM-DD'), // deprecated: removed from UI in #83 — not read by any consumer
   serverPublicUrl: text('server_public_url'), // e.g., http://192.168.69.52:3093
   updatedAt:       integer('updated_at', { mode: 'timestamp_ms' }),
 })
