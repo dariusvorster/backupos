@@ -6,8 +6,7 @@ import { Key } from 'lucide-react'
 const LINKED_ITEMS: Record<string, string> = {
   'General':            '/settings/general',
   'Email SMTP':         '/settings/smtp',
-  'Webhook URL':        '/settings/webhook',
-  'Slack integration':  '/settings/slack',
+  'Integrations':       '/settings/integrations',
   'Alert channels':     '/settings/alerts',
   'Users':              '/settings/users',
   'Change password':    '/settings/security',
@@ -47,7 +46,7 @@ export default async function SettingsPage() {
 
       {[
         { title: 'General', items: ['General'] },
-        { title: 'Notifications', items: ['Email SMTP', 'Webhook URL', 'Slack integration', 'Alert channels'] },
+        { title: 'Integrations', items: ['Email SMTP', 'Integrations', 'Alert channels'] },
         { title: 'Security', items: ['Users', 'Change password', 'API tokens', 'Session management'] },
         { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows', 'Infra OS services'] },
         { title: 'Logging', items: ['Logging'] },

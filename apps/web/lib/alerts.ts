@@ -2,13 +2,13 @@ import nodemailer from 'nodemailer'
 import { getDb, alerts, alertChannels, smtpConfig, eq } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 
-type AlertType = 'backup_failed' | 'backup_missed' | 'agent_disconnected'
+export type AlertType = 'backup_failed' | 'backup_missed' | 'agent_disconnected'
 
 export interface AlertBackupFailed  { jobId: string; jobName: string; error: string }
 export interface AlertBackupMissed  { jobId: string; jobName: string }
 export interface AlertAgentDisc     { agentId: string; agentName: string }
 
-type AlertPayload = AlertBackupFailed | AlertBackupMissed | AlertAgentDisc
+export type AlertPayload = AlertBackupFailed | AlertBackupMissed | AlertAgentDisc
 
 const SEVERITY: Record<AlertType, string> = {
   backup_failed:       'error',
@@ -102,12 +102,12 @@ async function fireEmail(type: AlertType, message: string): Promise<void> {
   })
 }
 
-interface ZulipConfig    { url: string; email: string; apiKey: string; stream: string; topic?: string }
-interface TelegramConfig { botToken: string; chatId: string }
-interface PagerDutyConfig { integrationKey: string }
-interface NtfyConfig     { url: string; topic: string; auth?: string }
-interface GotifyConfig   { url: string; appToken: string }
-interface PushoverConfig { apiToken: string; userKey: string }
+export interface ZulipConfig     { url: string; email: string; apiKey: string; stream: string; topic?: string }
+export interface TelegramConfig  { botToken: string; chatId: string }
+export interface PagerDutyConfig { integrationKey: string }
+export interface NtfyConfig      { url: string; topic: string; auth?: string }
+export interface GotifyConfig    { url: string; appToken: string }
+export interface PushoverConfig  { apiToken: string; userKey: string }
 
 async function fireZulip(cfg: ZulipConfig, type: AlertType, message: string, severity: string): Promise<void> {
   const emoji = SEVERITY_EMOJI[severity] ?? ''
@@ -190,6 +190,27 @@ async function firePushover(cfg: PushoverConfig, type: AlertType, message: strin
   })
 }
 
+export async function dispatchToChannel(
+  channel: { id: string; type: string; config: string },
+  type: AlertType,
+  message: string,
+  severity: string,
+  payload: AlertPayload,
+): Promise<void> {
+  const cfg = JSON.parse(channel.config) as Record<string, unknown>
+  const url = (cfg.url as string | undefined) ?? ''
+
+  if      (channel.type === 'discord')   await fireDiscord(url, type, message, severity)
+  else if (channel.type === 'slack')     await fireSlack(url, type, message)
+  else if (channel.type === 'zulip')     await fireZulip(cfg as unknown as ZulipConfig, type, message, severity)
+  else if (channel.type === 'telegram')  await fireTelegram(cfg as unknown as TelegramConfig, type, message, severity)
+  else if (channel.type === 'pagerduty') await firePagerDuty(cfg as unknown as PagerDutyConfig, type, message, severity, payload)
+  else if (channel.type === 'ntfy')      await fireNtfy(cfg as unknown as NtfyConfig, type, message, severity)
+  else if (channel.type === 'gotify')    await fireGotify(cfg as unknown as GotifyConfig, type, message, severity)
+  else if (channel.type === 'pushover')  await firePushover(cfg as unknown as PushoverConfig, type, message, severity)
+  else if (url)                          await fireWebhook(url, type, severity, message, payload)
+}
+
 export async function sendAlert(type: AlertType, payload: AlertPayload): Promise<void> {
   const db       = getDb()
   const severity = SEVERITY[type]
@@ -210,18 +231,7 @@ export async function sendAlert(type: AlertType, payload: AlertPayload): Promise
   await Promise.allSettled(
     enabled.map(async channel => {
       try {
-        const cfg = JSON.parse(channel.config) as Record<string, unknown>
-        const url = (cfg.url as string | undefined) ?? ''
-
-        if      (channel.type === 'discord')    await fireDiscord(url, type, message, severity)
-        else if (channel.type === 'slack')       await fireSlack(url, type, message)
-        else if (channel.type === 'zulip')       await fireZulip(cfg as unknown as ZulipConfig, type, message, severity)
-        else if (channel.type === 'telegram')    await fireTelegram(cfg as unknown as TelegramConfig, type, message, severity)
-        else if (channel.type === 'pagerduty')   await firePagerDuty(cfg as unknown as PagerDutyConfig, type, message, severity, payload)
-        else if (channel.type === 'ntfy')        await fireNtfy(cfg as unknown as NtfyConfig, type, message, severity)
-        else if (channel.type === 'gotify')      await fireGotify(cfg as unknown as GotifyConfig, type, message, severity)
-        else if (channel.type === 'pushover')    await firePushover(cfg as unknown as PushoverConfig, type, message, severity)
-        else if (url)                            await fireWebhook(url, type, severity, message, payload)
+        await dispatchToChannel(channel, type, message, severity, payload)
       } catch (err) {
         console.error(`[alerts] channel ${channel.id} delivery failed:`, err)
       }
