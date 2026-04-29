@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import QRCode from 'react-qr-code'
 import { authClient } from '@/lib/auth-client'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 interface Props { onClose: () => void; onEnabled: () => void }
 
@@ -148,9 +149,7 @@ export function TotpSetupModal({ onClose, onEnabled }: Props) {
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(backupCodes.join('\n')).catch(() => {
-                    window.prompt('Copy your backup codes:', backupCodes.join('\n'))
-                  })
+                  copyToClipboard(backupCodes.join('\n'))
                 }}
                 style={{ padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', fontSize: 12, cursor: 'pointer', color: 'var(--fg)' }}
               >

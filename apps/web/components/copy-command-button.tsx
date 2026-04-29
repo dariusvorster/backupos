@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { getResticCommand } from '@/app/actions/runs'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 export function CopyCommandButton({ runId }: { runId: string }) {
   const [copied,    setCopied]       = useState(false)
@@ -12,18 +13,7 @@ export function CopyCommandButton({ runId }: { runId: string }) {
     if (isPending || copied) return
     startTransition(async () => {
       const cmd = await getResticCommand(runId)
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(cmd)
-      } else {
-        const ta = document.createElement('textarea')
-        ta.value = cmd
-        ta.style.position = 'fixed'
-        ta.style.opacity = '0'
-        document.body.appendChild(ta)
-        ta.select()
-        document.execCommand('copy')
-        document.body.removeChild(ta)
-      }
+      await copyToClipboard(cmd)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
