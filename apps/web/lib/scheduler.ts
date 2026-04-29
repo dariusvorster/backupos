@@ -1,6 +1,6 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, backupDefaults, bandwidthProfiles, bandwidthRules, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, backupMonitors, backupDefaults, bandwidthProfiles, bandwidthRules, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
@@ -9,6 +9,7 @@ import { isWithinWindow } from './schedule-window'
 import type { ServerMessage, MountConfig, ComposeProjectConfig } from '@backupos/agent-protocol'
 import { pruneRetainedLogs } from './retention'
 import { appendLog } from './logger'
+import { performMonitorSync } from './monitors'
 
 interface SourceConfig {
   paths?:    string[]
@@ -51,6 +52,10 @@ export async function initScheduler(): Promise<void> {
   // Daily retention sweep at 03:00 UTC
   cron.schedule('0 3 * * *', () => { void runRetentionSweep(db) }, { timezone: 'UTC' })
   console.log('[scheduler] Retention sweep active (daily 03:00 UTC)')
+
+  // Sync all monitors every 5 minutes
+  setInterval(() => { void checkMonitors(db) }, 5 * 60 * 1000)
+  console.log('[scheduler] Monitor sync active (5 min interval)')
 }
 
 type Db = ReturnType<typeof getDb>
@@ -382,6 +387,32 @@ async function runRetentionSweep(db: Db): Promise<void> {
   } catch (err) {
     console.error('[scheduler] Retention sweep failed:', err instanceof Error ? err.message : String(err))
   }
+}
+
+async function checkMonitors(db: Db): Promise<void> {
+  const monitors = await db.select().from(backupMonitors).all()
+  if (monitors.length === 0) return
+
+  await Promise.allSettled(
+    monitors.map(async monitor => {
+      try {
+        const result = await performMonitorSync(monitor.id, db)
+        const status = result.ok ? (result.status ?? 'ok') : 'failed'
+        console.log(`[scheduler] Monitor "${monitor.name}" synced: ${status}`)
+        try {
+          appendLog({
+            level:      result.ok ? 'info' : 'warn',
+            component:  'monitor',
+            message:    `Monitor sync: ${monitor.name} → ${status}${result.error ? ` (${result.error})` : ''}`,
+            entityType: 'monitor',
+            entityId:   monitor.id,
+          })
+        } catch (err) { console.error('[logger]', err) }
+      } catch (err) {
+        console.error(`[scheduler] Monitor "${monitor.name}" sync threw:`, err)
+      }
+    })
+  )
 }
 
 async function checkAgents(db: Db): Promise<void> {
