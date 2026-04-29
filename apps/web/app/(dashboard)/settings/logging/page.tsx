@@ -61,6 +61,24 @@ export default async function LoggingSettingsPage({ searchParams }: { searchPara
           Save
         </button>
       </form>
+
+      <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginTop: 24, padding: '14px 20px' }}>
+        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Last sweep</div>
+        {config.lastSweepAt ? (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--fg-dim)' }}>
+              {config.lastSweepAt.toISOString().slice(0, 16).replace('T', ' ')} UTC
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13, color: 'var(--fg-dim)', lineHeight: 1.7 }}>
+              · {config.lastSweepDeletedAlerts.toLocaleString()} alerts pruned<br />
+              · {config.lastSweepDeletedAudit.toLocaleString()} audit entries pruned<br />
+              · {config.lastSweepDeletedOps.toLocaleString()} operational logs pruned
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: 'var(--fg-dim)' }}>never (next run at 03:00 UTC)</div>
+        )}
+      </div>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { dispatch, connectedAgentIds } from './ws-state'
 import { ensureRepoMountedOnAgent } from './repo-mount'
 import { isWithinWindow } from './schedule-window'
 import type { ServerMessage, MountConfig, ComposeProjectConfig } from '@backupos/agent-protocol'
+import { pruneRetainedLogs } from './retention'
 
 interface SourceConfig {
   paths?:    string[]
@@ -45,6 +46,10 @@ export async function initScheduler(): Promise<void> {
   // Check for missed backups every 10 minutes
   cron.schedule('*/10 * * * *', () => { void checkMissedBackups(db) }, { timezone: 'UTC' })
   console.log('[scheduler] Missed-backup monitor active')
+
+  // Daily retention sweep at 03:00 UTC
+  cron.schedule('0 3 * * *', () => { void runRetentionSweep(db) }, { timezone: 'UTC' })
+  console.log('[scheduler] Retention sweep active (daily 03:00 UTC)')
 }
 
 type Db = ReturnType<typeof getDb>
@@ -364,6 +369,15 @@ async function checkMissedBackups(db: Db): Promise<void> {
     } catch {
       // invalid cron expression — skip
     }
+  }
+}
+
+async function runRetentionSweep(db: Db): Promise<void> {
+  try {
+    const result = await pruneRetainedLogs(db)
+    console.log(`[scheduler] Retention sweep complete: ${result.alerts} alerts, ${result.audit} audit, ${result.ops} ops deleted`)
+  } catch (err) {
+    console.error('[scheduler] Retention sweep failed:', err instanceof Error ? err.message : String(err))
   }
 }
 
