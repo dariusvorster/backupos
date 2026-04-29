@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { createInvite, revokeInvite, resendInviteEmail, createUserDirect, updateUserRole } from '@/app/actions/invite'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 interface UserRow {
   id:        string
@@ -114,7 +115,7 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
   }
 
   function copyLink(link: string) {
-    navigator.clipboard.writeText(link).then(() => {
+    copyToClipboard(link).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -247,7 +248,7 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--fg)', wordBreak: 'break-all', flex: 1 }}>{createdResult.tempPassword}</div>
                 <button style={btnGhost} onClick={() => {
-                  navigator.clipboard.writeText(createdResult.tempPassword!).then(() => {
+                  copyToClipboard(createdResult.tempPassword!).then(() => {
                     setCreateCopied(true)
                     setTimeout(() => setCreateCopied(false), 2000)
                   })
