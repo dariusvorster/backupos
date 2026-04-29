@@ -7,7 +7,7 @@ import type { IncomingMessage } from 'http'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, eq, and, desc } from '@backupos/db'
+import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository } from './lib/ws-state'
@@ -494,6 +494,39 @@ void app.prepare().then(() => {
             actor: agentId, detail: JSON.stringify({ snapshotId: msg.snapshotId }),
             createdAt: new Date(),
           })
+
+          // Populate snapshots table
+          if (msg.snapshotId && run.repositoryId) {
+            try {
+              const [snapJob] = await db.select({ sourceType: backupJobs.sourceType, sourceConfig: backupJobs.sourceConfig })
+                .from(backupJobs).where(eq(backupJobs.id, msg.jobId)).limit(1)
+              const [snapAgent] = await db.select({ hostname: agents.hostname })
+                .from(agents).where(eq(agents.id, agentId)).limit(1)
+              let paths: string | null = null
+              if (snapJob?.sourceConfig) {
+                try {
+                  const cfg = JSON.parse(snapJob.sourceConfig) as { paths?: string[]; volumes?: string[] }
+                  if (snapJob.sourceType === 'docker_volume') {
+                    paths = JSON.stringify((cfg.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`))
+                  } else if (snapJob.sourceType !== 'compose_project') {
+                    paths = JSON.stringify(cfg.paths ?? [])
+                  }
+                } catch { /* paths stays null */ }
+              }
+              await db.insert(snapshots).values({
+                id:           msg.snapshotId,
+                repositoryId: run.repositoryId,
+                jobId:        msg.jobId,
+                hostname:     snapAgent?.hostname ?? null,
+                paths,
+                tags:         null,
+                sizeBytes:    msg.stats.totalBytesProcessed > 0 ? msg.stats.totalBytesProcessed : null,
+                createdAt:    new Date(),
+              }).onConflictDoNothing()
+            } catch (err) {
+              console.error('[server] snapshot insert failed:', err instanceof Error ? err.message : err)
+            }
+          }
 
           // Run forget/prune using the job's retention policy (falls back to global defaults)
           void (async () => {
