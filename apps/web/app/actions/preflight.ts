@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { getDb, backupJobs, backupRuns, agents, repositories } from '@backupos/db'
 import { eq, desc } from '@backupos/db'
 import { runPreflightChecks, overallStatus, CheckResult } from '@/lib/preflight'
+import { requireAdmin } from '@/lib/user'
 
 export async function runPreflight(jobId: string): Promise<CheckResult[]> {
   const db  = getDb()
@@ -53,6 +54,7 @@ export async function runPreflight(jobId: string): Promise<CheckResult[]> {
 }
 
 export async function togglePreflight(jobId: string, formData: FormData): Promise<void> {
+  await requireAdmin()
   const enabled = formData.get('preflightEnabled') === 'on'
   const db = getDb()
   await db.update(backupJobs)

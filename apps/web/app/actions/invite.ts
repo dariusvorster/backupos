@@ -5,7 +5,7 @@ import { randomBytes }              from 'crypto'
 import { getDb, invite, user }      from '@backupos/db'
 import { eq, and, isNull }          from '@backupos/db'
 import { auth }                     from '@/lib/auth'
-import { getCurrentUser }           from '@/lib/user'
+import { getCurrentUser, requireAdmin } from '@/lib/user'
 import { sendInviteEmail }          from '@/lib/mailer'
 import { appendAuditEntry }         from '@/lib/audit'
 
@@ -22,6 +22,8 @@ export async function createInvite(
 
   const email = (formData.get('email') as string | null)?.trim()
   const name  = (formData.get('name')  as string | null)?.trim() || null
+  const rawRole = (formData.get('role') as string | null)?.trim()
+  const role  = rawRole === 'admin' ? 'admin' : 'viewer'
 
   if (!email) return { error: 'Email is required' }
 
@@ -35,6 +37,7 @@ export async function createInvite(
     email,
     name,
     token,
+    role,
     createdBy: currentUser.id,
     expiresAt: now + 7 * 24 * 60 * 60 * 1000,
     usedAt:    null,
@@ -69,7 +72,7 @@ export async function acceptInvite(
   const now = Date.now()
 
   const [row] = await db
-    .select()
+    .select({ email: invite.email, name: invite.name, token: invite.token, role: invite.role, usedAt: invite.usedAt, expiresAt: invite.expiresAt })
     .from(invite)
     .where(eq(invite.token, token))
     .limit(1)
@@ -90,6 +93,12 @@ export async function acceptInvite(
     await db.update(invite).set({ usedAt: null }).where(eq(invite.token, token))
     const msg = err instanceof Error ? err.message : 'Could not create account'
     return { error: msg }
+  }
+
+  // Apply the role stored on the invite (defaults to 'viewer')
+  const inviteRole = row.role ?? 'viewer'
+  if (inviteRole !== 'admin') {
+    await db.update(user).set({ role: inviteRole }).where(eq(user.email, row.email))
   }
 
   return { email: row.email }
@@ -128,9 +137,11 @@ export async function createUserDirect(formData: FormData): Promise<{
   if (!currentUser) return { error: 'Not authenticated' }
   if (currentUser.role !== 'admin') return { error: 'Admin role required to create users' }
 
-  const name  = (formData.get('name')  as string | null)?.trim() || ''
-  const email = (formData.get('email') as string | null)?.trim() || ''
-  const rawPw = (formData.get('password') as string | null)?.trim() || null
+  const name    = (formData.get('name')     as string | null)?.trim() || ''
+  const email   = (formData.get('email')    as string | null)?.trim() || ''
+  const rawPw   = (formData.get('password') as string | null)?.trim() || null
+  const rawRole = (formData.get('role')     as string | null)?.trim()
+  const role    = rawRole === 'admin' ? 'admin' : 'viewer'
 
   if (!name)  return { error: 'Name is required' }
   if (!email) return { error: 'Email is required' }
@@ -147,7 +158,7 @@ export async function createUserDirect(formData: FormData): Promise<{
   const db  = getDb()
   const now = new Date()
 
-  await db.update(user).set({ emailVerified: true, updatedAt: now }).where(eq(user.email, email))
+  await db.update(user).set({ emailVerified: true, role, updatedAt: now }).where(eq(user.email, email))
 
   const [created] = await db
     .select({ id: user.id, name: user.name, email: user.email, createdAt: user.createdAt })
@@ -172,6 +183,26 @@ export async function createUserDirect(formData: FormData): Promise<{
     createdAt:   created.createdAt?.getTime() ?? Date.now(),
     tempPassword: isAutoGenPw ? password : undefined,
   }
+}
+
+export async function updateUserRole(userId: string, role: 'admin' | 'viewer'): Promise<{ error?: string }> {
+  const admin = await requireAdmin()
+  if (userId === admin.id) return { error: 'Cannot change your own role' }
+  if (role !== 'admin' && role !== 'viewer') return { error: 'Invalid role' }
+
+  const db = getDb()
+  await db.update(user).set({ role }).where(eq(user.id, userId))
+
+  appendAuditEntry({
+    action:       'user.role_changed',
+    resourceType: 'user',
+    resourceId:   userId,
+    actor:        admin.email,
+    detail:       { newRole: role, changedBy: admin.id },
+  })
+
+  revalidatePath('/settings/users')
+  return {}
 }
 
 // Used server-side by the signup page to validate + prefill the invite form.

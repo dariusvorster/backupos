@@ -4,8 +4,10 @@ import { redirect } from 'next/navigation'
 import nodemailer from 'nodemailer'
 import { getDb, instanceSettings, smtpConfig, backupDefaults } from '@backupos/db'
 import { encryptField, decryptField } from '@/lib/repo-crypto'
+import { requireAdmin } from '@/lib/user'
 
 export async function saveInstanceSettings(formData: FormData) {
+  await requireAdmin() // admin only
   const db = getDb()
   const rawUrl = String(formData.get('serverPublicUrl') ?? '').trim()
   // Validate URL if provided: must be http:// or https://
@@ -22,6 +24,7 @@ export async function saveInstanceSettings(formData: FormData) {
 }
 
 export async function saveSmtpConfig(formData: FormData) {
+  await requireAdmin() // admin only
   const db = getDb()
   const rawPassword = (formData.get('password') as string | null) ?? ''
 
@@ -60,6 +63,7 @@ export async function saveSmtpConfig(formData: FormData) {
 }
 
 export async function saveBackupDefaults(formData: FormData) {
+  await requireAdmin() // admin only
   const db = getDb()
   const values = {
     keepLast:      Number(formData.get('keepLast') ?? 10),

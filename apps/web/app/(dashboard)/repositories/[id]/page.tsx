@@ -2,6 +2,7 @@ import { getDb, repositories } from '@backupos/db'
 import { eq, desc } from '@backupos/db'
 import { snapshots, backupJobs } from '@backupos/db'
 import { notFound } from 'next/navigation'
+import { getCurrentUser, isAdmin } from '@/lib/user'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { RunCheckButton } from './run-check-button'
@@ -27,6 +28,7 @@ function bytes(n: number | null | undefined): string {
 
 export default async function RepoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const currentUser = await getCurrentUser()
   const db     = getDb()
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1)
   if (!repo) notFound()
@@ -106,7 +108,7 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
         <Link href={`/repositories/${id}/edit`} style={{ textDecoration: 'none' }}>
           <Button variant="secondary" size="md">Edit</Button>
         </Link>
-        <DeleteRepositoryButton repoId={id} repoName={repo.name} />
+        <DeleteRepositoryButton repoId={id} repoName={repo.name} canEdit={isAdmin(currentUser)} />
       </div>
 
       {/* Environment group */}

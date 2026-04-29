@@ -2,6 +2,7 @@
 
 import { redirect }             from 'next/navigation'
 import { getDb, loggingConfig } from '@backupos/db'
+import { requireAdmin } from '@/lib/user'
 
 const ACTIVITY_OPTIONS = ['30d', '90d', '180d', '365d', 'forever'] as const
 const AUDIT_OPTIONS    = ['90d', '365d', '3y', '7y', 'forever']    as const
@@ -32,6 +33,7 @@ export async function getLoggingConfig(): Promise<LoggingConfigValues> {
 }
 
 export async function saveLoggingConfig(formData: FormData): Promise<void> {
+  await requireAdmin()
   const activityRetention = (formData.get('activityRetention') ?? '') as string
   const auditRetention    = (formData.get('auditRetention')    ?? '') as string
   const opsRetention      = (formData.get('opsRetention')      ?? '') as string

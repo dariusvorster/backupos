@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { getDb, repositories } from '@backupos/db'
 import { eq } from '@backupos/db'
 import { encryptPassword, decryptPassword } from '@/lib/escrow'
+import { requireAdmin } from '@/lib/user'
 
 export async function setEscrow(repoId: string, formData: FormData): Promise<{ error?: string }> {
+  await requireAdmin()
   const password   = ((formData.get('password')   ?? '') as string).trim()
   const passphrase = (formData.get('passphrase')  ?? '') as string             // no trim — spaces are valid
   const confirm    = (formData.get('confirm')     ?? '') as string             // no trim — match raw input
@@ -22,17 +24,20 @@ export async function setEscrow(repoId: string, formData: FormData): Promise<{ e
 }
 
 export async function setEscrowAction(repoId: string, formData: FormData): Promise<void> {
+  await requireAdmin()
   const result = await setEscrow(repoId, formData)
   if (result.error) throw new Error(result.error)
 }
 
 export async function clearEscrow(repoId: string): Promise<void> {
+  await requireAdmin()
   const db = getDb()
   await db.update(repositories).set({ escrowedKey: null }).where(eq(repositories.id, repoId)).run()
   revalidatePath(`/repositories/${repoId}`)
 }
 
 export async function recoverPassword(repoId: string, formData: FormData): Promise<{ password?: string; error?: string }> {
+  await requireAdmin()
   const passphrase = (formData.get('passphrase') ?? '') as string  // no trim
   if (!passphrase) return { error: 'Recovery passphrase is required.' }
 

@@ -3,14 +3,17 @@
 import { revalidatePath } from 'next/cache'
 import { getDb, snapshots } from '@backupos/db'
 import { eq } from '@backupos/db'
+import { requireAdmin } from '@/lib/user'
 
 export async function pinSnapshot(id: string, pinned: boolean): Promise<void> {
+  await requireAdmin()
   const db = getDb()
   await db.update(snapshots).set({ pinned }).where(eq(snapshots.id, id)).run()
   revalidatePath('/snapshots')
 }
 
 export async function addCustomTag(id: string, tag: string): Promise<void> {
+  await requireAdmin()
   const trimmed = tag.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '')
   if (!trimmed) return
 
@@ -31,6 +34,7 @@ export async function addCustomTag(id: string, tag: string): Promise<void> {
 }
 
 export async function removeCustomTag(id: string, tag: string): Promise<void> {
+  await requireAdmin()
   const db = getDb()
   await db.transaction(async tx => {
     const snapshot = await tx.select({ customTags: snapshots.customTags })
@@ -46,6 +50,7 @@ export async function removeCustomTag(id: string, tag: string): Promise<void> {
 }
 
 export async function setRetentionHold(id: string, reason: string, expiresAt: Date | null): Promise<void> {
+  await requireAdmin()
   const db = getDb()
   await db.update(snapshots)
     .set({ retentionHold: true, holdReason: reason.trim() || null, holdExpiresAt: expiresAt })
@@ -54,6 +59,7 @@ export async function setRetentionHold(id: string, reason: string, expiresAt: Da
 }
 
 export async function clearRetentionHold(id: string): Promise<void> {
+  await requireAdmin()
   const db = getDb()
   await db.update(snapshots)
     .set({ retentionHold: false, holdReason: null, holdExpiresAt: null })

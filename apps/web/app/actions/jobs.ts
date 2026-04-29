@@ -9,6 +9,7 @@ import { validateCron } from '@/lib/cron-validate'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import { isWithinWindow } from '@/lib/schedule-window'
 import { appendLog } from '@/lib/logger'
+import { requireAdmin } from '@/lib/user'
 
 function parseSourceConfig(sourceType: string, fd: FormData): string {
   const str = (k: string) => (fd.get(k) as string | null)?.trim() || undefined
@@ -57,6 +58,7 @@ function parseSourceConfig(sourceType: string, fd: FormData): string {
 }
 
 export async function createJob(formData: FormData): Promise<void> {
+  await requireAdmin() // admin only
   const name           = (formData.get('name')           as string)?.trim()
   const sourceType     = (formData.get('sourceType')     as string)
   const agentId        = (formData.get('agentId')        as string) || null
@@ -96,6 +98,7 @@ export async function createJob(formData: FormData): Promise<void> {
 }
 
 export async function pauseJobs(ids: string[]): Promise<void> {
+  await requireAdmin() // admin only
   if (!ids.length) return
   const db = getDb()
   await db.update(backupJobs).set({ enabled: false }).where(inArray(backupJobs.id, ids))
@@ -103,6 +106,7 @@ export async function pauseJobs(ids: string[]): Promise<void> {
 }
 
 export async function resumeJobs(ids: string[]): Promise<void> {
+  await requireAdmin() // admin only
   if (!ids.length) return
   const db = getDb()
   await db.update(backupJobs).set({ enabled: true }).where(inArray(backupJobs.id, ids))
@@ -110,6 +114,7 @@ export async function resumeJobs(ids: string[]): Promise<void> {
 }
 
 export async function deleteJobs(ids: string[]): Promise<void> {
+  await requireAdmin() // admin only
   if (!ids.length) return
   const db = getDb()
   await db.delete(backupRuns).where(inArray(backupRuns.jobId, ids))
@@ -181,6 +186,7 @@ export async function triggerJob(id: string): Promise<void> {
 }
 
 export async function updateJob(id: string, formData: FormData): Promise<void> {
+  await requireAdmin() // admin only
   const name         = (formData.get('name')         as string)?.trim()
   const sourceType   = (formData.get('sourceType')   as string)
   const agentId      = (formData.get('agentId')      as string) || null
@@ -389,6 +395,7 @@ export async function cancelJob(jobId: string): Promise<void> {
 }
 
 export async function saveJobRetention(id: string, formData: FormData): Promise<void> {
+  await requireAdmin() // admin only
   const parse = (key: string) => {
     const v = parseInt(formData.get(key) as string, 10)
     return isNaN(v) || v === 0 ? null : v
