@@ -26,9 +26,9 @@ export default async function InfraOsSettingsPage({ searchParams }: { searchPara
     <div style={{ maxWidth: 640 }}>
       <div style={{ marginBottom: 24 }}>
         <Link href="/settings" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Settings</Link>
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginTop: 8 }}>Infra OS services</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginTop: 8 }}>Coverage</h1>
         <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginTop: 4 }}>
-          Register services here to track backup coverage. Services without a backup job appear on the dashboard.
+          Register the services and infrastructure your organization runs. BackupOS tracks which ones have backup jobs and surfaces gaps on the dashboard.
         </p>
       </div>
 
@@ -137,6 +137,20 @@ export default async function InfraOsSettingsPage({ searchParams }: { searchPara
                 }}>
                   {covered ? 'Covered ✓' : 'No backup ⚠'}
                 </span>
+                {!covered && (
+                  <Link
+                    href={`/jobs/new?infraServiceId=${svc.id}`}
+                    style={{
+                      fontSize: 12, padding: '4px 12px',
+                      textDecoration: 'none',
+                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                      color: 'var(--accent)', background: 'var(--surf2)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Create backup job →
+                  </Link>
+                )}
                 <form action={boundRemove}>
                   <button type="submit" style={{
                     fontSize: 12, padding: '3px 10px', cursor: 'pointer',

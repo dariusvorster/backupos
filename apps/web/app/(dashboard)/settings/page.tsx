@@ -15,7 +15,7 @@ const LINKED_ITEMS: Record<string, string> = {
   'Retention policy':   '/settings/retention',
   'Schedule windows':   '/settings/schedule-windows',
   'Bandwidth limits':   '/settings/bandwidth',
-  'Infra OS services':  '/settings/infra-os',
+  'Coverage':           '/settings/infra-os',
   'Logging':            '/settings/logging',
   'Profile':            '/settings/profile',
 }
@@ -48,7 +48,7 @@ export default async function SettingsPage() {
         { title: 'General', items: ['General'] },
         { title: 'Integrations', items: ['Email SMTP', 'Integrations', 'Alert channels'] },
         { title: 'Security', items: ['Users', 'Change password', 'API tokens', 'Session management'] },
-        { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows', 'Infra OS services'] },
+        { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows', 'Coverage'] },
         { title: 'Logging', items: ['Logging'] },
       ].map(section => (
         <div key={section.title} style={{
