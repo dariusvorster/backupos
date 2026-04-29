@@ -3724,8 +3724,8 @@ var init_restic = __esm({
         let backupResult;
         try {
           const args = ["backup", "--json", "--no-scan"];
-          for (const path3 of opts.paths)
-            args.push(path3);
+          for (const path4 of opts.paths)
+            args.push(path4);
           if (opts.tags)
             for (const t of opts.tags)
               args.push("--tag", t);
@@ -3738,6 +3738,10 @@ var init_restic = __esm({
             args.push("--one-file-system");
           if (opts.useVSS)
             args.push("--use-fs-snapshot");
+          if (this.config.bandwidthLimitKbps && this.config.bandwidthLimitKbps > 0) {
+            args.push("--limit-upload", String(this.config.bandwidthLimitKbps));
+            args.push("--limit-download", String(this.config.bandwidthLimitKbps));
+          }
           const result = await this.runStreaming(args, opts.onProgress ? (line) => {
             try {
               const obj = JSON.parse(line);
@@ -3822,6 +3826,10 @@ var init_restic = __esm({
         const args = ["check"];
         if (readData)
           args.push("--read-data");
+        if (this.config.bandwidthLimitKbps && this.config.bandwidthLimitKbps > 0) {
+          args.push("--limit-upload", String(this.config.bandwidthLimitKbps));
+          args.push("--limit-download", String(this.config.bandwidthLimitKbps));
+        }
         const result = await this.run(args, void 0, 18e5);
         const ok = result.exitCode === 0;
         const lines = result.stderr.split("\n").filter(Boolean);
@@ -3831,13 +3839,17 @@ var init_restic = __esm({
           warnings: lines.filter((l) => l.includes("warning"))
         };
       }
-      async restore(snapshotId, target, include) {
+      async restore(snapshotId, target, include, signal) {
         const args = ["restore", snapshotId, "--target", target];
         if (include)
           for (const p of include)
             args.push("--include", p);
+        if (this.config.bandwidthLimitKbps && this.config.bandwidthLimitKbps > 0) {
+          args.push("--limit-upload", String(this.config.bandwidthLimitKbps));
+          args.push("--limit-download", String(this.config.bandwidthLimitKbps));
+        }
         const before = Date.now();
-        const result = await this.run(args, void 0, 144e5);
+        const result = await this.run(args, void 0, 144e5, signal);
         if (result.exitCode !== 0)
           throw new ResticError("restore", result);
         const match = result.stderr.match(/(\d+) files? restored/);
@@ -3906,8 +3918,8 @@ var init_restic = __esm({
           throw new ResticError("umount", result);
       }
       // ── Private ──────────────────────────────────────────────────────────────
-      run(args, extraEnv, timeoutMs) {
-        return this.runStreaming(args, void 0, extraEnv, timeoutMs);
+      run(args, extraEnv, timeoutMs, signal) {
+        return this.runStreaming(args, void 0, extraEnv, timeoutMs, signal);
       }
       runStreaming(args, onLine, extraEnv, timeoutMs, signal) {
         return new Promise((resolve, reject) => {
@@ -4051,14 +4063,14 @@ function getOpts() {
   }
   throw new Error(`Unsupported DOCKER_HOST: ${h}`);
 }
-function dockerReq(method, path3, body) {
+function dockerReq(method, path4, body) {
   return new Promise((resolve, reject) => {
     const opts = getOpts();
     const payload = body ? JSON.stringify(body) : void 0;
-    const timer = setTimeout(() => reject(new Error(`Docker ${method} ${path3} timeout`)), 3e4);
+    const timer = setTimeout(() => reject(new Error(`Docker ${method} ${path4} timeout`)), 3e4);
     const reqOpts = {
       method,
-      path: path3,
+      path: path4,
       ...opts,
       headers: payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}
     };
@@ -4076,7 +4088,7 @@ function dockerReq(method, path3, body) {
             resolve(data);
           }
         } else {
-          reject(new Error(`Docker ${method} ${path3} \u2192 HTTP ${res.statusCode ?? "?"}: ${data}`));
+          reject(new Error(`Docker ${method} ${path4} \u2192 HTTP ${res.statusCode ?? "?"}: ${data}`));
         }
       });
     });
@@ -4130,7 +4142,7 @@ function spawnAllowed2(cmd, args, opts = {}) {
     return Promise.reject(new Error(`exec-allowed: "${cmd}" is not permitted`));
   }
   return new Promise((resolve, reject) => {
-    const proc = (0, import_child_process2.spawn)(cmd, args, {
+    const proc = (0, import_child_process3.spawn)(cmd, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: opts.env ?? process.env
     });
@@ -4149,11 +4161,11 @@ function spawnAllowed2(cmd, args, opts = {}) {
     });
   });
 }
-var import_child_process2, ALLOWED_COMMANDS2;
+var import_child_process3, ALLOWED_COMMANDS2;
 var init_exec_allowed2 = __esm({
   "src/exec-allowed.ts"() {
     "use strict";
-    import_child_process2 = require("child_process");
+    import_child_process3 = require("child_process");
     ALLOWED_COMMANDS2 = /* @__PURE__ */ new Set([
       "restic",
       "pg_dump",
@@ -4309,7 +4321,7 @@ async function resumeService(containerId, strategy) {
   }
 }
 async function runComposeBackup(msg, send2, activeJobs2, binaryPath, ensureRepo) {
-  const { jobId, runId, config, repoId, repoUrl, repoPassword, envVars } = msg;
+  const { jobId, runId, config, repoId, repoUrl, repoPassword, envVars, bandwidthLimitKbps } = msg;
   const ctrl = new AbortController();
   activeJobs2.set(jobId, { ctrl, runId, phase: "starting", lastResticEventAt: Date.now(), cancelled: false });
   const logLines = [];
@@ -4326,7 +4338,8 @@ async function runComposeBackup(msg, send2, activeJobs2, binaryPath, ensureRepo)
     repositoryUrl: repoUrl,
     password: repoPassword,
     envVars: envVars ?? {},
-    binaryPath
+    binaryPath,
+    bandwidthLimitKbps: bandwidthLimitKbps ?? void 0
   });
   const tmpDir = path.join(os.tmpdir(), "backupos-apphooks", jobId);
   try {
@@ -4561,7 +4574,7 @@ async function runComposeRestore(msg, send2, activeJobs2, binaryPath) {
         }
         const sourcePath = `/var/lib/docker/volumes/${origVolName}/_data`;
         if (mode === "in_place") {
-          await makeEngine().restore(snapshotId, "/", [sourcePath]);
+          await makeEngine().restore(snapshotId, "/", [sourcePath], ctrl.signal);
           logLines.push(`[restore] restored "${service.serviceName}" vol ${origVolName} (in-place)`);
         } else {
           if (!/^[a-zA-Z0-9_.-]+$/.test(sideBySideProjectName)) {
@@ -4572,7 +4585,7 @@ async function runComposeRestore(msg, send2, activeJobs2, binaryPath) {
           }
           const newVolName = origVolName.startsWith(`${composeConfig.projectName}_`) ? `${sideBySideProjectName}${origVolName.slice(composeConfig.projectName.length)}` : `${sideBySideProjectName}_${origVolName}`;
           await spawnAllowed2("docker", ["volume", "create", newVolName]);
-          await makeEngine().restore(snapshotId, tmpDir, [sourcePath]);
+          await makeEngine().restore(snapshotId, tmpDir, [sourcePath], ctrl.signal);
           const restoreDest = path2.join(tmpDir, "var", "lib", "docker", "volumes", origVolName, "_data");
           const newVolPath = `/var/lib/docker/volumes/${newVolName}/_data`;
           await spawnAllowed2("cp", ["-a", `${restoreDest}/.`, `${newVolPath}/`]);
@@ -4582,7 +4595,7 @@ async function runComposeRestore(msg, send2, activeJobs2, binaryPath) {
     }
     if (composeFileSnapshotId && composeConfig.composeFilePath) {
       if (mode === "in_place") {
-        await makeEngine().restore(composeFileSnapshotId, "/", [composeConfig.composeFilePath]);
+        await makeEngine().restore(composeFileSnapshotId, "/", [composeConfig.composeFilePath], ctrl.signal);
         logLines.push(`[restore] restored compose file to ${composeConfig.composeFilePath}`);
       } else {
         logLines.push(`[restore] NOTE: compose file restore skipped for side-by-side mode \u2014 original file unchanged`);
@@ -4654,6 +4667,80 @@ var init_composeRestore = __esm({
   }
 });
 
+// src/handlers/runVerification.ts
+var runVerification_exports = {};
+__export(runVerification_exports, {
+  runVerificationHandler: () => runVerificationHandler
+});
+function runHook(cmd, cwd, restoreTarget) {
+  return new Promise((resolve, reject) => {
+    const proc = (0, import_child_process4.spawn)("sh", ["-c", cmd], {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, RESTORE_TARGET: restoreTarget }
+    });
+    let out = "";
+    proc.stdout?.on("data", (d) => {
+      out += d.toString();
+    });
+    proc.stderr?.on("data", (d) => {
+      out += d.toString();
+    });
+    proc.on("error", (err) => reject(err));
+    proc.on("close", (code) => {
+      if (code === 0) resolve(out);
+      else reject(new Error(`validation hook exited with code ${code}${out ? ": " + out.trim() : ""}`));
+    });
+  });
+}
+async function runVerificationHandler(msg, send2, binaryPath) {
+  const { verificationRunId, snapshotId, repoUrl, repoPassword, envVars, validationHook } = msg;
+  const tmpDir = path3.join(os3.tmpdir(), "backupos-verify", verificationRunId);
+  const logLines = [];
+  const progress = (step) => {
+    logLines.push(step);
+    send2({ type: "verification_progress", verificationRunId, step });
+  };
+  try {
+    progress("Creating temp directory");
+    await fs3.mkdir(tmpDir, { recursive: true });
+    progress(`Restoring snapshot ${snapshotId}`);
+    const engine = new ResticEngine({
+      repositoryUrl: repoUrl,
+      password: repoPassword,
+      envVars: envVars ?? {},
+      binaryPath
+    });
+    await engine.restore(snapshotId, tmpDir);
+    progress("Restore complete");
+    if (validationHook) {
+      progress(`Running validation hook: ${validationHook}`);
+      const hookOut = await runHook(validationHook, tmpDir, tmpDir);
+      if (hookOut.trim()) logLines.push(hookOut.trim());
+      progress("Validation hook passed");
+    }
+    send2({ type: "verification_complete", verificationRunId, success: true, log: logLines.join("\n") });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    logLines.push(`ERROR: ${errorMessage}`);
+    send2({ type: "verification_complete", verificationRunId, success: false, log: logLines.join("\n"), errorMessage });
+  } finally {
+    await fs3.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+    });
+  }
+}
+var fs3, os3, path3, import_child_process4;
+var init_runVerification = __esm({
+  "src/handlers/runVerification.ts"() {
+    "use strict";
+    fs3 = __toESM(require("fs/promises"));
+    os3 = __toESM(require("os"));
+    path3 = __toESM(require("path"));
+    import_child_process4 = require("child_process");
+    init_dist();
+  }
+});
+
 // src/handlers/listCompose.ts
 var listCompose_exports = {};
 __export(listCompose_exports, {
@@ -4712,10 +4799,10 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
 
 // src/agent.ts
-var os3 = __toESM(require("os"));
+var os4 = __toESM(require("os"));
 var import_crypto = require("crypto");
-var import_fs2 = require("fs");
-var import_child_process3 = require("child_process");
+var import_fs4 = require("fs");
+var import_child_process5 = require("child_process");
 init_dist();
 
 // src/system-uptime.ts
@@ -4744,7 +4831,7 @@ async function binaryExists(name) {
     return false;
   }
 }
-function dockerRequest(dockerHost, path3) {
+function dockerRequest(dockerHost, path4) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("timeout")), 5e3);
     const done = () => clearTimeout(timeout);
@@ -4757,7 +4844,7 @@ function dockerRequest(dockerHost, path3) {
     };
     if (dockerHost.startsWith("unix://")) {
       const req = http.request(
-        { socketPath: dockerHost.slice("unix://".length), path: path3, method: "GET" },
+        { socketPath: dockerHost.slice("unix://".length), path: path4, method: "GET" },
         handler
       );
       req.on("error", (e) => {
@@ -4768,7 +4855,7 @@ function dockerRequest(dockerHost, path3) {
     } else if (dockerHost.startsWith("tcp://")) {
       const u = new URL(dockerHost);
       const req = http.request(
-        { host: u.hostname, port: parseInt(u.port || "2375"), path: path3, method: "GET" },
+        { host: u.hostname, port: parseInt(u.port || "2375"), path: path4, method: "GET" },
         handler
       );
       req.on("error", (e) => {
@@ -4811,6 +4898,71 @@ async function detectCapabilities() {
   return caps;
 }
 
+// src/lib/host-prefix.ts
+var import_fs2 = require("fs");
+var DEFAULT_HOST_PREFIX = "/host";
+function resolveHostPrefix() {
+  if ("BACKUPOS_HOST_PREFIX" in process.env) {
+    const explicit = process.env["BACKUPOS_HOST_PREFIX"];
+    if (explicit === "" || explicit === void 0) return "";
+    return explicit.replace(/\/+$/, "");
+  }
+  try {
+    if ((0, import_fs2.existsSync)(DEFAULT_HOST_PREFIX) && (0, import_fs2.statSync)(`${DEFAULT_HOST_PREFIX}/etc`).isDirectory()) {
+      return DEFAULT_HOST_PREFIX;
+    }
+  } catch {
+  }
+  return "";
+}
+function applyHostPrefix(p, prefix) {
+  if (!prefix) return p;
+  if (!p.startsWith("/")) return p;
+  if (p === prefix || p.startsWith(`${prefix}/`)) return p;
+  return `${prefix}${p}`;
+}
+function applyHostPrefixAll(paths, prefix) {
+  return paths.map((p) => applyHostPrefix(p, prefix));
+}
+
+// src/handlers/mountRepository.ts
+var import_child_process2 = require("child_process");
+var import_fs3 = require("fs");
+var import_util2 = require("util");
+var execFileAsync2 = (0, import_util2.promisify)(import_child_process2.execFile);
+async function isMountpoint(path4) {
+  try {
+    const { stdout } = await execFileAsync2("cat", ["/proc/self/mountinfo"]);
+    return stdout.split("\n").some((line) => {
+      const parts = line.split(" ");
+      return parts[4] === path4;
+    });
+  } catch {
+    return false;
+  }
+}
+async function runMountRepository(msg, send2) {
+  const { requestId, repoId, nfsServer, nfsExport, nfsOptions } = msg;
+  const target = `/mnt/backupos/${repoId}`;
+  try {
+    if (await isMountpoint(target)) {
+      send2({ type: "mount_complete", requestId, repoId });
+      return;
+    }
+    (0, import_fs3.mkdirSync)(target, { recursive: true });
+    const source = `${nfsServer}:${nfsExport}`;
+    const args = ["-t", "nfs", "-o", nfsOptions, source, target];
+    await execFileAsync2("mount", args, { timeout: 3e4 });
+    if (!await isMountpoint(target)) {
+      throw new Error("mount command succeeded but target is not a mountpoint");
+    }
+    send2({ type: "mount_complete", requestId, repoId });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    send2({ type: "mount_failed", requestId, repoId, error });
+  }
+}
+
 // src/agent.ts
 function requireEnv(name) {
   const v = process.env[name];
@@ -4835,7 +4987,7 @@ function getHttpBase() {
 }
 function computeSelfHash() {
   try {
-    const buf = (0, import_fs2.readFileSync)(process.argv[1]);
+    const buf = (0, import_fs4.readFileSync)(process.argv[1]);
     return (0, import_crypto.createHash)("sha256").update(buf).digest("hex");
   } catch {
     return "";
@@ -4856,10 +5008,10 @@ async function selfUpdate() {
     if (!res.ok) throw new Error(`bundle download failed: ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     const tmp = `${scriptPath}.tmp`;
-    (0, import_fs2.writeFileSync)(tmp, buf);
-    (0, import_fs2.renameSync)(tmp, scriptPath);
+    (0, import_fs4.writeFileSync)(tmp, buf);
+    (0, import_fs4.renameSync)(tmp, scriptPath);
     console.log("[agent] Bundle updated \u2014 restarting \u2026");
-    (0, import_child_process3.spawn)(process.execPath, process.argv.slice(1), {
+    (0, import_child_process5.spawn)(process.execPath, process.argv.slice(1), {
       env: process.env,
       detached: true,
       stdio: "inherit"
@@ -4893,11 +5045,17 @@ async function ensureRepoInitialized(engine, repoId) {
   }
 }
 var BINARY = process.env["RESTIC_BINARY_PATH"];
+var HOST_PREFIX = resolveHostPrefix();
+if (HOST_PREFIX) {
+  console.log(`[agent] host prefix active: ${HOST_PREFIX} (filesystem paths will be rewritten)`);
+} else {
+  console.log("[agent] host prefix inactive (running as host agent or opted out)");
+}
 var VERSION = "0.1.0";
 var PROTOCOL_VERSION = "1";
 async function queryResticVersion() {
   return new Promise((resolve) => {
-    const proc = (0, import_child_process3.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
+    const proc = (0, import_child_process5.spawn)(BINARY ?? "restic", ["version"], { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     proc.stdout?.on("data", (d) => {
       out += d.toString();
@@ -4923,7 +5081,7 @@ void queryResticVersion().then((v) => {
   RESTIC_VERSION = v;
 });
 function getIp() {
-  const ifaces = os3.networkInterfaces();
+  const ifaces = os4.networkInterfaces();
   for (const iface of Object.values(ifaces)) {
     for (const addr of iface ?? []) {
       if (addr.family === "IPv4" && !addr.internal) return addr.address;
@@ -4963,10 +5121,10 @@ function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
     send({ type: "ping" });
-    const memTotal = os3.totalmem();
-    const memFree = os3.freemem();
-    const cpuCount = os3.cpus().length || 1;
-    const cpuLoad = (os3.loadavg()[0] ?? 0) / cpuCount * 100;
+    const memTotal = os4.totalmem();
+    const memFree = os4.freemem();
+    const cpuCount = os4.cpus().length || 1;
+    const cpuLoad = (os4.loadavg()[0] ?? 0) / cpuCount * 100;
     send({
       type: "metrics",
       metrics: {
@@ -5003,7 +5161,7 @@ async function handleMessage(raw) {
     void selfUpdate();
   } else if (msg.type === "pong") {
   } else if (msg.type === "run_backup") {
-    void runBackup(msg.jobId, msg.runId, msg.config);
+    void runBackup(msg.jobId, msg.runId, msg.config, msg.bandwidthLimitKbps);
   } else if (msg.type === "cancel_backup") {
     const job = activeJobs.get(msg.jobId);
     if (!job) {
@@ -5027,6 +5185,13 @@ async function handleMessage(raw) {
       const { runComposeRestore: runComposeRestore2 } = await Promise.resolve().then(() => (init_composeRestore(), composeRestore_exports));
       await runComposeRestore2(msg, send, activeJobs, BINARY);
     })();
+  } else if (msg.type === "mount_repository") {
+    void runMountRepository(msg, send);
+  } else if (msg.type === "run_verification") {
+    void (async () => {
+      const { runVerificationHandler: runVerificationHandler2 } = await Promise.resolve().then(() => (init_runVerification(), runVerification_exports));
+      await runVerificationHandler2(msg, send, BINARY);
+    })();
   } else if (msg.type === "list_compose_project") {
     void (async () => {
       try {
@@ -5041,15 +5206,17 @@ async function handleMessage(raw) {
     })();
   }
 }
-async function runBackup(jobId, runId, config) {
+async function runBackup(jobId, runId, config, bandwidthLimitKbps) {
   if (activeJobs.has(jobId)) {
     console.warn(`[agent] Job ${jobId} already running \u2014 ignoring duplicate dispatch`);
     return;
   }
   const ctrl = new AbortController();
   activeJobs.set(jobId, { ctrl, runId, phase: "starting", lastResticEventAt: Date.now(), cancelled: false });
+  const paths = applyHostPrefixAll(config.paths, HOST_PREFIX);
+  const exclude = config.exclude ? applyHostPrefixAll(config.exclude, HOST_PREFIX) : config.exclude;
   send({ type: "backup_start", jobId, config });
-  console.log(`[agent] Starting backup for job ${jobId} \u2014 paths: ${config.paths.join(", ")}`);
+  console.log(`[agent] Starting backup for job ${jobId} \u2014 paths: ${paths.join(", ")}`);
   let runLog = "";
   try {
     if (!config.repoPassword) {
@@ -5059,12 +5226,13 @@ async function runBackup(jobId, runId, config) {
       repositoryUrl: config.repoUrl,
       password: config.repoPassword,
       envVars: config.envVars ?? {},
-      binaryPath: BINARY
+      binaryPath: BINARY,
+      bandwidthLimitKbps: bandwidthLimitKbps ?? void 0
     });
     await ensureRepoInitialized(engine, config.repoId);
     const result = await engine.backup({
-      paths: config.paths,
-      exclude: config.exclude,
+      paths,
+      exclude,
       tags: config.tags,
       signal: ctrl.signal,
       onProgress: (s) => {
@@ -5138,7 +5306,7 @@ function connect() {
     const hello = {
       type: "hello",
       token: TOKEN,
-      hostname: os3.hostname(),
+      hostname: os4.hostname(),
       ip: getIp(),
       agentVersion: VERSION,
       protocolVersion: PROTOCOL_VERSION,
@@ -5149,7 +5317,7 @@ function connect() {
       osInfo: {
         os: process.platform,
         arch: process.arch,
-        kernel: os3.release()
+        kernel: os4.release()
       }
     };
     ws.send(JSON.stringify(hello));

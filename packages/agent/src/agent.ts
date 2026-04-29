@@ -250,6 +250,12 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
   } else if (msg.type === 'mount_repository') {
     void runMountRepository(msg, send)
 
+  } else if (msg.type === 'run_verification') {
+    void (async () => {
+      const { runVerificationHandler } = await import('./handlers/runVerification')
+      await runVerificationHandler(msg, send, BINARY)
+    })()
+
   } else if (msg.type === 'list_compose_project') {
     void (async () => {
       try {

@@ -139,6 +139,8 @@ export type AgentMessage =
   | { type: 'restore_start'; restoreId: string; specId: string }
   | { type: 'restore_progress'; restoreId: string; step: string; status: string }
   | { type: 'restore_complete'; restoreId: string; success: boolean }
+  | { type: 'verification_progress'; verificationRunId: string; step: string }
+  | { type: 'verification_complete'; verificationRunId: string; success: boolean; log: string; errorMessage?: string }
   | { type: 'resources_result'; requestId: string; resources: DetectedResources }
   | { type: 'test_repo_result'; requestId: string; ok: boolean; error?: string; snapshotCount?: number }
   | { type: 'test_mount_result'; requestId: string; ok: boolean; error?: string }
@@ -167,3 +169,4 @@ export type ServerMessage =
   | { type: 'run_compose_backup'; jobId: string; runId: string; config: ComposeProjectConfig; repoId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; bandwidthLimitKbps?: number | null }
   | { type: 'run_compose_restore'; jobId: string; runId: string; repoId: string; config: ComposeRestoreConfig; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
   | { type: 'mount_repository'; requestId: string; repoId: string; nfsServer: string; nfsExport: string; nfsOptions: string }
+  | { type: 'run_verification'; verificationRunId: string; snapshotId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; targetType: 'temp_directory'; validationHook?: string | null }
