@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import {
   createIntegrationToken,
   revokeIntegrationToken,
@@ -64,9 +65,10 @@ function TokenRevealBanner({ token, variant }: { token: string; variant: 'create
   const bg = variant === 'created' ? 'var(--color-success-muted)' : 'var(--color-info-muted)'
 
   function copy() {
-    navigator.clipboard.writeText(token)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    copyToClipboard(token).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   return (
@@ -172,7 +174,7 @@ export function IntegrationTokenSection({ initial }: { initial: IntegrationToken
   }
 
   return (
-    <section>
+    <section style={{ maxWidth: 580 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h2 style={{ fontSize: 16, fontWeight: 600 }}>Integration tokens</h2>
