@@ -548,6 +548,7 @@ export const instanceSettings = sqliteTable('instance_settings', {
   language:        text('language').notNull().default('en'),            // deprecated: removed from UI in #83 — not read by any consumer
   dateFormat:      text('date_format').notNull().default('YYYY-MM-DD'), // deprecated: removed from UI in #83 — not read by any consumer
   serverPublicUrl: text('server_public_url'), // e.g., http://192.168.69.52:3093
+  instanceId:      text('instance_id'),        // stable UUID generated on first use
   updatedAt:       integer('updated_at', { mode: 'timestamp_ms' }),
 })
 

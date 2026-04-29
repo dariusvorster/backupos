@@ -13,6 +13,7 @@ export type AuditAction =
   | 'escrow.accessed'
   | 'api_token.created' | 'api_token.revoked'
   | 'integration_token.created' | 'integration_token.revoked' | 'integration_token.rotated'
+  | 'integration.api_called'
   | 'settings.updated'
   | 'user.created'
   | 'user.role_changed'
