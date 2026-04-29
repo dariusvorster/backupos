@@ -13,10 +13,6 @@ export async function saveInstanceSettings(formData: FormData) {
     redirect('/settings/general?error=invalid_url')
   }
   const values = {
-    instanceName:    String(formData.get('instanceName') ?? 'BackupOS'),
-    timezone:        String(formData.get('timezone') ?? 'UTC'),
-    language:        String(formData.get('language') ?? 'en'),
-    dateFormat:      String(formData.get('dateFormat') ?? 'YYYY-MM-DD'),
     serverPublicUrl: rawUrl || null,
     updatedAt:       new Date(),
   }
