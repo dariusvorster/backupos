@@ -7,7 +7,7 @@ import type { IncomingMessage } from 'http'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, eq, and, desc } from '@backupos/db'
+import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository } from './lib/ws-state'
@@ -614,6 +614,27 @@ void app.prepare().then(() => {
 
         } else if (msg.type === 'compose_project_listing') {
           resolveListCompose(msg.requestId, msg.project)
+
+        } else if (msg.type === 'verification_progress' && agentId) {
+          console.log(`[verify] ${msg.verificationRunId} — ${msg.step}`)
+
+        } else if (msg.type === 'verification_complete' && agentId) {
+          const outcome = msg.success ? 'passed' : 'failed'
+          await db.update(verificationRuns).set({
+            status:       outcome,
+            completedAt:  new Date(),
+            log:          msg.log || null,
+            errorMessage: msg.errorMessage ?? null,
+          }).where(eq(verificationRuns.id, msg.verificationRunId))
+
+          const [run] = await db.select({ testId: verificationRuns.testId })
+            .from(verificationRuns).where(eq(verificationRuns.id, msg.verificationRunId)).limit(1)
+          if (run?.testId) {
+            await db.update(verificationTests)
+              .set({ lastResult: outcome })
+              .where(eq(verificationTests.id, run.testId))
+          }
+          console.log(`[verify] ${msg.verificationRunId} — ${outcome}`)
 
         } else if (msg.type === 'restore_complete' && agentId) {
           await db.update(restoreRuns).set({
