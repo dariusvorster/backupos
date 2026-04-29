@@ -1,10 +1,17 @@
 import { getDb, alertChannels } from '@backupos/db'
-import { createAlertChannel, deleteAlertChannel } from '@/app/actions/alerts'
+import { deleteAlertChannel } from '@/app/actions/alerts'
+import { AddChannelForm } from './AddChannelForm'
 
 const TYPE_LABELS: Record<string, string> = {
-  discord: 'Discord',
-  slack:   'Slack',
-  webhook: 'Webhook',
+  discord:   'Discord',
+  slack:     'Slack',
+  webhook:   'Webhook',
+  zulip:     'Zulip',
+  telegram:  'Telegram',
+  pagerduty: 'PagerDuty',
+  ntfy:      'ntfy',
+  gotify:    'Gotify',
+  pushover:  'Pushover',
 }
 
 export default async function AlertChannelsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
@@ -33,8 +40,14 @@ export default async function AlertChannelsPage({ searchParams }: { searchParams
           </div>
           {channels.map(ch => {
             const deleteAction = deleteAlertChannel.bind(null, ch.id)
-            let url = ''
-            try { url = (JSON.parse(ch.config) as { url: string }).url } catch { /* ignore */ }
+            let subtitle = ''
+            try {
+              const cfg = JSON.parse(ch.config) as Record<string, string>
+              if (cfg.url)            { subtitle = cfg.url.slice(0, 48) + (cfg.url.length > 48 ? '…' : '') }
+              else if (cfg.chatId)    { subtitle = `chat ${cfg.chatId}` }
+              else if (cfg.integrationKey) { subtitle = cfg.integrationKey.slice(0, 20) + '…' }
+              else if (cfg.userKey)   { subtitle = `user ${cfg.userKey.slice(0, 16)}…` }
+            } catch { /* ignore */ }
             return (
               <div key={ch.id} style={{
                 padding: '14px 20px', borderTop: '1px solid var(--border)',
@@ -43,7 +56,7 @@ export default async function AlertChannelsPage({ searchParams }: { searchParams
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>{ch.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 2 }}>
-                    {TYPE_LABELS[ch.type] ?? ch.type} · {url.slice(0, 40)}{url.length > 40 ? '…' : ''}
+                    {TYPE_LABELS[ch.type] ?? ch.type}{subtitle ? ` · ${subtitle}` : ''}
                   </div>
                 </div>
                 <form action={deleteAction}>
@@ -69,61 +82,7 @@ export default async function AlertChannelsPage({ searchParams }: { searchParams
         borderRadius: 'var(--radius)', padding: '20px 24px',
       }}>
         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--fg)', marginBottom: 16 }}>Add channel</div>
-        <form action={createAlertChannel} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 12, color: 'var(--fg-dim)', display: 'block', marginBottom: 4 }}>Name</label>
-            <input
-              name="name"
-              required
-              placeholder="e.g. Ops Discord"
-              style={{
-                width: '100%', padding: '7px 10px', fontSize: 13, boxSizing: 'border-box',
-                backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none',
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: 12, color: 'var(--fg-dim)', display: 'block', marginBottom: 4 }}>Type</label>
-            <select
-              name="type"
-              required
-              style={{
-                width: '100%', padding: '7px 10px', fontSize: 13,
-                backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none',
-              }}
-            >
-              <option value="discord">Discord</option>
-              <option value="slack">Slack</option>
-              <option value="webhook">Generic webhook</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 12, color: 'var(--fg-dim)', display: 'block', marginBottom: 4 }}>Webhook URL</label>
-            <input
-              name="url"
-              type="url"
-              required
-              placeholder="https://discord.com/api/webhooks/…"
-              style={{
-                width: '100%', padding: '7px 10px', fontSize: 13, boxSizing: 'border-box',
-                backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none',
-              }}
-            />
-          </div>
-          <button
-            type="submit"
-            style={{
-              alignSelf: 'flex-start', padding: '7px 18px', fontSize: 13, fontWeight: 500,
-              borderRadius: 'var(--radius-sm)', border: 'none',
-              background: 'var(--accent)', color: '#fff', cursor: 'pointer',
-            }}
-          >
-            Add channel
-          </button>
-        </form>
+        <AddChannelForm />
       </div>
     </div>
   )
