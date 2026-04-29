@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, eq, desc } from '@backupos/db'
 import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult } from '@backupos/restore'
+import { requireAdmin } from '@/lib/user'
 
 export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -15,6 +16,7 @@ export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: f
 }
 
 export async function createSpec(name: string, yaml: string): Promise<{ error: string } | never> {
+  await requireAdmin() // admin only
   if (!name.trim()) return { error: 'Name is required' }
 
   const validation = await validateSpec(yaml)
@@ -34,6 +36,7 @@ export async function createSpec(name: string, yaml: string): Promise<{ error: s
 }
 
 export async function updateSpec(id: string, name: string, yaml: string): Promise<{ error: string } | never> {
+  await requireAdmin() // admin only
   if (!name.trim()) return { error: 'Name is required' }
 
   const validation = await validateSpec(yaml)
@@ -50,6 +53,7 @@ export async function updateSpec(id: string, name: string, yaml: string): Promis
 }
 
 export async function forkSpec(name: string, yamlContent: string): Promise<void> {
+  await requireAdmin() // admin only
   const db = getDb()
   const id = crypto.randomUUID()
   await db.insert(restoreSpecs).values({

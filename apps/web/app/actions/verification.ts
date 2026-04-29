@@ -7,6 +7,7 @@ import { decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { connectedAgentIds } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
+import { requireAdmin } from '@/lib/user'
 
 export async function createVerificationTest(data: {
   name: string
@@ -15,6 +16,7 @@ export async function createVerificationTest(data: {
   validationHook: string
   schedule: string
 }): Promise<void> {
+  await requireAdmin() // admin only
   const { name, jobId, targetType, validationHook, schedule } = data
   if (!name || !jobId || !targetType || !schedule) return
 

@@ -598,6 +598,7 @@ export const invite = sqliteTable('invite', {
   email:     text('email').notNull(),
   name:      text('name'),
   token:     text('token').notNull().unique(),
+  role:      text('role').notNull().default('viewer'),
   createdBy: text('created_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
   expiresAt: integer('expires_at').notNull(),
   usedAt:    integer('used_at'),

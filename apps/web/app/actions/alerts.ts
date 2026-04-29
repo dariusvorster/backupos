@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { getDb, alerts, alertChannels, eq } from '@backupos/db'
+import { requireAdmin } from '@/lib/user'
 
 const VALID_CHANNEL_TYPES = [
   'discord', 'slack', 'webhook',
@@ -67,6 +68,7 @@ export async function snoozeAlert(id: string, hours: number): Promise<void> {
 }
 
 export async function createAlertChannel(formData: FormData): Promise<void> {
+  await requireAdmin() // admin only
   const name = str(formData, 'name')
   const type = str(formData, 'type')
 
@@ -89,6 +91,7 @@ export async function createAlertChannel(formData: FormData): Promise<void> {
 }
 
 export async function deleteAlertChannel(id: string): Promise<void> {
+  await requireAdmin() // admin only
   if (!id) return
   const db = getDb()
   await db.delete(alertChannels).where(eq(alertChannels.id, id))

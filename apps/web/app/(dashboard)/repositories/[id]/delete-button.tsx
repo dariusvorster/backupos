@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react'
 import { deleteRepository } from '@/app/actions/repositories'
 
-export function DeleteRepositoryButton({ repoId, repoName }: { repoId: string; repoName: string }) {
+export function DeleteRepositoryButton({ repoId, repoName, canEdit }: { repoId: string; repoName: string; canEdit: boolean }) {
+  if (!canEdit) return null
   const [confirming, setConfirming] = useState(false)
   const [isPending, start]          = useTransition()
 

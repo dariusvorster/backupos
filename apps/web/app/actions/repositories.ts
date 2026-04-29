@@ -5,6 +5,7 @@ import { redirect }                 from 'next/navigation'
 import { getDb, repositories, backupJobs, backupDefaults, eq, and } from '@backupos/db'
 import { ResticEngine }             from '@backupos/engine'
 import { encryptField, decryptField } from '@/lib/repo-crypto'
+import { requireAdmin } from '@/lib/user'
 
 function parseRepoConfig(raw: string): Record<string, string> {
   return JSON.parse(decryptField(raw)) as Record<string, string>
@@ -21,6 +22,7 @@ function parseSmbSharePath(raw: string): { host: string; remotePath: string } | 
 }
 
 export async function createRepository(formData: FormData): Promise<{ error: string } | never> {
+  await requireAdmin() // admin only
   const name     = (formData.get('name') as string)?.trim()
   const backend  = formData.get('backend') as string
   const password = formData.get('password') as string
@@ -129,6 +131,7 @@ export async function createRepository(formData: FormData): Promise<{ error: str
 }
 
 export async function updateRepository(id: string, formData: FormData): Promise<{ error: string } | undefined> {
+  await requireAdmin() // admin only
   const name     = (formData.get('name') as string)?.trim()
   const password = (formData.get('password') as string)?.trim()
   const group    = (formData.get('group') as string)?.trim() || null
@@ -235,6 +238,7 @@ export async function updateRepository(id: string, formData: FormData): Promise<
 }
 
 export async function deleteRepository(id: string): Promise<{ error: string } | undefined> {
+  await requireAdmin() // admin only
   const db = getDb()
   await db.delete(backupJobs).where(eq(backupJobs.repositoryId, id))
   await db.delete(repositories).where(eq(repositories.id, id))
@@ -393,6 +397,7 @@ export async function pruneRepository(repoId: string): Promise<{
   jobsProcessed?: number
   error?: string
 }> {
+  await requireAdmin() // admin only
   const db     = getDb()
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
   if (!repo) return { ok: false, error: 'Repository not found' }

@@ -14,6 +14,7 @@ export type AuditAction =
   | 'api_token.created' | 'api_token.revoked'
   | 'settings.updated'
   | 'user.created'
+  | 'user.role_changed'
 
 function canonical(fields: {
   action: string; resourceType: string; resourceId?: string | null;

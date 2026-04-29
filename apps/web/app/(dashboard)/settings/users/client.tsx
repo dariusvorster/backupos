@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createInvite, revokeInvite, resendInviteEmail, createUserDirect } from '@/app/actions/invite'
+import { createInvite, revokeInvite, resendInviteEmail, createUserDirect, updateUserRole } from '@/app/actions/invite'
 
 interface UserRow {
   id:        string
   name:      string
   email:     string
+  role:      string
   createdAt: number
 }
 
@@ -21,18 +22,21 @@ interface InviteRow {
 }
 
 interface Props {
-  users:          UserRow[]
-  invites:        InviteRow[]
-  baseUrl:        string
-  smtpConfigured: boolean
-  currentUserId:  string
+  users:                UserRow[]
+  invites:              InviteRow[]
+  baseUrl:              string
+  smtpConfigured:       boolean
+  currentUserId:        string
+  currentUserIsAdmin:   boolean
 }
 
 function fmt(ms: number) {
   return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export function UsersClient({ users: initialUsers, invites: initialInvites, baseUrl, smtpConfigured, currentUserId }: Props) {
+const ROLE_LABELS: Record<string, string> = { admin: 'Admin', viewer: 'Viewer' }
+
+export function UsersClient({ users: initialUsers, invites: initialInvites, baseUrl, smtpConfigured, currentUserId, currentUserIsAdmin }: Props) {
   const [users,    setUsers]    = useState(initialUsers)
   const [invites,  setInvites]  = useState(initialInvites)
   const [newLink,  setNewLink]  = useState<string | null>(null)
@@ -88,6 +92,7 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
       id:        result.id!,
       name:      result.name!,
       email:     result.email!,
+      role:      'viewer',
       createdAt: result.createdAt!,
     }])
   }
@@ -96,6 +101,15 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
     startTransition(async () => {
       await revokeInvite(id)
       setInvites(prev => prev.filter(i => i.id !== id))
+    })
+  }
+
+  function handleRoleChange(userId: string, role: 'admin' | 'viewer') {
+    startTransition(async () => {
+      const result = await updateUserRole(userId, role)
+      if (!result.error) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u))
+      }
     })
   }
 
@@ -134,18 +148,30 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
             {!smtpConfigured && <span style={{ color: 'var(--warn)' }}> · SMTP not configured — invites are link-only.</span>}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={btnGhost} onClick={() => { setShowCreateForm(f => !f); setShowForm(false) }}>
-            {showCreateForm ? 'Cancel' : 'Create user'}
-          </button>
-          <button style={btnPrimary} onClick={() => { setShowForm(f => !f); setShowCreateForm(false) }}>
-            {showForm ? 'Cancel' : 'Invite user'}
-          </button>
-        </div>
+        {currentUserIsAdmin && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={btnGhost} onClick={() => { setShowCreateForm(f => !f); setShowForm(false) }}>
+              {showCreateForm ? 'Cancel' : 'Create user'}
+            </button>
+            <button style={btnPrimary} onClick={() => { setShowForm(f => !f); setShowCreateForm(false) }}>
+              {showForm ? 'Cancel' : 'Invite user'}
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Invite form */}
-      {showForm && (
+      {!currentUserIsAdmin && (
+        <div style={{
+          padding: '10px 16px', marginBottom: 20,
+          backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--fg-dim)',
+        }}>
+          View-only — admin role required to invite or manage users.
+        </div>
+      )}
+
+      {/* Invite form (admin only) */}
+      {currentUserIsAdmin && showForm && (
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)', marginBottom: 16 }}>Send an invite</div>
           <form onSubmit={handleCreate}>
@@ -159,6 +185,13 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
                 <input name="name" type="text" placeholder="Jane Doe" style={inputStyle} />
               </div>
             </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-mute)', marginBottom: 4 }}>Role</label>
+              <select name="role" defaultValue="viewer" style={{ ...inputStyle, width: 'auto' }}>
+                <option value="viewer">Viewer — read-only access</option>
+                <option value="admin">Admin — full access</option>
+              </select>
+            </div>
             {error && <div style={{ fontSize: 13, color: 'var(--err)', marginBottom: 12 }}>{error}</div>}
             <button type="submit" style={btnPrimary} disabled={pending}>
               {smtpConfigured ? 'Send invite email + get link' : 'Create invite link'}
@@ -167,8 +200,8 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
         </div>
       )}
 
-      {/* Create user form */}
-      {showCreateForm && (
+      {/* Create user form (admin only) */}
+      {currentUserIsAdmin && showCreateForm && (
         <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>Create user directly</div>
           <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginBottom: 16 }}>Account is created immediately with email verified. Leave password blank to auto-generate.</div>
@@ -183,9 +216,18 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
                 <input name="email" type="email" required placeholder="jane@example.com" style={inputStyle} />
               </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-mute)', marginBottom: 4 }}>Initial password (optional — auto-generated if blank)</label>
-              <input name="password" type="password" placeholder="Leave blank to auto-generate" style={inputStyle} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-mute)', marginBottom: 4 }}>Initial password (optional)</label>
+                <input name="password" type="password" placeholder="Leave blank to auto-generate" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-mute)', marginBottom: 4 }}>Role</label>
+                <select name="role" defaultValue="viewer" style={inputStyle}>
+                  <option value="viewer">Viewer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
             </div>
             {createError && <div style={{ fontSize: 13, color: 'var(--err)', marginBottom: 12 }}>{createError}</div>}
             <button type="submit" style={btnPrimary} disabled={pending}>Create account</button>
@@ -255,6 +297,31 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
               <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>{u.email}</div>
             </div>
             <div style={{ fontSize: 12, color: 'var(--fg-dim)', flexShrink: 0 }}>Joined {fmt(u.createdAt)}</div>
+            {/* Role: dropdown for other users (admin only), plain text for self */}
+            {currentUserIsAdmin && u.id !== currentUserId ? (
+              <select
+                value={u.role}
+                disabled={pending}
+                onChange={e => handleRoleChange(u.id, e.target.value as 'admin' | 'viewer')}
+                style={{
+                  padding: '4px 8px', fontSize: 12, flexShrink: 0,
+                  backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)', color: 'var(--fg)', cursor: 'pointer',
+                }}
+              >
+                <option value="viewer">Viewer</option>
+                <option value="admin">Admin</option>
+              </select>
+            ) : (
+              <span style={{
+                fontSize: 11, padding: '3px 8px', borderRadius: 12, flexShrink: 0,
+                backgroundColor: u.role === 'admin' ? 'color-mix(in srgb, var(--surf2) 60%, var(--accent) 15%)' : 'var(--surf2)',
+                border: '1px solid var(--border)',
+                color: u.role === 'admin' ? 'var(--accent)' : 'var(--fg-dim)',
+              }}>
+                {ROLE_LABELS[u.role] ?? u.role}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -288,13 +355,15 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
                       {resentId === inv.id ? '✓ Sent' : 'Resend email'}
                     </button>
                   )}
-                  <button
-                    style={{ ...btnGhost, color: 'var(--err)', borderColor: 'color-mix(in srgb, var(--err) 40%, transparent)' }}
-                    onClick={() => handleRevoke(inv.id)}
-                    disabled={pending}
-                  >
-                    Revoke
-                  </button>
+                  {currentUserIsAdmin && (
+                    <button
+                      style={{ ...btnGhost, color: 'var(--err)', borderColor: 'color-mix(in srgb, var(--err) 40%, transparent)' }}
+                      onClick={() => handleRevoke(inv.id)}
+                      disabled={pending}
+                    >
+                      Revoke
+                    </button>
+                  )}
                 </div>
               </div>
             )

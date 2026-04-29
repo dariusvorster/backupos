@@ -1,5 +1,5 @@
 import { redirect }       from 'next/navigation'
-import { getCurrentUser } from '@/lib/user'
+import { getCurrentUser, isAdmin } from '@/lib/user'
 import { getDb, user, invite, smtpConfig } from '@backupos/db'
 import { UsersClient }    from './client'
 
@@ -14,6 +14,7 @@ export default async function UsersPage() {
       id:        user.id,
       name:      user.name,
       email:     user.email,
+      role:      user.role,
       createdAt: user.createdAt,
     }).from(user).all(),
 
@@ -39,6 +40,7 @@ export default async function UsersPage() {
       baseUrl={baseUrl}
       smtpConfigured={smtpConfigured}
       currentUserId={currentUser.id}
+      currentUserIsAdmin={isAdmin(currentUser)}
     />
   )
 }
