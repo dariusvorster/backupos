@@ -22,6 +22,17 @@ const DISCORD_COLOR: Record<string, number> = {
   info:    0x5865F2,
 }
 
+const SEVERITY_EMOJI: Record<string, string> = {
+  error:   '❌',
+  warning: '⚠️',
+  info:    'ℹ️',
+}
+
+const NTFY_PRIORITY:     Record<string, number> = { error: 5, warning: 4, info: 3 }
+const GOTIFY_PRIORITY:   Record<string, number> = { error: 8, warning: 5, info: 3 }
+const PUSHOVER_PRIORITY: Record<string, number> = { error: 1, warning: 0, info: -1 }
+const PAGERDUTY_SEV:     Record<string, string> = { error: 'error', warning: 'warning', info: 'info' }
+
 function buildMessage(type: AlertType, payload: AlertPayload): string {
   if (type === 'backup_failed') {
     const p = payload as AlertBackupFailed
@@ -91,6 +102,94 @@ async function fireEmail(type: AlertType, message: string): Promise<void> {
   })
 }
 
+interface ZulipConfig    { url: string; email: string; apiKey: string; stream: string; topic?: string }
+interface TelegramConfig { botToken: string; chatId: string }
+interface PagerDutyConfig { integrationKey: string }
+interface NtfyConfig     { url: string; topic: string; auth?: string }
+interface GotifyConfig   { url: string; appToken: string }
+interface PushoverConfig { apiToken: string; userKey: string }
+
+async function fireZulip(cfg: ZulipConfig, type: AlertType, message: string, severity: string): Promise<void> {
+  const emoji = SEVERITY_EMOJI[severity] ?? ''
+  const params = new URLSearchParams({
+    type:    'stream',
+    to:      cfg.stream,
+    topic:   cfg.topic ?? '[BackupOS] alerts',
+    content: `${emoji} ${message}`,
+  })
+  await fetch(`${cfg.url}/api/v1/messages`, {
+    method:  'POST',
+    headers: {
+      'Authorization': `Basic ${Buffer.from(`${cfg.email}:${cfg.apiKey}`).toString('base64')}`,
+      'Content-Type':  'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  })
+}
+
+async function fireTelegram(cfg: TelegramConfig, type: AlertType, message: string, severity: string): Promise<void> {
+  const emoji = SEVERITY_EMOJI[severity] ?? ''
+  await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ chat_id: cfg.chatId, text: `${emoji} ${message}`, parse_mode: 'Markdown' }),
+  })
+}
+
+async function firePagerDuty(cfg: PagerDutyConfig, type: AlertType, message: string, severity: string, payload: AlertPayload): Promise<void> {
+  await fetch('https://events.pagerduty.com/v2/enqueue', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      routing_key:  cfg.integrationKey,
+      event_action: 'trigger',
+      payload: {
+        summary:        message,
+        source:         'backupos',
+        severity:       PAGERDUTY_SEV[severity] ?? 'info',
+        custom_details: payload,
+      },
+    }),
+  })
+}
+
+async function fireNtfy(cfg: NtfyConfig, type: AlertType, message: string, severity: string): Promise<void> {
+  const headers: Record<string, string> = {
+    'Title':    `BackupOS — ${type.replace(/_/g, ' ')}`,
+    'Priority': String(NTFY_PRIORITY[severity] ?? 3),
+    'Tags':     type,
+  }
+  if (cfg.auth) headers['Authorization'] = cfg.auth
+  await fetch(`${cfg.url}/${cfg.topic}`, { method: 'POST', headers, body: message })
+}
+
+async function fireGotify(cfg: GotifyConfig, type: AlertType, message: string, severity: string): Promise<void> {
+  await fetch(`${cfg.url}/message?token=${cfg.appToken}`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      title:    `[BackupOS] ${type.replace(/_/g, ' ')}`,
+      message,
+      priority: GOTIFY_PRIORITY[severity] ?? 3,
+    }),
+  })
+}
+
+async function firePushover(cfg: PushoverConfig, type: AlertType, message: string, severity: string): Promise<void> {
+  const params = new URLSearchParams({
+    token:    cfg.apiToken,
+    user:     cfg.userKey,
+    title:    `[BackupOS] ${type.replace(/_/g, ' ')}`,
+    message,
+    priority: String(PUSHOVER_PRIORITY[severity] ?? -1),
+  })
+  await fetch('https://api.pushover.net/1/messages.json', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    params.toString(),
+  })
+}
+
 export async function sendAlert(type: AlertType, payload: AlertPayload): Promise<void> {
   const db       = getDb()
   const severity = SEVERITY[type]
@@ -111,12 +210,18 @@ export async function sendAlert(type: AlertType, payload: AlertPayload): Promise
   await Promise.allSettled(
     enabled.map(async channel => {
       try {
-        const cfg = JSON.parse(channel.config) as { url?: string }
-        const url = cfg.url ?? ''
-        if (!url) return
-        if (channel.type === 'discord') await fireDiscord(url, type, message, severity)
-        else if (channel.type === 'slack') await fireSlack(url, type, message)
-        else await fireWebhook(url, type, severity, message, payload)
+        const cfg = JSON.parse(channel.config) as Record<string, unknown>
+        const url = (cfg.url as string | undefined) ?? ''
+
+        if      (channel.type === 'discord')    await fireDiscord(url, type, message, severity)
+        else if (channel.type === 'slack')       await fireSlack(url, type, message)
+        else if (channel.type === 'zulip')       await fireZulip(cfg as unknown as ZulipConfig, type, message, severity)
+        else if (channel.type === 'telegram')    await fireTelegram(cfg as unknown as TelegramConfig, type, message, severity)
+        else if (channel.type === 'pagerduty')   await firePagerDuty(cfg as unknown as PagerDutyConfig, type, message, severity, payload)
+        else if (channel.type === 'ntfy')        await fireNtfy(cfg as unknown as NtfyConfig, type, message, severity)
+        else if (channel.type === 'gotify')      await fireGotify(cfg as unknown as GotifyConfig, type, message, severity)
+        else if (channel.type === 'pushover')    await firePushover(cfg as unknown as PushoverConfig, type, message, severity)
+        else if (url)                            await fireWebhook(url, type, severity, message, payload)
       } catch (err) {
         console.error(`[alerts] channel ${channel.id} delivery failed:`, err)
       }
