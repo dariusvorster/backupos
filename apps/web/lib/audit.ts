@@ -12,6 +12,7 @@ export type AuditAction =
   | 'session.created'| 'session.revoked'
   | 'escrow.accessed'
   | 'api_token.created' | 'api_token.revoked'
+  | 'integration_token.created' | 'integration_token.revoked' | 'integration_token.rotated'
   | 'settings.updated'
   | 'user.created'
   | 'user.role_changed'
