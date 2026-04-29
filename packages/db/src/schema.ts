@@ -306,6 +306,10 @@ export const loggingConfig = sqliteTable('logging_config', {
   auditRetention:    text('audit_retention').notNull().default('365d'),
   opsRetention:      text('ops_retention').notNull().default('14d'),
   updatedAt:         integer('updated_at', { mode: 'timestamp_ms' }),
+  lastSweepAt:            integer('last_sweep_at',              { mode: 'timestamp_ms' }),
+  lastSweepDeletedAlerts: integer('last_sweep_deleted_alerts').default(0),
+  lastSweepDeletedAudit:  integer('last_sweep_deleted_audit').default(0),
+  lastSweepDeletedOps:    integer('last_sweep_deleted_ops').default(0),
 })
 
 // ── Hypervisor integrations ────────────────────────────────────────────────

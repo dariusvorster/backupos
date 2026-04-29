@@ -11,15 +11,23 @@ export interface LoggingConfigValues {
   activityRetention: string
   auditRetention:    string
   opsRetention:      string
+  lastSweepAt:            Date | null
+  lastSweepDeletedAlerts: number
+  lastSweepDeletedAudit:  number
+  lastSweepDeletedOps:    number
 }
 
 export async function getLoggingConfig(): Promise<LoggingConfigValues> {
   const db  = getDb()
   const row = db.select().from(loggingConfig).get()
   return {
-    activityRetention: row?.activityRetention ?? '90d',
-    auditRetention:    row?.auditRetention    ?? '365d',
-    opsRetention:      row?.opsRetention      ?? '14d',
+    activityRetention:      row?.activityRetention      ?? '90d',
+    auditRetention:         row?.auditRetention         ?? '365d',
+    opsRetention:           row?.opsRetention           ?? '14d',
+    lastSweepAt:            row?.lastSweepAt            ?? null,
+    lastSweepDeletedAlerts: row?.lastSweepDeletedAlerts ?? 0,
+    lastSweepDeletedAudit:  row?.lastSweepDeletedAudit  ?? 0,
+    lastSweepDeletedOps:    row?.lastSweepDeletedOps    ?? 0,
   }
 }
 
