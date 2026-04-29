@@ -1,4 +1,4 @@
-import { getDb, repositories, agents } from '@backupos/db'
+import { getDb, repositories, agents, infraOsServices } from '@backupos/db'
 import { Button } from '@/components/ui/button'
 import { createJob } from '@/app/actions/jobs'
 import { SourceConfigSection } from '@/components/source-config-section'
@@ -17,9 +17,10 @@ export default async function NewJobPage({
   const composeError        = params.composeError
 
   const db      = getDb()
-  const [repos, agentList] = await Promise.all([
+  const [repos, agentList, services] = await Promise.all([
     db.select().from(repositories).all(),
     db.select().from(agents).all(),
+    db.select().from(infraOsServices).all(),
   ])
 
   return (
@@ -38,7 +39,7 @@ export default async function NewJobPage({
           borderRadius: 'var(--radius-sm)',
           padding: '10px 14px', marginBottom: 16,
         }}>
-          <span>Pre-filled from Infra OS service registry. Adjust fields as needed.</span>
+          <span>Pre-filled from coverage registry. Adjust fields as needed.</span>
         </div>
       )}
 
@@ -100,6 +101,27 @@ export default async function NewJobPage({
             </select>
           </div>
 
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
+              Link to coverage entry (optional)
+            </label>
+            <select name="infraServiceId" defaultValue={prefillInfraService} style={{
+              width: '100%', padding: '8px 12px',
+              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14, outline: 'none',
+            }}>
+              <option value="">— None —</option>
+              {services.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.serviceType ? ` (${s.serviceType})` : ''}{s.host ? ` · ${s.host}` : ''}
+                </option>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 4 }}>
+              Linking this job to a registered service marks the service as covered on the dashboard.
+            </div>
+          </div>
+
           <div style={{ marginBottom: 28 }}>
             <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
               Schedule (cron)
@@ -117,10 +139,6 @@ export default async function NewJobPage({
               }}
             />
           </div>
-
-          {prefillInfraService && (
-            <input type="hidden" name="infraServiceId" value={prefillInfraService} />
-          )}
 
           <Button type="submit" variant="primary" size="md">Create job</Button>
         </form>
