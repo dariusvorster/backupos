@@ -1,6 +1,6 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, backupMonitors, backupDefaults, bandwidthProfiles, bandwidthRules, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, backupMonitors, verificationTests, backupDefaults, bandwidthProfiles, bandwidthRules, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
@@ -10,6 +10,7 @@ import type { ServerMessage, MountConfig, ComposeProjectConfig } from '@backupos
 import { pruneRetainedLogs } from './retention'
 import { appendLog } from './logger'
 import { performMonitorSync } from './monitors'
+import { runVerification } from '../app/actions/verification'
 
 interface SourceConfig {
   paths?:    string[]
@@ -56,6 +57,10 @@ export async function initScheduler(): Promise<void> {
   // Sync all monitors every 5 minutes
   setInterval(() => { void checkMonitors(db) }, 5 * 60 * 1000)
   console.log('[scheduler] Monitor sync active (5 min interval)')
+
+  // Verification tests fire on their cron schedule (60s tick checks all enabled tests)
+  setInterval(() => { void checkVerificationTests(db) }, 60_000)
+  console.log('[scheduler] Verification scheduler active (60s tick)')
 }
 
 type Db = ReturnType<typeof getDb>
@@ -387,6 +392,57 @@ async function runRetentionSweep(db: Db): Promise<void> {
   } catch (err) {
     console.error('[scheduler] Retention sweep failed:', err instanceof Error ? err.message : String(err))
   }
+}
+
+async function checkVerificationTests(db: Db): Promise<void> {
+  const now   = new Date()
+  const tests = await db.select()
+    .from(verificationTests)
+    .where(and(eq(verificationTests.enabled, true), isNotNull(verificationTests.schedule)))
+    .all()
+
+  if (tests.length === 0) return
+
+  await Promise.allSettled(
+    tests.map(async test => {
+      try {
+        if (!test.schedule) return
+
+        if (!test.nextRunAt) {
+          const interval = parseExpression(test.schedule, { tz: 'UTC' })
+          await db.update(verificationTests)
+            .set({ nextRunAt: interval.next().toDate() })
+            .where(eq(verificationTests.id, test.id))
+          console.log(`[verify-scheduler] Test "${test.name}" next_run_at initialized`)
+          return
+        }
+
+        if (test.nextRunAt > now) return
+
+        console.log(`[verify-scheduler] Test "${test.name}" due — dispatching`)
+
+        // Advance next_run_at BEFORE dispatch for restart safety
+        const interval = parseExpression(test.schedule, { tz: 'UTC' })
+        await db.update(verificationTests)
+          .set({ nextRunAt: interval.next().toDate() })
+          .where(eq(verificationTests.id, test.id))
+
+        try {
+          appendLog({
+            level:      'info',
+            component:  'web',
+            message:    `Verification test "${test.name}" dispatched by scheduler`,
+            entityType: 'job',
+            entityId:   test.jobId ?? undefined,
+          })
+        } catch (err) { console.error('[logger]', err) }
+
+        await runVerification(test.id)
+      } catch (err) {
+        console.error(`[verify-scheduler] Test "${test.name}" failed:`, err instanceof Error ? err.message : String(err))
+      }
+    })
+  )
 }
 
 async function checkMonitors(db: Db): Promise<void> {
