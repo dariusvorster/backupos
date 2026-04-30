@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { SnapshotActions } from '@/components/snapshot-actions'
 import { RestoreFromSnapshotButton } from '@/components/restore-from-snapshot-modal'
 import { connectedAgentIds } from '@/lib/ws-state'
+import { BreadcrumbOverride } from '@/components/breadcrumb-override'
 
 interface PageProps {
   params: Promise<{ hostname: string; jobId: string }>
@@ -47,6 +48,8 @@ export default async function JobSnapshotsPage({ params }: PageProps) {
 
   return (
     <div style={{ padding: '32px 40px' }}>
+      <BreadcrumbOverride segment={encodeURIComponent(hostname)} label={hostname} />
+      <BreadcrumbOverride segment={jobId} label={job.name} />
       <div style={{ marginBottom: 24 }}>
         <PageHeader title={job.name} />
         <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>
