@@ -84,6 +84,30 @@ process.on('unhandledRejection', (err: unknown) => {
   console.error('[server] unhandledRejection:', err)
 })
 
+// The unhandledRejection handler above doesn't catch these errors because
+// Next.js logs them via console.error directly without throwing. Override
+// console.error to drop messages that match. Capture the original first so
+// we can pass everything else through unchanged.
+const _origConsoleError = console.error.bind(console)
+console.error = (...args: unknown[]) => {
+  const first = args[0]
+  if (
+    first instanceof Error &&
+    first.message.startsWith('Failed to find Server Action')
+  ) {
+    if (process.env['DEBUG_STALE_ACTIONS'] === '1') {
+      _origConsoleError(`[stale-action] ${first.message.slice(0, 80)}`)
+    }
+    return
+  }
+  // Some Next.js errors come in as plain strings or objects rather than
+  // Error instances — also catch the formatted variant just in case.
+  if (typeof first === 'string' && first.includes('Failed to find Server Action')) {
+    return
+  }
+  _origConsoleError(...args)
+}
+
 function getBundleHash(): string {
   try {
     const buf = readFileSync(join(__dirname, 'public', 'agent', 'bundle.js'))
