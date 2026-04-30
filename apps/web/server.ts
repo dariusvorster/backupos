@@ -701,6 +701,8 @@ void app.prepare().then(() => {
               ...(msg.filesRestored != null ? { filesRestored: msg.filesRestored } : {}),
               ...(msg.durationSec   != null ? { durationSec:   msg.durationSec   } : {}),
               ...(msg.error         != null ? { error:         msg.error         } : {}),
+              ...(msg.targetPath    != null ? { targetPath:    msg.targetPath    } : {}),
+              ...(msg.sourcePath    != null ? { sourcePath:    msg.sourcePath    } : {}),
             }),
           }).where(eq(restoreRuns.id, msg.restoreId))
           try { appendLog({ level: msg.success ? 'info' : 'error', component: 'web', message: msg.success ? 'Filesystem restore succeeded' : `Filesystem restore failed: ${msg.error ?? ''}`, entityType: 'restore_run', entityId: msg.restoreId }) } catch (err) { console.error('[logger]', err) }
