@@ -2,11 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, eq, desc } from '@backupos/db'
+import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, eq, desc } from '@backupos/db'
 import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult } from '@backupos/restore'
-import { ResticEngine } from '@backupos/engine'
 import { requireAdmin } from '@/lib/user'
 import { decryptField } from '@/lib/repo-crypto'
+import { connectedAgentIds, dispatch } from '@/lib/ws-state'
 
 export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -167,7 +167,6 @@ export async function restoreFromSnapshot(
   await requireAdmin()
 
   const { snapshotId, sourcePath, targetType, customPath } = input
-
   const db = getDb()
 
   // 1. Look up the snapshot
@@ -205,7 +204,17 @@ export async function restoreFromSnapshot(
       break
   }
 
-  // 5. Insert the restore_runs row in 'running' state
+  // 5. Find a connected agent for this repository
+  const connected = connectedAgentIds()
+  if (connected.length === 0) {
+    return { ok: false, error: 'No agent connected. Install the BackupOS agent on the machine that can reach the repository.' }
+  }
+  const repoJobs = await db.select({ agentId: backupJobs.agentId })
+    .from(backupJobs).where(eq(backupJobs.repositoryId, snap.repositoryId)).all()
+  const agentId = repoJobs.map(j => j.agentId).find(aid => aid && connected.includes(aid))
+    ?? connected[0]!
+
+  // 6. Insert the restore_runs row in 'running' state
   const runId = crypto.randomUUID()
   await db.insert(restoreRuns).values({
     id: runId,
@@ -216,43 +225,24 @@ export async function restoreFromSnapshot(
     startedAt: new Date(),
   })
 
-  // 6. Fire-and-forget the actual restore
-  void (async () => {
-    const startedAt = Date.now()
-    try {
-      const engine = new ResticEngine({
-        repositoryUrl: repoConfig.repositoryUrl,
-        password,
-        envVars:       repoConfig.envVars ?? {},
-        binaryPath:    process.env['RESTIC_BINARY_PATH'],
-      })
-      const result = await engine.restore(snapshotId, targetPath, [sourcePath])
-      await db.update(restoreRuns).set({
-        status:      'success',
-        log:         JSON.stringify({
-          filesRestored: result.filesRestored,
-          totalSize:     result.totalSize,
-          durationSec:   result.duration,
-          targetPath,
-          sourcePath,
-        }),
-        completedAt: new Date(),
-      }).where(eq(restoreRuns.id, runId))
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err)
-      await db.update(restoreRuns).set({
-        status:      'failed',
-        log:         JSON.stringify({
-          error:      errMsg,
-          targetPath,
-          sourcePath,
-          durationMs: Date.now() - startedAt,
-        }),
-        completedAt: new Date(),
-      }).where(eq(restoreRuns.id, runId))
-      console.error('[restore] restoreFromSnapshot failed:', errMsg)
-    }
-  })()
+  // 7. Dispatch to agent — agent sends filesystem_restore_complete when done
+  const sent = dispatch(agentId, {
+    type:         'run_filesystem_restore',
+    requestId:    crypto.randomUUID(),
+    restoreId:    runId,
+    repoUrl:      repoConfig.repositoryUrl,
+    repoPassword: password,
+    envVars:      repoConfig.envVars ?? {},
+    snapshotId,
+    targetPath,
+    sourcePath,
+  })
+
+  if (!sent) {
+    await db.update(restoreRuns).set({ status: 'failed', completedAt: new Date() })
+      .where(eq(restoreRuns.id, runId))
+    return { ok: false, error: 'Agent disconnected before restore could be dispatched' }
+  }
 
   return { ok: true, runId }
 }

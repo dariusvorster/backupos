@@ -9,6 +9,7 @@ import { getSystemUptimeSeconds } from './system-uptime'
 import { detectCapabilities } from './capabilities'
 import { resolveHostPrefix, applyHostPrefixAll } from './lib/host-prefix'
 import { runMountRepository } from './handlers/mountRepository'
+import { handleFilesystemRestore } from './handlers/filesystemRestore'
 
 function requireEnv(name: string): string {
   const v = process.env[name]
@@ -246,6 +247,9 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       const { runComposeRestore } = await import('./handlers/composeRestore')
       await runComposeRestore(msg, send, activeJobs, BINARY)
     })()
+
+  } else if (msg.type === 'run_filesystem_restore') {
+    void handleFilesystemRestore(msg, send, BINARY)
 
   } else if (msg.type === 'mount_repository') {
     void runMountRepository(msg, send)
