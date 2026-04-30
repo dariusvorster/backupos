@@ -11,6 +11,7 @@ import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, res
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted } from './lib/ws-state'
+import { ensureRepoMountedOnAgent } from './lib/repo-mount'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
 import { sendAlert } from './lib/alerts'
@@ -410,6 +411,29 @@ void app.prepare().then(() => {
               ...(r.appHooksAvailable != null ? { appHooksAvailable: r.appHooksAvailable } : {}),
             }).where(eq(agents.id, agentId!))
           }).catch(() => { /* best-effort */ })
+
+          // Auto-mount NFS repos this agent owns jobs for, so restic commands
+          // (restore, ad-hoc list, etc) succeed without waiting for a backup run
+          // to re-establish the mount. See issue #207.
+          void (async () => {
+            try {
+              const repoRows = await db.select({ repositoryId: backupJobs.repositoryId })
+                .from(backupJobs).where(eq(backupJobs.agentId, agentId)).all()
+              const uniqueRepoIds = [...new Set(repoRows.map(r => r.repositoryId).filter((r): r is string => !!r))]
+              for (const repoId of uniqueRepoIds) {
+                try {
+                  await ensureRepoMountedOnAgent(agentId, repoId)
+                } catch (err) {
+                  console.warn(`[server] auto-mount failed for agent=${agentId} repo=${repoId}: ${err instanceof Error ? err.message : String(err)}`)
+                }
+              }
+              if (uniqueRepoIds.length > 0) {
+                console.log(`[server] auto-mounted ${uniqueRepoIds.length} repo(s) on agent ${agentId}`)
+              }
+            } catch (err) {
+              console.error('[server] auto-mount block failed:', err instanceof Error ? err.message : err)
+            }
+          })()
 
           await db.insert(auditLog).values({
             id: crypto.randomUUID(), action: 'agent_connected',
