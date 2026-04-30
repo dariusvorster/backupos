@@ -11,6 +11,8 @@ export async function handleFilesystemRestore(
 ): Promise<void> {
   const { requestId, restoreId, repoUrl, repoPassword, envVars, snapshotId, targetPath, sourcePath } = msg
 
+  console.log(`[agent] run_filesystem_restore received: restoreId=${restoreId} snapshotId=${snapshotId.slice(0, 8)} sourcePath=${sourcePath} targetPath=${targetPath} repoUrl=${repoUrl}`)
+
   send({ type: 'filesystem_restore_started', requestId, restoreId })
 
   const startedAt = Date.now()
@@ -23,22 +25,27 @@ export async function handleFilesystemRestore(
     })
     const shortId = snapshotId.slice(0, 8)
     const result = await engine.restore(shortId, targetPath, [sourcePath])
+    console.log(`[agent] engine.restore returned: filesRestored=${result.filesRestored} duration=${result.duration} totalSize=${result.totalSize}`)
     send({
       type:          'filesystem_restore_complete',
       restoreId,
       success:       true,
       filesRestored: result.filesRestored,
       durationSec:   result.duration,
+      targetPath,
+      sourcePath,
     })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    console.error(`[agent] filesystem restore failed restoreId=${restoreId}:`, error)
+    console.error(`[agent] filesystem_restore failed: restoreId=${restoreId} error=${error}`)
     send({
       type:        'filesystem_restore_complete',
       restoreId,
       success:     false,
       durationSec: (Date.now() - startedAt) / 1000,
       error,
+      targetPath,
+      sourcePath,
     })
   }
 }

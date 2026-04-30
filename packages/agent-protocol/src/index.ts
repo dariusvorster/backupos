@@ -148,7 +148,7 @@ export type AgentMessage =
   | { type: 'mount_complete'; requestId: string; repoId: string }
   | { type: 'mount_failed'; requestId: string; repoId: string; error: string }
   | { type: 'filesystem_restore_started'; requestId: string; restoreId: string }
-  | { type: 'filesystem_restore_complete'; restoreId: string; success: boolean; filesRestored?: number; durationSec?: number; error?: string }
+  | { type: 'filesystem_restore_complete'; restoreId: string; success: boolean; filesRestored?: number; durationSec?: number; error?: string; targetPath?: string; sourcePath?: string }
 
 export interface DetectedResources {
   dockerVolumes?: string[]
