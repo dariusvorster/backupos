@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, eq, desc } from '@backupos/db'
-import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult } from '@backupos/restore'
+import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type ParsedRestoreSpec, type FilesystemRestoreStep } from '@backupos/restore'
 import { requireAdmin } from '@/lib/user'
 
 export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -144,4 +144,80 @@ export async function runSpecWithSnapshot(
     }
     return { error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+interface RestoreFromSnapshotInput {
+  snapshotId:  string
+  sourcePath:  string
+  targetType:  'temp' | 'inplace' | 'custom'
+  customPath?: string
+}
+
+export async function restoreFromSnapshot(
+  input: RestoreFromSnapshotInput,
+): Promise<{ ok: true; runId: string } | { ok: false; error: string }> {
+  await requireAdmin()
+
+  const { snapshotId, sourcePath, targetType, customPath } = input
+
+  let targetPath: string
+  switch (targetType) {
+    case 'temp':
+      targetPath = `/tmp/backupos-restore-${snapshotId.slice(0, 8)}-${Date.now()}`
+      break
+    case 'inplace':
+      targetPath = sourcePath
+      break
+    case 'custom':
+      if (!customPath || !customPath.startsWith('/')) {
+        return { ok: false, error: 'Custom path must be an absolute path starting with /' }
+      }
+      targetPath = customPath
+      break
+  }
+
+  const fsStep: FilesystemRestoreStep = {
+    name:         `Ad-hoc restore of ${sourcePath}`,
+    type:         'filesystem_restore',
+    snapshotPath: sourcePath,
+    targetPath,
+    onFailure:    'abort',
+  }
+  const adhocSpec: ParsedRestoreSpec = {
+    name:        'ad-hoc',
+    description: `Ad-hoc filesystem restore from snapshot ${snapshotId}`,
+    version:     '1',
+    repository:  'adhoc',
+    steps:       [fsStep],
+  }
+
+  const db    = getDb()
+  const runId = crypto.randomUUID()
+
+  await db.insert(restoreRuns).values({
+    id: runId,
+    specId: null,
+    snapshotId,
+    status: 'running',
+    trigger: 'manual',
+    startedAt: new Date(),
+  })
+
+  executeRestoreSpec(adhocSpec, snapshotId, 'local').then(async (result: RestoreRunResult) => {
+    await db
+      .update(restoreRuns)
+      .set({
+        status:      result.success ? 'success' : 'failed',
+        log:         JSON.stringify(result.steps),
+        completedAt: result.completedAt ?? result.abortedAt ?? new Date(),
+      })
+      .where(eq(restoreRuns.id, runId))
+  }).catch(async (err: unknown) => {
+    await db.update(restoreRuns).set({
+      status: 'failed', completedAt: new Date(),
+    }).where(eq(restoreRuns.id, runId))
+    console.error('[restore] restoreFromSnapshot failed:', err)
+  })
+
+  return { ok: true, runId }
 }

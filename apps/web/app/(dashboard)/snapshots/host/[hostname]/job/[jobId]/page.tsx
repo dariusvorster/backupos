@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Pin, Lock } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { SnapshotActions } from '@/components/snapshot-actions'
+import { RestoreFromSnapshotButton } from '@/components/restore-from-snapshot-modal'
 
 interface PageProps {
   params: Promise<{ hostname: string; jobId: string }>
@@ -19,6 +20,11 @@ function fmtBytes(bytes: number | null): string {
 function safeParseTags(json: string | null): string[] {
   if (!json) return []
   try { return JSON.parse(json) } catch { return [] }
+}
+
+function safeParseArray(json: string | null): string[] {
+  if (!json) return []
+  try { const v = JSON.parse(json); return Array.isArray(v) ? v : [] } catch { return [] }
 }
 
 export default async function JobSnapshotsPage({ params }: PageProps) {
@@ -55,15 +61,16 @@ export default async function JobSnapshotsPage({ params }: PageProps) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: 'var(--surf2)', borderBottom: '1px solid var(--border)' }}>
-                {['Snapshot', 'Date', 'Size', 'Tags', 'Actions'].map(h => (
+                {['Snapshot', 'Date', 'Size', 'Tags', 'Restore', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', fontSize: 11, fontWeight: 500, color: 'var(--fg-dim)', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((snap, i) => {
-                const resticTags = safeParseTags(snap.tags)
-                const userTags   = safeParseTags(snap.customTags)
+                const resticTags    = safeParseTags(snap.tags)
+                const userTags      = safeParseTags(snap.customTags)
+                const snapshotPaths = safeParseArray(snap.paths)
                 return (
                   <tr key={snap.id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)', backgroundColor: 'var(--surf)' }}>
                     <td style={{ padding: '12px 16px' }}>
@@ -88,6 +95,12 @@ export default async function JobSnapshotsPage({ params }: PageProps) {
                           <span key={t} style={{ fontSize: 10, padding: '1px 5px', backgroundColor: 'color-mix(in srgb, var(--surf2) 70%, var(--accent) 20%)', border: '1px solid var(--accent)', borderRadius: 3, color: 'var(--accent)' }}>{t}</span>
                         ))}
                       </div>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <RestoreFromSnapshotButton
+                        snapshotId={snap.id}
+                        snapshotPaths={snapshotPaths}
+                      />
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <SnapshotActions
