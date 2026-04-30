@@ -190,7 +190,7 @@ export class ResticEngine {
     include?: string[],
     signal?: AbortSignal,
   ): Promise<RestoreResult> {
-    const args = ['restore', snapshotId, '--target', target]
+    const args = ['restore', snapshotId, '--target', target, '--json']
     if (include) for (const p of include) args.push('--include', p)
     if (this.config.bandwidthLimitKbps && this.config.bandwidthLimitKbps > 0) {
       args.push('--limit-upload',   String(this.config.bandwidthLimitKbps))
@@ -201,10 +201,32 @@ export class ResticEngine {
     const result = await this.run(args, undefined, 14_400_000, signal)
     if (result.exitCode !== 0) throw new ResticError('restore', result)
 
-    const match = result.stderr.match(/(\d+) files? restored/)
+    let filesRestored = 0
+    let totalSize = 0
+    for (const line of result.stdout.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('{')) continue
+      try {
+        const parsed = JSON.parse(trimmed) as {
+          message_type?: string
+          files_restored?: number
+          bytes_restored?: number
+        }
+        if (parsed.message_type === 'summary') {
+          filesRestored = parsed.files_restored ?? 0
+          totalSize     = parsed.bytes_restored ?? 0
+        }
+      } catch { /* skip non-JSON lines */ }
+    }
+
+    if (filesRestored === 0 && result.stdout.length > 0) {
+      console.warn(`[restic] restore parsed 0 files but stdout is non-empty (${result.stdout.length} chars). First 500 chars:`)
+      console.warn(result.stdout.slice(0, 500))
+    }
+
     return {
-      filesRestored: match ? parseInt(match[1]!, 10) : 0,
-      totalSize: 0,
+      filesRestored,
+      totalSize,
       duration: Math.round((Date.now() - before) / 1000),
     }
   }
