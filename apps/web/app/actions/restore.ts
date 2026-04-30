@@ -7,6 +7,7 @@ import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult } from '@ba
 import { requireAdmin } from '@/lib/user'
 import { decryptField } from '@/lib/repo-crypto'
 import { connectedAgentIds, requestFilesystemRestore } from '@/lib/ws-state'
+import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 
 export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -204,17 +205,30 @@ export async function restoreFromSnapshot(
       break
   }
 
-  // 5. Find a connected agent for this repository
-  const connected = connectedAgentIds()
-  if (connected.length === 0) {
-    return { ok: false, error: 'No agent connected. Install the BackupOS agent on the machine that can reach the repository.' }
+  // 5. Snapshot → job → agent
+  if (!snap.jobId) {
+    return { ok: false, error: 'Snapshot has no associated job' }
   }
-  const repoJobs = await db.select({ agentId: backupJobs.agentId })
-    .from(backupJobs).where(eq(backupJobs.repositoryId, snap.repositoryId)).all()
-  const agentId = repoJobs.map(j => j.agentId).find(aid => aid && connected.includes(aid))
-    ?? connected[0]!
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, snap.jobId)).limit(1)
+  if (!job) {
+    return { ok: false, error: 'Job not found for this snapshot' }
+  }
+  if (!job.agentId) {
+    return { ok: false, error: 'Job has no agent assigned. Set an agent on the job before restoring.' }
+  }
+  const agentId = job.agentId
+  if (!connectedAgentIds().includes(agentId)) {
+    return { ok: false, error: `Agent ${agentId} is not currently connected` }
+  }
 
-  // 6. Insert the restore_runs row in 'running' state
+  // 6. Mount NFS repo if needed (no-op for non-NFS)
+  try {
+    await ensureRepoMountedOnAgent(agentId, snap.repositoryId)
+  } catch (err) {
+    return { ok: false, error: `Repo mount failed: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  // 7. Insert the restore_runs row in 'running' state
   const runId = crypto.randomUUID()
   await db.insert(restoreRuns).values({
     id: runId,
@@ -225,7 +239,7 @@ export async function restoreFromSnapshot(
     startedAt: new Date(),
   })
 
-  // 7. Dispatch to agent and await started ack
+  // 8. Dispatch to agent and await started ack
   const dispatchResult = await requestFilesystemRestore(agentId, {
     restoreId:    runId,
     repoUrl:      repoConfig.repositoryUrl,
