@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { getDb, restoreRuns, restoreSpecs, eq, desc } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
+import { PollWrapper } from './poll-wrapper'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -32,8 +33,11 @@ export default async function RestoreRunsPage() {
     .limit(50)
     .all()
 
+  const anyRunning = runs.some(r => r.status === 'running')
+
   return (
     <div>
+      <PollWrapper initialStatus={anyRunning ? 'running' : 'idle'} />
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Restore runs</h1>
 
       <div style={{ backgroundColor: 'var(--surf)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
