@@ -21,7 +21,8 @@ export async function handleFilesystemRestore(
       envVars:       envVars ?? {},
       binaryPath,
     })
-    const result = await engine.restore(snapshotId, targetPath, [sourcePath])
+    const shortId = snapshotId.slice(0, 8)
+    const result = await engine.restore(shortId, targetPath, [sourcePath])
     send({
       type:          'filesystem_restore_complete',
       restoreId,
