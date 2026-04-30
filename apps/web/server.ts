@@ -63,6 +63,27 @@ if (process.env.NODE_ENV === 'production') {
 loadOrCreateInternalToken()
 runMigrations()
 
+// Silence the recurring "Failed to find Server Action" noise from stale
+// browser tabs across deploys. The action ID changes between builds, so
+// every tab open on a previous deploy posts an unknown action every minute.
+// We can't fix the client; demote to debug so the journal stays useful.
+// See issue #211 for context and the long-term fix (#211 V2).
+process.on('unhandledRejection', (err: unknown) => {
+  if (
+    err instanceof Error &&
+    err.message.startsWith('Failed to find Server Action')
+  ) {
+    // Don't log the full stack — just a debug-level note in case anyone
+    // wants to count occurrences with `journalctl -u backupos | grep stale-action`.
+    if (process.env['DEBUG_STALE_ACTIONS'] === '1') {
+      console.debug(`[stale-action] ${err.message.slice(0, 80)}`)
+    }
+    return
+  }
+  // Re-throw — preserves default behavior for any other unhandled rejection
+  console.error('[server] unhandledRejection:', err)
+})
+
 function getBundleHash(): string {
   try {
     const buf = readFileSync(join(__dirname, 'public', 'agent', 'bundle.js'))
