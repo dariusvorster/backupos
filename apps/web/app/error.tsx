@@ -2,7 +2,9 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { LogoMark } from '@/components/ui/logo-mark'
+import { authClient } from '@/lib/auth-client'
 
 type Props = {
   error: Error & { digest?: string }
@@ -42,6 +44,8 @@ function copyFor(kind: ErrorKind, message: string): { title: string; body: strin
 }
 
 export default function ErrorPage({ error, reset }: Props) {
+  const router = useRouter()
+
   useEffect(() => {
     console.error('[error.tsx] caught error', { message: error.message, digest: error.digest })
   }, [error])
@@ -49,6 +53,11 @@ export default function ErrorPage({ error, reset }: Props) {
   const kind = classifyError(error.message)
   const { title, body } = copyFor(kind, error.message)
   const showSignOut = kind === 'permission'
+
+  async function handleSignOut() {
+    await authClient.signOut()
+    router.push('/login')
+  }
 
   return (
     <div
@@ -141,8 +150,8 @@ export default function ErrorPage({ error, reset }: Props) {
           </Link>
 
           {showSignOut && (
-            <Link
-              href="/logout"
+            <button
+              onClick={handleSignOut}
               style={{
                 background: 'transparent',
                 color: 'var(--fg-mute)',
@@ -151,13 +160,14 @@ export default function ErrorPage({ error, reset }: Props) {
                 padding: '10px 16px',
                 fontSize: 14,
                 fontWeight: 500,
-                textDecoration: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
                 display: 'inline-flex',
                 alignItems: 'center',
               }}
             >
               Sign out
-            </Link>
+            </button>
           )}
         </div>
       </div>
