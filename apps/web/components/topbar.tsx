@@ -26,6 +26,7 @@ const LABELS: Record<string, string> = {
   docs:         'Docs',
   host:         'Host',
   job:          'Job',
+  'infra-os':   'Coverage',
 }
 
 function buildBreadcrumb(
