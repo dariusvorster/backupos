@@ -108,6 +108,27 @@ console.error = (...args: unknown[]) => {
   _origConsoleError(...args)
 }
 
+// Next.js's handleUnrecognizedFetchAction calls console.warn(err) for stale
+// Server Action requests. The previous console.error override didn't catch
+// these because they're warn-level, not error-level. See #211 trail.
+const _origConsoleWarn = console.warn.bind(console)
+console.warn = (...args: unknown[]) => {
+  const first = args[0]
+  if (
+    first instanceof Error &&
+    first.message.startsWith('Failed to find Server Action')
+  ) {
+    if (process.env['DEBUG_STALE_ACTIONS'] === '1') {
+      _origConsoleWarn(`[stale-action] ${first.message.slice(0, 80)}`)
+    }
+    return
+  }
+  if (typeof first === 'string' && first.includes('Failed to find Server Action')) {
+    return
+  }
+  _origConsoleWarn(...args)
+}
+
 function getBundleHash(): string {
   try {
     const buf = readFileSync(join(__dirname, 'public', 'agent', 'bundle.js'))
