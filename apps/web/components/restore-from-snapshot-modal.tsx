@@ -7,9 +7,10 @@ import Link from 'next/link'
 import { restoreFromSnapshot } from '@/app/actions/restore'
 
 interface Props {
-  snapshotId:    string
-  snapshotPaths: string[]
-  triggerLabel?: string
+  snapshotId:     string
+  snapshotPaths:  string[]
+  agentConnected: boolean
+  triggerLabel?:  string
 }
 
 const DB_PATH_HINTS = [
@@ -22,7 +23,7 @@ function looksLikeDatabaseSnapshot(paths: string[]): boolean {
   return paths.some(p => DB_PATH_HINTS.some(hint => p.toLowerCase().includes(hint)))
 }
 
-export function RestoreFromSnapshotButton({ snapshotId, snapshotPaths, triggerLabel = 'Restore' }: Props) {
+export function RestoreFromSnapshotButton({ snapshotId, snapshotPaths, agentConnected, triggerLabel = 'Restore' }: Props) {
   const [open, setOpen] = useState(false)
   const [sourcePath, setSourcePath] = useState(snapshotPaths[0] ?? '/')
   const [targetType, setTargetType] = useState<'temp' | 'inplace' | 'custom'>('temp')
@@ -59,11 +60,14 @@ export function RestoreFromSnapshotButton({ snapshotId, snapshotPaths, triggerLa
     <>
       <button
         onClick={() => setOpen(true)}
+        disabled={!agentConnected}
+        title={agentConnected ? undefined : 'No agent connected — install the BackupOS agent to restore'}
         style={{
-          padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+          padding: '4px 10px', fontSize: 12, cursor: agentConnected ? 'pointer' : 'not-allowed',
           borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
           background: 'none', color: 'var(--fg)',
           display: 'inline-flex', alignItems: 'center', gap: 4,
+          opacity: agentConnected ? 1 : 0.4,
         }}
       >
         <History size={12} />

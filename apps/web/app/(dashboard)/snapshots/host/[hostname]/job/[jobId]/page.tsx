@@ -5,6 +5,7 @@ import { Pin, Lock } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { SnapshotActions } from '@/components/snapshot-actions'
 import { RestoreFromSnapshotButton } from '@/components/restore-from-snapshot-modal'
+import { connectedAgentIds } from '@/lib/ws-state'
 
 interface PageProps {
   params: Promise<{ hostname: string; jobId: string }>
@@ -32,6 +33,7 @@ export default async function JobSnapshotsPage({ params }: PageProps) {
   const hostname = decodeURIComponent(rawHostname)
   const jobId = decodeURIComponent(rawJobId)
   const db = getDb()
+  const agentConnected = connectedAgentIds().length > 0
 
   const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
   if (!job) notFound()
@@ -100,6 +102,7 @@ export default async function JobSnapshotsPage({ params }: PageProps) {
                       <RestoreFromSnapshotButton
                         snapshotId={snap.id}
                         snapshotPaths={snapshotPaths}
+                        agentConnected={agentConnected}
                       />
                     </td>
                     <td style={{ padding: '12px 16px' }}>

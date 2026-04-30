@@ -147,6 +147,8 @@ export type AgentMessage =
   | { type: 'compose_project_listing'; requestId: string; project: ComposeProjectListing }
   | { type: 'mount_complete'; requestId: string; repoId: string }
   | { type: 'mount_failed'; requestId: string; repoId: string; error: string }
+  | { type: 'filesystem_restore_started'; requestId: string; restoreId: string }
+  | { type: 'filesystem_restore_complete'; restoreId: string; success: boolean; filesRestored?: number; durationSec?: number; error?: string }
 
 export interface DetectedResources {
   dockerVolumes?: string[]
@@ -170,3 +172,4 @@ export type ServerMessage =
   | { type: 'run_compose_restore'; jobId: string; runId: string; repoId: string; config: ComposeRestoreConfig; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
   | { type: 'mount_repository'; requestId: string; repoId: string; nfsServer: string; nfsExport: string; nfsOptions: string }
   | { type: 'run_verification'; verificationRunId: string; repoId: string; snapshotId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; targetType: 'temp_directory'; validationHook?: string | null }
+  | { type: 'run_filesystem_restore'; requestId: string; restoreId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; targetPath: string; sourcePath: string }

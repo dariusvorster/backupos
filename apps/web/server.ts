@@ -688,6 +688,27 @@ void app.prepare().then(() => {
             resourceType: 'restore_run', resourceId: msg.restoreId,
             actor: agentId, createdAt: new Date(),
           })
+
+        } else if (msg.type === 'filesystem_restore_started' && agentId) {
+          console.log(`[restore] filesystem_restore_started restoreId=${msg.restoreId} agentId=${agentId}`)
+
+        } else if (msg.type === 'filesystem_restore_complete' && agentId) {
+          await db.update(restoreRuns).set({
+            status:      msg.success ? 'success' : 'failed',
+            completedAt: new Date(),
+            log:         JSON.stringify({
+              ...(msg.filesRestored != null ? { filesRestored: msg.filesRestored } : {}),
+              ...(msg.durationSec   != null ? { durationSec:   msg.durationSec   } : {}),
+              ...(msg.error         != null ? { error:         msg.error         } : {}),
+            }),
+          }).where(eq(restoreRuns.id, msg.restoreId))
+          try { appendLog({ level: msg.success ? 'info' : 'error', component: 'web', message: msg.success ? 'Filesystem restore succeeded' : `Filesystem restore failed: ${msg.error ?? ''}`, entityType: 'restore_run', entityId: msg.restoreId }) } catch (err) { console.error('[logger]', err) }
+          await db.insert(auditLog).values({
+            id: crypto.randomUUID(),
+            action: msg.success ? 'restore_completed' : 'restore_failed',
+            resourceType: 'restore_run', resourceId: msg.restoreId,
+            actor: agentId, createdAt: new Date(),
+          })
         }
       })()
     })
