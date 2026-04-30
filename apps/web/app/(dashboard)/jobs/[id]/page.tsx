@@ -12,6 +12,7 @@ import { togglePreflight } from '@/app/actions/preflight'
 import { PreflightToggle } from '@/components/preflight-toggle'
 import { triggerJob, saveJobRetention, cancelJob, retryRun } from '@/app/actions/jobs'
 import { validateCron } from '@/lib/cron-validate'
+import { BreadcrumbOverride } from '@/components/breadcrumb-override'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -70,6 +71,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div>
+      <BreadcrumbOverride segment={id} label={job.name} />
       <AutoRefresh intervalMs={activeRun ? 3_000 : 10_000} />
       <div style={{ marginBottom: 24 }}>
         <Link href="/jobs" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Jobs</Link>

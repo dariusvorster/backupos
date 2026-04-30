@@ -11,6 +11,7 @@ import { getLogsPage } from '@/app/actions/logs'
 import { setAgentChannelFromForm } from '@/app/actions/agents'
 import { AutoRefresh } from '@/components/ui/auto-refresh'
 import { UpdateAgentButton } from './update-button'
+import { BreadcrumbOverride } from '@/components/breadcrumb-override'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -96,6 +97,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div>
+      <BreadcrumbOverride segment={id} label={agent.name} />
       <AutoRefresh intervalMs={5_000} />
       <div style={{ marginBottom: 24 }}>
         <Link href="/agents" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Agents</Link>

@@ -19,6 +19,7 @@ import type { ReplicaEntry }          from '@/app/actions/repositories'
 import { setEscrowAction, clearEscrow } from '@/app/actions/escrow'
 import { TrendingUp, AlertTriangle, Info, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { DedupBar, fmtBytes } from '../dedup-bar'
+import { BreadcrumbOverride } from '@/components/breadcrumb-override'
 
 function bytes(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -80,6 +81,7 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <div>
+      <BreadcrumbOverride segment={id} label={repo.name} />
       <div style={{ marginBottom: 24 }}>
         <Link href="/repositories" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Repositories</Link>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginTop: 8 }}>{repo.name}</h1>

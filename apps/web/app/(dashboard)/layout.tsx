@@ -7,6 +7,7 @@ import { DrModeOverlay }          from '@/components/dr-mode-overlay'
 import { CommandPaletteProvider } from '@/components/command-palette-provider'
 import { CommandPalette }         from '@/components/command-palette'
 import { FaviconManager }         from '@/components/favicon-manager'
+import { BreadcrumbProvider }     from '@/components/breadcrumb-provider'
 import { unstable_cache }         from 'next/cache'
 import {
   getDb, backupJobs, backupRuns,
@@ -52,17 +53,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <DrModeProvider hasFailed24h={hasFailed24h}>
         <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: 'var(--bg)' }}>
           <Sidebar user={sidebarUser} />
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-            <Topbar />
-            <main style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: 24,
-              backgroundColor: 'var(--bg)',
-            }}>
-              {children}
-            </main>
-          </div>
+          <BreadcrumbProvider>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+              <Topbar />
+              <main style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: 24,
+                backgroundColor: 'var(--bg)',
+              }}>
+                {children}
+              </main>
+            </div>
+          </BreadcrumbProvider>
         </div>
         <DrModeOverlay jobs={jobs} />
         <CommandPalette />

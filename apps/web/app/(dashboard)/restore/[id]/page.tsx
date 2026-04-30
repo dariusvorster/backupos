@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { RunSplitButton } from './run-split-button'
 import { EditSpecButton } from './edit-button'
+import { BreadcrumbOverride } from '@/components/breadcrumb-override'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -31,6 +32,7 @@ export default async function RestoreSpecPage({ params }: { params: Promise<{ id
 
   return (
     <div>
+      <BreadcrumbOverride segment={id} label={spec.name} />
       <div style={{ marginBottom: 24 }}>
         <Link href="/restore" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>← Restore</Link>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 }}>

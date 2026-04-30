@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { Search, Bell, ShieldAlert } from 'lucide-react'
 import { useDrMode } from '@/components/dr-mode-provider'
 import { useCommandPalette } from '@/components/command-palette-provider'
+import { useBreadcrumb } from '@/components/breadcrumb-provider'
 
 const LABELS: Record<string, string> = {
   dashboard:    'Dashboard',
@@ -27,13 +28,16 @@ const LABELS: Record<string, string> = {
   job:          'Job',
 }
 
-function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
+function buildBreadcrumb(
+  pathname: string,
+  overrides: Record<string, string>,
+): { label: string; href: string }[] {
   const segments = pathname.replace(/^\//, '').split('/').filter(Boolean)
   const crumbs: { label: string; href: string }[] = []
   let path = ''
   for (const seg of segments) {
     path += `/${seg}`
-    const label = LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')
+    const label = overrides[seg] ?? LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')
     crumbs.push({ label, href: path })
   }
   return crumbs
@@ -41,7 +45,8 @@ function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
 
 export function Topbar() {
   const pathname                         = usePathname()
-  const crumbs                           = buildBreadcrumb(pathname)
+  const { overrides }                    = useBreadcrumb()
+  const crumbs                           = buildBreadcrumb(pathname, overrides)
   const { active, toggle, hasFailed24h } = useDrMode()
   const { openPalette }                  = useCommandPalette()
 
