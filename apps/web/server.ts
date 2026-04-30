@@ -10,7 +10,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted } from './lib/ws-state'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
 import { sendAlert } from './lib/alerts'
@@ -691,6 +691,7 @@ void app.prepare().then(() => {
 
         } else if (msg.type === 'filesystem_restore_started' && agentId) {
           console.log(`[restore] filesystem_restore_started restoreId=${msg.restoreId} agentId=${agentId}`)
+          resolveFilesystemRestoreStarted(msg.requestId)
 
         } else if (msg.type === 'filesystem_restore_complete' && agentId) {
           await db.update(restoreRuns).set({

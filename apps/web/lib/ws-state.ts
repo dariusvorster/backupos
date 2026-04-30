@@ -14,6 +14,8 @@ declare global {
   var __bkp_pending_repo_tests: Map<string, (r: RepoTestResult) => void> | undefined
   // eslint-disable-next-line no-var
   var __bkp_pending_mount_tests: Map<string, (r: MountTestResult) => void> | undefined
+  // eslint-disable-next-line no-var
+  var __bkp_pending_fs_restores: Map<string, (r: { ok: boolean; error?: string }) => void> | undefined
 }
 
 const connections: Map<string, WebSocket> =
@@ -27,6 +29,9 @@ const pendingRepoTests: Map<string, (r: RepoTestResult) => void> =
 
 const pendingMountTests: Map<string, (r: MountTestResult) => void> =
   (globalThis.__bkp_pending_mount_tests ??= new Map())
+
+const pendingFsRestores: Map<string, (r: { ok: boolean; error?: string }) => void> =
+  (globalThis.__bkp_pending_fs_restores ??= new Map())
 
 export function registerAgent(agentId: string, ws: WebSocket): void {
   connections.set(agentId, ws)
@@ -208,4 +213,41 @@ export function requestListCompose(agentId: string, projectName: string): Promis
 
 export function resolveListCompose(requestId: string, project: ComposeProjectListing): void {
   pendingComposeLists.get(requestId)?.(project)
+}
+
+export function requestFilesystemRestore(
+  agentId: string,
+  payload: {
+    restoreId:    string
+    repoUrl:      string
+    repoPassword: string
+    envVars?:     Record<string, string>
+    snapshotId:   string
+    targetPath:   string
+    sourcePath:   string
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    const requestId = crypto.randomUUID()
+    const timer = setTimeout(() => {
+      pendingFsRestores.delete(requestId)
+      resolve({ ok: false, error: 'Agent did not acknowledge dispatch within 30s' })
+    }, 30_000)
+    pendingFsRestores.set(requestId, (r) => {
+      clearTimeout(timer)
+      pendingFsRestores.delete(requestId)
+      if (r.ok) resolve({ ok: true })
+      else resolve({ ok: false, error: r.error ?? 'unknown dispatch error' })
+    })
+    const sent = dispatch(agentId, { type: 'run_filesystem_restore', requestId, ...payload })
+    if (!sent) {
+      clearTimeout(timer)
+      pendingFsRestores.delete(requestId)
+      resolve({ ok: false, error: 'Agent not connected' })
+    }
+  })
+}
+
+export function resolveFilesystemRestoreStarted(requestId: string): void {
+  pendingFsRestores.get(requestId)?.({ ok: true })
 }

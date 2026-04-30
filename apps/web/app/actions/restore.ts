@@ -6,7 +6,7 @@ import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, 
 import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult } from '@backupos/restore'
 import { requireAdmin } from '@/lib/user'
 import { decryptField } from '@/lib/repo-crypto'
-import { connectedAgentIds, dispatch } from '@/lib/ws-state'
+import { connectedAgentIds, requestFilesystemRestore } from '@/lib/ws-state'
 
 export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -225,23 +225,24 @@ export async function restoreFromSnapshot(
     startedAt: new Date(),
   })
 
-  // 7. Dispatch to agent — agent sends filesystem_restore_complete when done
-  const sent = dispatch(agentId, {
-    type:         'run_filesystem_restore',
-    requestId:    crypto.randomUUID(),
+  // 7. Dispatch to agent and await started ack
+  const dispatchResult = await requestFilesystemRestore(agentId, {
     restoreId:    runId,
     repoUrl:      repoConfig.repositoryUrl,
     repoPassword: password,
-    envVars:      repoConfig.envVars ?? {},
+    envVars:      repoConfig.envVars,
     snapshotId,
     targetPath,
     sourcePath,
   })
 
-  if (!sent) {
-    await db.update(restoreRuns).set({ status: 'failed', completedAt: new Date() })
-      .where(eq(restoreRuns.id, runId))
-    return { ok: false, error: 'Agent disconnected before restore could be dispatched' }
+  if (!dispatchResult.ok) {
+    await db.update(restoreRuns).set({
+      status:      'failed',
+      log:         JSON.stringify({ error: dispatchResult.error }),
+      completedAt: new Date(),
+    }).where(eq(restoreRuns.id, runId))
+    return { ok: false, error: dispatchResult.error }
   }
 
   return { ok: true, runId }
