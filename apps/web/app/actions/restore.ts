@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, eq, desc } from '@backupos/db'
-import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type ParsedRestoreSpec, type FilesystemRestoreStep } from '@backupos/restore'
+import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult } from '@backupos/restore'
+import { ResticEngine } from '@backupos/engine'
 import { requireAdmin } from '@/lib/user'
+import { decryptField } from '@/lib/repo-crypto'
 
 export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -153,6 +155,12 @@ interface RestoreFromSnapshotInput {
   customPath?: string
 }
 
+interface RepoConfigShape {
+  repositoryUrl: string
+  password?: string
+  envVars?: Record<string, string>
+}
+
 export async function restoreFromSnapshot(
   input: RestoreFromSnapshotInput,
 ): Promise<{ ok: true; runId: string } | { ok: false; error: string }> {
@@ -160,6 +168,27 @@ export async function restoreFromSnapshot(
 
   const { snapshotId, sourcePath, targetType, customPath } = input
 
+  const db = getDb()
+
+  // 1. Look up the snapshot
+  const [snap] = await db.select().from(snapshots).where(eq(snapshots.id, snapshotId)).limit(1)
+  if (!snap) return { ok: false, error: 'Snapshot not found' }
+  if (!snap.repositoryId) return { ok: false, error: 'Snapshot has no associated repository' }
+
+  // 2. Look up the repository
+  const [repo] = await db.select().from(repositories).where(eq(repositories.id, snap.repositoryId)).limit(1)
+  if (!repo) return { ok: false, error: 'Repository not found for this snapshot' }
+
+  // 3. Decrypt the repo config and password
+  let repoConfig: RepoConfigShape
+  try {
+    repoConfig = JSON.parse(decryptField(repo.config)) as RepoConfigShape
+  } catch (err) {
+    return { ok: false, error: `Failed to decrypt repository config: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  const password = decryptField(repo.resticPassword)
+
+  // 4. Resolve target path
   let targetPath: string
   switch (targetType) {
     case 'temp':
@@ -176,24 +205,8 @@ export async function restoreFromSnapshot(
       break
   }
 
-  const fsStep: FilesystemRestoreStep = {
-    name:         `Ad-hoc restore of ${sourcePath}`,
-    type:         'filesystem_restore',
-    snapshotPath: sourcePath,
-    targetPath,
-    onFailure:    'abort',
-  }
-  const adhocSpec: ParsedRestoreSpec = {
-    name:        'ad-hoc',
-    description: `Ad-hoc filesystem restore from snapshot ${snapshotId}`,
-    version:     '1',
-    repository:  'adhoc',
-    steps:       [fsStep],
-  }
-
-  const db    = getDb()
+  // 5. Insert the restore_runs row in 'running' state
   const runId = crypto.randomUUID()
-
   await db.insert(restoreRuns).values({
     id: runId,
     specId: null,
@@ -203,21 +216,43 @@ export async function restoreFromSnapshot(
     startedAt: new Date(),
   })
 
-  executeRestoreSpec(adhocSpec, snapshotId, 'local').then(async (result: RestoreRunResult) => {
-    await db
-      .update(restoreRuns)
-      .set({
-        status:      result.success ? 'success' : 'failed',
-        log:         JSON.stringify(result.steps),
-        completedAt: result.completedAt ?? result.abortedAt ?? new Date(),
+  // 6. Fire-and-forget the actual restore
+  void (async () => {
+    const startedAt = Date.now()
+    try {
+      const engine = new ResticEngine({
+        repositoryUrl: repoConfig.repositoryUrl,
+        password,
+        envVars:       repoConfig.envVars ?? {},
+        binaryPath:    process.env['RESTIC_BINARY_PATH'],
       })
-      .where(eq(restoreRuns.id, runId))
-  }).catch(async (err: unknown) => {
-    await db.update(restoreRuns).set({
-      status: 'failed', completedAt: new Date(),
-    }).where(eq(restoreRuns.id, runId))
-    console.error('[restore] restoreFromSnapshot failed:', err)
-  })
+      const result = await engine.restore(snapshotId, targetPath, [sourcePath])
+      await db.update(restoreRuns).set({
+        status:      'success',
+        log:         JSON.stringify({
+          filesRestored: result.filesRestored,
+          totalSize:     result.totalSize,
+          durationSec:   result.duration,
+          targetPath,
+          sourcePath,
+        }),
+        completedAt: new Date(),
+      }).where(eq(restoreRuns.id, runId))
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      await db.update(restoreRuns).set({
+        status:      'failed',
+        log:         JSON.stringify({
+          error:      errMsg,
+          targetPath,
+          sourcePath,
+          durationMs: Date.now() - startedAt,
+        }),
+        completedAt: new Date(),
+      }).where(eq(restoreRuns.id, runId))
+      console.error('[restore] restoreFromSnapshot failed:', errMsg)
+    }
+  })()
 
   return { ok: true, runId }
 }
