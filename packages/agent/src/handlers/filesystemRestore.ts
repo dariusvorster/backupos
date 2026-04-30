@@ -1,5 +1,6 @@
 import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
+import { resolveHostPrefix, applyHostPrefix } from '../lib/host-prefix'
 
 type SendFn = (msg: AgentMessage) => void
 type RunFilesystemRestoreMsg = Extract<ServerMessage, { type: 'run_filesystem_restore' }>
@@ -11,7 +12,11 @@ export async function handleFilesystemRestore(
 ): Promise<void> {
   const { requestId, restoreId, repoUrl, repoPassword, envVars, snapshotId, targetPath, sourcePath } = msg
 
-  console.log(`[agent] run_filesystem_restore received: restoreId=${restoreId} snapshotId=${snapshotId.slice(0, 8)} sourcePath=${sourcePath} targetPath=${targetPath} repoUrl=${repoUrl}`)
+  const hostPrefix = resolveHostPrefix()
+  const prefixedSourcePath = applyHostPrefix(sourcePath, hostPrefix)
+  const prefixedTargetPath = msg.targetIsAgentLocal ? targetPath : applyHostPrefix(targetPath, hostPrefix)
+
+  console.log(`[agent] run_filesystem_restore received: restoreId=${restoreId} snapshotId=${snapshotId.slice(0, 8)} sourcePath=${sourcePath}→${prefixedSourcePath} targetPath=${targetPath}→${prefixedTargetPath} targetIsAgentLocal=${msg.targetIsAgentLocal} repoUrl=${repoUrl}`)
 
   send({ type: 'filesystem_restore_started', requestId, restoreId })
 
@@ -24,7 +29,7 @@ export async function handleFilesystemRestore(
       binaryPath,
     })
     const shortId = snapshotId.slice(0, 8)
-    const result = await engine.restore(shortId, targetPath, [sourcePath])
+    const result = await engine.restore(shortId, prefixedTargetPath, [prefixedSourcePath])
     console.log(`[agent] engine.restore returned: filesRestored=${result.filesRestored} duration=${result.duration} totalSize=${result.totalSize}`)
     send({
       type:          'filesystem_restore_complete',

@@ -239,6 +239,8 @@ export async function restoreFromSnapshot(
     startedAt: new Date(),
   })
 
+  const targetIsAgentLocal = targetType === 'temp' || targetType === 'custom'
+
   // 8. Dispatch to agent and await started ack
   const dispatchResult = await requestFilesystemRestore(agentId, {
     restoreId:    runId,
@@ -248,6 +250,7 @@ export async function restoreFromSnapshot(
     snapshotId,
     targetPath,
     sourcePath,
+    targetIsAgentLocal,
   })
 
   if (!dispatchResult.ok) {

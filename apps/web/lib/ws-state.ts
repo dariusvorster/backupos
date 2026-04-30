@@ -218,13 +218,14 @@ export function resolveListCompose(requestId: string, project: ComposeProjectLis
 export function requestFilesystemRestore(
   agentId: string,
   payload: {
-    restoreId:    string
-    repoUrl:      string
-    repoPassword: string
-    envVars?:     Record<string, string>
-    snapshotId:   string
-    targetPath:   string
-    sourcePath:   string
+    restoreId:          string
+    repoUrl:            string
+    repoPassword:       string
+    envVars?:           Record<string, string>
+    snapshotId:         string
+    targetPath:         string
+    sourcePath:         string
+    targetIsAgentLocal: boolean
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return new Promise((resolve) => {
