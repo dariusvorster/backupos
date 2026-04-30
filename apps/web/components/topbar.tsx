@@ -23,6 +23,8 @@ const LABELS: Record<string, string> = {
   new:          'New',
   verification: 'Verification',
   docs:         'Docs',
+  host:         'Host',
+  job:          'Job',
 }
 
 function buildBreadcrumb(pathname: string): { label: string; href: string }[] {
