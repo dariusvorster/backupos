@@ -28,7 +28,7 @@ Two tiers. Keep simple.
 
 No license key required. BackupOS works out of the box with these limits:
 
-- Max 3 agents connected concurrently
+- Max 5 agents connected concurrently
 - Max 1 admin user (no role management UI; everyone is admin)
 - Max 5 repositories
 - Single alert channel
@@ -55,7 +55,7 @@ Requires valid license key. All Free features plus:
 - Integration tokens (InfraOS federation, /api/v1/integration/*)
 - Priority email support
 
-Pricing: $TBD/year (set with Lemon Squeezy). Single-instance license.
+Pricing: **$9/month or $99/year** (annual saves ~17% — roughly one month free). Single-instance license. Set up via Lemon Squeezy at homelabos.lemonsqueezy.com.
 
 ## Architecture
 
@@ -173,7 +173,7 @@ export async function checkLimit(
   
   const limits = tier === 'pro'
     ? { agents: -1, users: -1, repositories: -1 }
-    : { agents: 3, users: 1, repositories: 5 }
+    : { agents: 5, users: 1, repositories: 5 }
   
   const limit = limits[resource]
   if (limit === -1) return { allowed: true, limit: -1 }
@@ -216,7 +216,7 @@ Small "Free" pill near the user avatar in the topbar. Clicking goes to `/setting
 
 When a Free user hits a limit (e.g. trying to add 4th agent):
 
-- Server action returns clear error: "Free tier is limited to 3 agents. Upgrade to Pro for unlimited agents."
+- Server action returns clear error: "Free tier is limited to 5 agents. Upgrade to Pro for unlimited agents."
 - UI shows error inline AND links to `/settings/license`
 
 ## Public key management
@@ -242,15 +242,15 @@ The validation public key is embedded in BackupOS source. This means:
 
 ## Customer account portal (homelabos.app)
 
-**Out of scope for this design doc** — covered in a separate design later. Brief outline:
+**Out of scope for THIS design doc — has its own design doc TBD** — but in scope for V1 pre-launch. Brief outline:
 
-- New web app at homelabos.app/account (could be Next.js, separate repo)
-- Better-auth for auth
+- New web app at homelabos.app/account (Next.js, separate repo from BackupOS)
+- Better-auth for customer accounts
 - Integrates with Lemon Squeezy via webhooks
 - Stores license records, reissues, sends emails
-- Customer self-service: log in, see all licenses across all Homelab OS products, copy keys, regenerate
+- Customer self-service: log in, see all licenses across all Homelab OS products, copy keys, regenerate, see expiration
 
-This is the long-term answer to "what if customer loses email." For pre-launch V1, email-only delivery is acceptable; the account portal can ship as V1.1.
+This is the long-term answer to "what if customer loses email" and serves as the multi-product license hub for the entire Homelab OS family. Required for V1 launch alongside BackupOS — not a V1.1 deferral.
 
 ## Implementation rollout
 
@@ -263,7 +263,9 @@ Three phases, roughly in order:
 - /settings/license UI with paste form, current state display, remove
 - Apply gating to: enrollAgent, createUserDirect, createRepository, SSO config, integration_tokens
 
-### Phase 2: License issuer service (separate codebase, homelabos.app)
+### Phase 2: License issuer service + customer account portal (separate codebase, homelabos.app)
+
+REQUIRED for V1 pre-launch.
 - New repo, Next.js app
 - Better-auth for customer accounts
 - Lemon Squeezy webhook receiver
