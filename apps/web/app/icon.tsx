@@ -26,6 +26,7 @@ function GridShield({ size }: { size: number }) {
   )
 }
 
-export default function Icon({ id, size: { width } }: { id: string; size: { width: number; height: number } }) {
+export default function Icon({ id }: { id: string }) {
+  const width = id === '512' ? 512 : 192
   return new ImageResponse(<GridShield size={width} />, { width, height: width })
 }
