@@ -14,9 +14,11 @@
   "dependencies": {
     "@backupos/agent-protocol": "workspace:*",
     "@backupos/engine": "workspace:*",
+    "js-yaml": "^4.1.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.13",
     "esbuild": "^0.25.0",

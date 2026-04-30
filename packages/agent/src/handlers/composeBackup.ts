@@ -1,6 +1,9 @@
 import * as fs from 'fs/promises'
+import { readFile, writeFile, mkdir } from 'fs/promises'
+import { join, basename } from 'path'
 import * as os from 'os'
 import * as path from 'path'
+import { redactEnvFile } from '../lib/redact-env'
 import { ResticEngine } from '@backupos/engine'
 import type { AgentMessage, ServerMessage, ComposeServiceConfig } from '@backupos/agent-protocol'
 import {
@@ -202,9 +205,48 @@ export async function runComposeBackup(
       }
     }
 
-    // TODO(env-files): when ComposeServiceConfig.envFiles is populated by handleListCompose,
-    // read each path, redact secret keys, write to tmpDir, append to restic paths.
-    // See follow-on task: env-file backup + redaction (GitHub issue).
+    // ── Env-file backup with redaction ─────────────────────────────────────
+    if (config.includeEnvFiles) {
+      try {
+        const seenFiles = new Set<string>()
+        const envDir = join(tmpDir, 'env-files')
+        let envCount = 0
+        for (const service of config.services) {
+          if (!service.included) continue
+          for (const envFile of service.envFiles) {
+            if (seenFiles.has(envFile)) continue
+            seenFiles.add(envFile)
+            try {
+              const original = await readFile(envFile, 'utf8')
+              const output = config.redactSecretsInEnvFiles ? redactEnvFile(original) : original
+              if (envCount === 0) await mkdir(envDir, { recursive: true })
+              const safeName = `${service.serviceName}__${basename(envFile)}`
+              await writeFile(join(envDir, safeName), output, 'utf8')
+              envCount++
+            } catch (err) {
+              logLines.push(`[compose] WARN: env-file ${envFile} could not be backed up → ${err instanceof Error ? err.message : String(err)}`)
+            }
+          }
+        }
+
+        if (envCount > 0) {
+          try {
+            const result = await makeEngine().backup({
+              paths: [envDir],
+              tags:  [`job:${jobId}`, `compose:${config.projectName}`, 'meta:env-files'],
+              signal: ctrl.signal,
+            })
+            snapshotIds.push(result.snapshotId)
+            logLines.push(result.log)
+            logLines.push(`[compose] backed up ${envCount} env-file(s)${config.redactSecretsInEnvFiles ? ' (secrets redacted)' : ''}`)
+          } catch (err) {
+            logLines.push(`[compose] WARN: env-files backup failed → ${err instanceof Error ? err.message : String(err)}`)
+          }
+        }
+      } catch (err) {
+        logLines.push(`[compose] WARN: env-files block failed → ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
 
     setPhase('finalizing')
     send({
