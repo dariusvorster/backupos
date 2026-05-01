@@ -1,7 +1,45 @@
 'use client'
 
-import { useState } from 'react'
-import { createAlertChannel } from '@/app/actions/alerts'
+import { useState, useRef, useTransition } from 'react'
+import { createAlertChannel, testAlertChannel } from '@/app/actions/alerts'
+
+function buildConfigFromForm(type: string, fd: FormData): Record<string, string> | null {
+  const get = (k: string) => { const v = fd.get(k); return typeof v === 'string' ? v.trim() : '' }
+  if (type === 'discord' || type === 'slack' || type === 'webhook') {
+    const url = get('url'); if (!url) return null; return { url }
+  }
+  if (type === 'zulip') {
+    const url = get('url'), email = get('email'), apiKey = get('apiKey'), stream = get('stream')
+    if (!url || !email || !apiKey || !stream) return null
+    const cfg: Record<string, string> = { url, email, apiKey, stream }
+    const topic = get('topic'); if (topic) cfg.topic = topic
+    return cfg
+  }
+  if (type === 'telegram') {
+    const botToken = get('botToken'), chatId = get('chatId')
+    if (!botToken || !chatId) return null
+    return { botToken, chatId }
+  }
+  if (type === 'pagerduty') {
+    const integrationKey = get('integrationKey'); if (!integrationKey) return null; return { integrationKey }
+  }
+  if (type === 'ntfy') {
+    const url = get('url'), topic = get('topic')
+    if (!url || !topic) return null
+    const cfg: Record<string, string> = { url, topic }
+    const auth = get('auth'); if (auth) cfg.auth = auth
+    return cfg
+  }
+  if (type === 'gotify') {
+    const url = get('url'), appToken = get('appToken')
+    if (!url || !appToken) return null; return { url, appToken }
+  }
+  if (type === 'pushover') {
+    const apiToken = get('apiToken'), userKey = get('userKey')
+    if (!apiToken || !userKey) return null; return { apiToken, userKey }
+  }
+  return null
+}
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '7px 10px', fontSize: 13, boxSizing: 'border-box',
@@ -26,9 +64,31 @@ function Field({ label, name, type = 'text', placeholder, required }: {
 
 export function AddChannelForm() {
   const [type, setType] = useState('discord')
+  const [testStatus, setTestStatus] = useState<{ kind: 'idle' | 'sending' | 'success' | 'error'; message?: string }>({ kind: 'idle' })
+  const [isPending, startTransition] = useTransition()
+  const formRef = useRef<HTMLFormElement | null>(null)
+
+  function handleTest() {
+    if (!formRef.current) return
+    const fd = new FormData(formRef.current)
+    const config = buildConfigFromForm(type, fd)
+    if (!config) {
+      setTestStatus({ kind: 'error', message: 'Fill in the required fields before testing.' })
+      return
+    }
+    setTestStatus({ kind: 'sending' })
+    startTransition(async () => {
+      const result = await testAlertChannel({ kind: 'unsaved', type, config })
+      if (result.ok) {
+        setTestStatus({ kind: 'success' })
+      } else {
+        setTestStatus({ kind: 'error', message: result.error })
+      }
+    })
+  }
 
   return (
-    <form action={createAlertChannel} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <form ref={formRef} action={createAlertChannel} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div>
         <label style={labelStyle}>Name</label>
         <input name="name" required placeholder="e.g. Ops Discord" style={inputStyle} />
@@ -95,16 +155,36 @@ export function AddChannelForm() {
         <Field label="User key" name="userKey" placeholder="Pushover user/group key" required />
       </>}
 
-      <button
-        type="submit"
-        style={{
-          alignSelf: 'flex-start', padding: '7px 18px', fontSize: 13, fontWeight: 500,
-          borderRadius: 'var(--radius-sm)', border: 'none',
-          background: 'var(--accent)', color: '#fff', cursor: 'pointer',
-        }}
-      >
-        Add channel
-      </button>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button
+          type="submit"
+          style={{
+            padding: '7px 18px', fontSize: 13, fontWeight: 500,
+            borderRadius: 'var(--radius-sm)', border: 'none',
+            background: 'var(--accent)', color: '#fff', cursor: 'pointer',
+          }}
+        >
+          Add channel
+        </button>
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={isPending}
+          style={{
+            padding: '7px 14px', fontSize: 13,
+            borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+            background: 'var(--surf2)', color: 'var(--fg)', cursor: 'pointer',
+          }}
+        >
+          {isPending ? 'Sending…' : 'Test'}
+        </button>
+        {testStatus.kind === 'success' && (
+          <span style={{ fontSize: 12, color: 'var(--ok)' }}>Test message delivered</span>
+        )}
+        {testStatus.kind === 'error' && (
+          <span style={{ fontSize: 12, color: 'var(--err)' }}>{testStatus.message}</span>
+        )}
+      </div>
     </form>
   )
 }

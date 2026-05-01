@@ -1,6 +1,7 @@
 import { getDb, alertChannels } from '@backupos/db'
 import { deleteAlertChannel } from '@/app/actions/alerts'
 import { AddChannelForm } from './AddChannelForm'
+import { TestChannelButton } from './TestChannelButton'
 
 const TYPE_LABELS: Record<string, string> = {
   discord:   'Discord',
@@ -59,18 +60,21 @@ export default async function AlertChannelsPage({ searchParams }: { searchParams
                     {TYPE_LABELS[ch.type] ?? ch.type}{subtitle ? ` · ${subtitle}` : ''}
                   </div>
                 </div>
-                <form action={deleteAction}>
-                  <button
-                    type="submit"
-                    style={{
-                      padding: '4px 12px', fontSize: 12, cursor: 'pointer',
-                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                      background: 'var(--surf2)', color: 'var(--err)',
-                    }}
-                  >
-                    Remove
-                  </button>
-                </form>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <TestChannelButton channelId={ch.id} />
+                  <form action={deleteAction}>
+                    <button
+                      type="submit"
+                      style={{
+                        padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+                        borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                        background: 'var(--surf2)', color: 'var(--err)',
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </form>
+                </div>
               </div>
             )
           })}
