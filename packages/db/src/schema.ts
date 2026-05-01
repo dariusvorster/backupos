@@ -623,3 +623,90 @@ export const invite = sqliteTable('invite', {
   usedAt:    integer('used_at'),
   createdAt: integer('created_at').notNull(),
 })
+
+// ── PBS-compatible backend ──────────────────────────────────────────────
+// Tables for the Proxmox Backup Server protocol implementation.
+// Design: docs/design/pbs-backend.md.
+// Milestone 0 ships these tables as scaffolding; behavior lands in later
+// milestones (1 onward).
+
+export const pbsDatastores = sqliteTable('pbs_datastores', {
+  id:                text('id').primaryKey(),
+  name:              text('name').notNull().unique(),
+  path:              text('path').notNull(),
+  createdAt:         integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  pruneSchedule:     text('prune_schedule'),
+  gcSchedule:        text('gc_schedule'),
+  lastGcAt:          integer('last_gc_at', { mode: 'timestamp_ms' }),
+  totalSizeBytes:    integer('total_size_bytes'),
+  uniqueSizeBytes:   integer('unique_size_bytes'),
+  chunkCount:        integer('chunk_count'),
+})
+
+export const pbsNamespaces = sqliteTable('pbs_namespaces', {
+  id:           text('id').primaryKey(),
+  datastoreId:  text('datastore_id').references(() => pbsDatastores.id),
+  path:         text('path').notNull(),
+  createdAt:    integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
+export const pbsSnapshots = sqliteTable('pbs_snapshots', {
+  id:                text('id').primaryKey(),
+  datastoreId:       text('datastore_id').references(() => pbsDatastores.id),
+  namespaceId:       text('namespace_id').references(() => pbsNamespaces.id),
+  backupType:        text('backup_type').notNull(),
+  backupId:          text('backup_id').notNull(),
+  backupTime:        integer('backup_time', { mode: 'timestamp_ms' }).notNull(),
+  finishedAt:        integer('finished_at', { mode: 'timestamp_ms' }),
+  manifest:          text('manifest'),
+  totalSizeBytes:    integer('total_size_bytes'),
+  uniqueSizeBytes:   integer('unique_size_bytes'),
+  protected:         integer('protected', { mode: 'boolean' }).default(false),
+  notes:             text('notes'),
+})
+
+export const pbsChunkRefs = sqliteTable('pbs_chunk_refs', {
+  digest:       text('digest').notNull(),
+  snapshotId:   text('snapshot_id').references(() => pbsSnapshots.id),
+  archiveName:  text('archive_name').notNull(),
+  refCount:     integer('ref_count').notNull(),
+}, t => ({
+  digestSnapshotIdx: index('pbs_chunk_refs_digest_snapshot_idx').on(t.digest, t.snapshotId),
+  digestIdx:         index('pbs_chunk_refs_digest_idx').on(t.digest),
+}))
+
+export const pbsTokens = sqliteTable('pbs_tokens', {
+  id:           text('id').primaryKey(),
+  datastoreId:  text('datastore_id').references(() => pbsDatastores.id),
+  user:         text('user').notNull(),
+  realm:        text('realm').notNull(),
+  tokenName:    text('token_name').notNull(),
+  secretHash:   text('secret_hash').notNull(),
+  permissions:  text('permissions').notNull(),
+  expiresAt:    integer('expires_at', { mode: 'timestamp_ms' }),
+  createdAt:    integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  lastUsedAt:   integer('last_used_at', { mode: 'timestamp_ms' }),
+})
+
+export const pbsActiveSessions = sqliteTable('pbs_active_sessions', {
+  id:           text('id').primaryKey(),
+  tokenId:      text('token_id').references(() => pbsTokens.id),
+  datastoreId:  text('datastore_id').references(() => pbsDatastores.id),
+  backupType:   text('backup_type').notNull(),
+  backupId:     text('backup_id').notNull(),
+  backupTime:   integer('backup_time', { mode: 'timestamp_ms' }).notNull(),
+  startedAt:    integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+  state:        text('state').notNull(),
+  scratchPath:  text('scratch_path'),
+})
+
+export const pbsActiveWrites = sqliteTable('pbs_active_writes', {
+  wid:          text('wid').primaryKey(),
+  sessionId:    text('session_id').references(() => pbsActiveSessions.id),
+  archiveName:  text('archive_name').notNull(),
+  indexType:    text('index_type').notNull(),
+  chunkSize:    integer('chunk_size'),
+  totalSize:    integer('total_size'),
+  digestList:   text('digest_list'),
+  sizeList:     text('size_list'),
+})
