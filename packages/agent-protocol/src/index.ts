@@ -103,6 +103,7 @@ export interface ComposeServiceConfig {
   apphookConfig?: ComposeApphookConfig
   includedVolumes: string[]
   includedBindMounts: string[]
+  envFiles: string[]
 }
 
 export interface ComposeProjectConfig {
