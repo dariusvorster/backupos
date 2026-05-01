@@ -1,201 +1,234 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, rm, readFile, writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
+import { mkdtemp, rm, readdir, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
-import { sha256 } from '@backupos/pbs-protocol'
+import { join } from 'path'
+import { Readable } from 'stream'
+import { createHash } from 'crypto'
 import { FsChunkStore } from './fs-backend'
 
-async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
-  const out: T[] = []
-  for await (const x of iter) out.push(x)
-  return out
+function digestOf(buf: Buffer): string {
+  return createHash('sha256').update(buf).digest('hex')
 }
 
-function toHex(buf: Uint8Array): string {
-  return Buffer.from(buf).toString('hex')
+function streamOf(buf: Buffer): Readable {
+  return Readable.from([buf])
 }
 
-let tmp: string
-let store: FsChunkStore
+describe('FsChunkStore', () => {
+  let root: string
+  let store: FsChunkStore
 
-beforeEach(async () => {
-  tmp = await mkdtemp(join(tmpdir(), 'pbs-storage-test-'))
-  store = new FsChunkStore(tmp)
-  await store.initialize()
-})
-
-afterEach(async () => {
-  await rm(tmp, { recursive: true, force: true })
-})
-
-describe('initialize', () => {
-  it('creates all 65536 shard dirs', async () => {
-    const { readdir } = await import('fs/promises')
-    const entries = await readdir(join(tmp, '.chunks'))
-    expect(entries).toHaveLength(65536)
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'pbs-store-test-'))
+    store = new FsChunkStore({ root })
+    await store.initialize()
   })
 
-  it('is idempotent — calling twice does not throw', async () => {
-    await expect(store.initialize()).resolves.toBeUndefined()
-  })
-})
-
-describe('put', () => {
-  it('returns the SHA-256 digest of the data', async () => {
-    const data = new TextEncoder().encode('hello chunk store')
-    const digest = await store.put(data)
-    expect(toHex(digest)).toBe(toHex(sha256(data)))
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
   })
 
-  it('stores data retrievable by its digest', async () => {
-    const data = new Uint8Array([1, 2, 3, 4, 5])
-    const digest = await store.put(data)
-    const back = await store.get(digest)
-    expect([...back]).toEqual([...data])
+  describe('initialize', () => {
+    it('creates 65536 shard directories', async () => {
+      const shards = await readdir(join(root, '.chunks'))
+      expect(shards.length).toBe(65536)
+      expect(shards).toContain('0000')
+      expect(shards).toContain('00ff')
+      expect(shards).toContain('ffff')
+    })
+
+    it('is idempotent', async () => {
+      await store.initialize()
+      await store.initialize()
+      const shards = await readdir(join(root, '.chunks'))
+      expect(shards.length).toBe(65536)
+    })
   })
 
-  it('is idempotent — second put returns same digest without error', async () => {
-    const data = new TextEncoder().encode('duplicate me')
-    const d1 = await store.put(data)
-    const d2 = await store.put(data)
-    expect(toHex(d1)).toBe(toHex(d2))
+  describe('put', () => {
+    it('writes a new chunk and reports written:true', async () => {
+      const data = Buffer.from('hello chunk store')
+      const digest = digestOf(data)
+      const result = await store.put(digest, streamOf(data))
+      expect(result.written).toBe(true)
+      expect(result.size).toBe(data.length)
+      expect(result.digestHex).toBe(digest)
+    })
+
+    it('deduplicates on second put of same digest', async () => {
+      const data = Buffer.from('repeat me')
+      const digest = digestOf(data)
+      await store.put(digest, streamOf(data))
+      const second = await store.put(digest, streamOf(data))
+      expect(second.written).toBe(false)
+      expect(second.size).toBe(data.length)
+    })
+
+    it('rejects digest mismatch and leaves no file behind', async () => {
+      const data = Buffer.from('actual content')
+      const wrongDigest = '0'.repeat(64)
+      await expect(
+        store.put(wrongDigest, streamOf(data))
+      ).rejects.toThrow(/digest mismatch/)
+      expect(await store.exists(wrongDigest)).toBe(false)
+    })
+
+    it('rejects malformed digest hex', async () => {
+      const data = Buffer.from('x')
+      await expect(store.put('not-hex', streamOf(data))).rejects.toThrow()
+      await expect(store.put('A'.repeat(64), streamOf(data))).rejects.toThrow(/lowercase/)
+    })
+
+    it('places chunk in shard directory derived from first 4 hex of digest', async () => {
+      const data = Buffer.from('shard placement test')
+      const digest = digestOf(data)
+      await store.put(digest, streamOf(data))
+      const shard = digest.slice(0, 4)
+      const filesInShard = await readdir(join(root, '.chunks', shard))
+      expect(filesInShard).toContain(digest)
+    })
+
+    it('drains source stream on dedup so callers can keep streaming', async () => {
+      const data = Buffer.from('dedup drain')
+      const digest = digestOf(data)
+      await store.put(digest, streamOf(data))
+
+      let pushed = false
+      const observer = new Readable({
+        read() {
+          if (!pushed) {
+            pushed = true
+            this.push(data)
+            this.push(null)
+          }
+        }
+      })
+      const second = await store.put(digest, observer)
+      expect(second.written).toBe(false)
+      expect(observer.readableEnded).toBe(true)
+    })
+
+    it('handles large chunks (1 MiB)', async () => {
+      const data = Buffer.alloc(1024 * 1024, 0x42)
+      const digest = digestOf(data)
+      const result = await store.put(digest, streamOf(data))
+      expect(result.written).toBe(true)
+      expect(result.size).toBe(1024 * 1024)
+    })
+
+    it('leaves no .tmp files behind after successful put', async () => {
+      const data = Buffer.from('clean tmp')
+      const digest = digestOf(data)
+      await store.put(digest, streamOf(data))
+      const shard = digest.slice(0, 4)
+      const files = await readdir(join(root, '.chunks', shard))
+      expect(files.filter(f => f.includes('.tmp.'))).toEqual([])
+    })
+
+    it('leaves no .tmp files behind after digest-mismatch failure', async () => {
+      const data = Buffer.from('failed put')
+      const wrongDigest = '1'.repeat(64)
+      await expect(store.put(wrongDigest, streamOf(data))).rejects.toThrow()
+      const shard = wrongDigest.slice(0, 4)
+      const files = await readdir(join(root, '.chunks', shard))
+      expect(files).toEqual([])
+    })
   })
 
-  it('does not create a second copy on dedup', async () => {
-    const data = new TextEncoder().encode('dedup check')
-    const digest = await store.put(data)
-    await store.put(data)
-    const digests = await collect(store.list())
-    expect(digests.filter(d => toHex(d) === toHex(digest))).toHaveLength(1)
+  describe('get', () => {
+    it('returns a readable stream for an existing chunk', async () => {
+      const data = Buffer.from('readable test data')
+      const digest = digestOf(data)
+      await store.put(digest, streamOf(data))
+
+      const stream = await store.get(digest)
+      expect(stream).not.toBeNull()
+      const chunks: Buffer[] = []
+      for await (const c of stream!) chunks.push(c as Buffer)
+      expect(Buffer.concat(chunks).equals(data)).toBe(true)
+    })
+
+    it('returns null for non-existent chunk', async () => {
+      const stream = await store.get('a'.repeat(64))
+      expect(stream).toBeNull()
+    })
   })
 
-  it('places chunk under the correct shard directory', async () => {
-    const data = new TextEncoder().encode('shard path check')
-    const digest = await store.put(data)
-    const shard = toHex(digest.subarray(0, 2))
-    const path = join(tmp, '.chunks', shard, toHex(digest))
-    const raw = await readFile(path)
-    expect([...new Uint8Array(raw)]).toEqual([...data])
+  describe('exists', () => {
+    it('returns true for existing chunk, false otherwise', async () => {
+      const data = Buffer.from('exists check')
+      const digest = digestOf(data)
+      expect(await store.exists(digest)).toBe(false)
+      await store.put(digest, streamOf(data))
+      expect(await store.exists(digest)).toBe(true)
+    })
   })
 
-  it('round-trips binary data correctly', async () => {
-    const data = new Uint8Array(256).map((_, i) => i)
-    const digest = await store.put(data)
-    const back = await store.get(digest)
-    expect([...back]).toEqual([...data])
+  describe('delete', () => {
+    it('removes an existing chunk and returns true', async () => {
+      const data = Buffer.from('to be deleted')
+      const digest = digestOf(data)
+      await store.put(digest, streamOf(data))
+      expect(await store.delete(digest)).toBe(true)
+      expect(await store.exists(digest)).toBe(false)
+    })
+
+    it('returns false (idempotent) for non-existent chunk', async () => {
+      expect(await store.delete('b'.repeat(64))).toBe(false)
+    })
   })
 
-  it('handles empty Uint8Array', async () => {
-    const data = new Uint8Array(0)
-    const digest = await store.put(data)
-    const back = await store.get(digest)
-    expect(back).toHaveLength(0)
-  })
-})
+  describe('list', () => {
+    it('yields all stored chunk digests', async () => {
+      const items = [
+        Buffer.from('chunk one'),
+        Buffer.from('chunk two'),
+        Buffer.from('chunk three'),
+      ]
+      const digests = items.map(digestOf)
+      for (let i = 0; i < items.length; i++) {
+        await store.put(digests[i]!, streamOf(items[i]!))
+      }
+      const found: string[] = []
+      for await (const d of store.list()) found.push(d)
+      expect(found.sort()).toEqual([...digests].sort())
+    })
 
-describe('get', () => {
-  it('throws for an unknown digest', async () => {
-    const fake = sha256(new TextEncoder().encode('nonexistent'))
-    await expect(store.get(fake)).rejects.toThrow(/not found/)
-  })
+    it('yields nothing for empty store', async () => {
+      const found: string[] = []
+      for await (const d of store.list()) found.push(d)
+      expect(found).toEqual([])
+    })
 
-  it('throws when the stored file is corrupt', async () => {
-    const data = new TextEncoder().encode('will be corrupted')
-    const digest = await store.put(data)
-    const shard = toHex(digest.subarray(0, 2))
-    const path = join(tmp, '.chunks', shard, toHex(digest))
-    await writeFile(path, 'corrupted')
-    await expect(store.get(digest)).rejects.toThrow(/mismatch/)
-  })
-})
-
-describe('exists', () => {
-  it('returns true for a stored chunk', async () => {
-    const data = new TextEncoder().encode('exists test')
-    const digest = await store.put(data)
-    expect(await store.exists(digest)).toBe(true)
-  })
-
-  it('returns false for an absent chunk', async () => {
-    const fake = sha256(new TextEncoder().encode('absent'))
-    expect(await store.exists(fake)).toBe(false)
+    it('ignores non-digest files in shard directories', async () => {
+      await writeFile(join(root, '.chunks', '0000', 'README'), 'not a chunk')
+      const found: string[] = []
+      for await (const d of store.list()) found.push(d)
+      expect(found).toEqual([])
+    })
   })
 
-  it('returns false after deletion', async () => {
-    const data = new TextEncoder().encode('delete me')
-    const digest = await store.put(data)
-    await store.delete(digest)
-    expect(await store.exists(digest)).toBe(false)
-  })
-})
+  describe('stats', () => {
+    it('reports chunk count and total bytes', async () => {
+      const items = [
+        Buffer.from('aaa'),
+        Buffer.from('bbbb'),
+        Buffer.from('ccccc'),
+      ]
+      let expectedTotal = 0n
+      for (const item of items) {
+        await store.put(digestOf(item), streamOf(item))
+        expectedTotal += BigInt(item.length)
+      }
+      const stats = await store.stats()
+      expect(stats.chunkCount).toBe(3)
+      expect(stats.totalBytes).toBe(expectedTotal)
+    })
 
-describe('delete', () => {
-  it('returns true when chunk existed', async () => {
-    const data = new TextEncoder().encode('to delete')
-    const digest = await store.put(data)
-    expect(await store.delete(digest)).toBe(true)
-  })
-
-  it('returns false for an absent chunk', async () => {
-    const fake = sha256(new TextEncoder().encode('not there'))
-    expect(await store.delete(fake)).toBe(false)
-  })
-
-  it('makes the chunk unreadable after deletion', async () => {
-    const data = new TextEncoder().encode('gone after delete')
-    const digest = await store.put(data)
-    await store.delete(digest)
-    await expect(store.get(digest)).rejects.toThrow(/not found/)
-  })
-})
-
-describe('list', () => {
-  it('yields nothing for an empty store', async () => {
-    const digests = await collect(store.list())
-    expect(digests).toHaveLength(0)
-  })
-
-  it('yields all stored digests', async () => {
-    const items = ['alpha', 'beta', 'gamma'].map(s => new TextEncoder().encode(s))
-    const expected = await Promise.all(items.map(d => store.put(d)))
-    const listed = await collect(store.list())
-    const listedHex = listed.map(toHex).sort()
-    const expectedHex = expected.map(toHex).sort()
-    expect(listedHex).toEqual(expectedHex)
-  })
-
-  it('does not yield deleted chunks', async () => {
-    const data = new TextEncoder().encode('ephemeral')
-    const digest = await store.put(data)
-    await store.delete(digest)
-    const listed = await collect(store.list())
-    expect(listed.map(toHex)).not.toContain(toHex(digest))
-  })
-})
-
-describe('stats', () => {
-  it('returns zeros for an empty store', async () => {
-    const s = await store.stats()
-    expect(s.chunkCount).toBe(0)
-    expect(s.totalBytes).toBe(0)
-  })
-
-  it('counts chunks and bytes correctly', async () => {
-    const a = new TextEncoder().encode('aaa')
-    const b = new TextEncoder().encode('bbbbb')
-    await store.put(a)
-    await store.put(b)
-    const s = await store.stats()
-    expect(s.chunkCount).toBe(2)
-    expect(s.totalBytes).toBe(a.byteLength + b.byteLength)
-  })
-
-  it('reflects deletion in stats', async () => {
-    const data = new TextEncoder().encode('count me')
-    const digest = await store.put(data)
-    await store.delete(digest)
-    const s = await store.stats()
-    expect(s.chunkCount).toBe(0)
-    expect(s.totalBytes).toBe(0)
+    it('reports zero for empty store', async () => {
+      const stats = await store.stats()
+      expect(stats.chunkCount).toBe(0)
+      expect(stats.totalBytes).toBe(0n)
+    })
   })
 })

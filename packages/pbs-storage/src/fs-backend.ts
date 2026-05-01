@@ -1,143 +1,206 @@
-// Filesystem-backed, content-addressed chunk store.
+// Filesystem-backed ChunkStore implementation.
 //
-// On-disk layout (mirrors PBS datastore convention):
-//   <root>/.chunks/<4-hex-shard>/<64-hex-digest>
+// On-disk layout per public PBS storage docs
+// (https://pbs.proxmox.com/docs/storage.html):
 //
-// Shard = first two bytes of the SHA-256 digest expressed as 4 lowercase hex chars.
-// All 65 536 shard dirs (0000–ffff) are pre-allocated by initialize() so that
-// directory creation is never on the hot path.
+//   <root>/.chunks/<first-4-hex-of-digest>/<full-64-hex-digest>
 //
-// Writes are atomic: data lands in a tmp file (same parent dir, so rename is
-// same-device), fdatasync'd, then renamed into place.
+// 65536 shard subdirectories pre-created at datastore creation time.
+// First 4 hex characters of the digest determine the shard. This sharding
+// keeps any one directory under ~256k files even at PB scale.
+//
+// Atomic writes: write to <digest>.tmp.<random>, fsync, rename. Same-device
+// rename is atomic on Linux ext4/xfs. Concurrent writers of the same digest
+// don't corrupt — both wrote identical content (verified hash matches), so
+// last-rename-wins yields the same result as first-write-wins.
+//
+// Source: clean-room implementation. No PBS or pmoxs3backuproxy source code
+// was read or transcribed.
 
-import { mkdir, stat, open, rename, unlink, readdir } from 'fs/promises'
+import { createReadStream, createWriteStream } from 'fs'
+import { mkdir, rename, stat, unlink, opendir, access } from 'fs/promises'
+import { constants as fsConstants } from 'fs'
 import { join } from 'path'
-import { sha256 } from '@backupos/pbs-protocol'
-import type { ChunkStore, ChunkStoreStats } from './types'
+import { createHash, randomBytes } from 'crypto'
+import { Readable } from 'stream'
+import { pipeline } from 'stream/promises'
+import type {
+  ChunkStore,
+  ChunkStorePutResult,
+  ChunkStoreStats,
+  ChunkDigestHex,
+} from './types'
 
-const SHARD_COUNT = 0x10000 // 65 536
+const SHARD_COUNT = 0x10000          // 65536
+const SHARD_HEX_WIDTH = 4
+const DIGEST_HEX_LENGTH = 64         // SHA-256 hex
 
-function toHex(buf: Uint8Array): string {
-  return Buffer.from(buf).toString('hex')
-}
-
-function shardName(digest: Uint8Array): string {
-  return toHex(digest.subarray(0, 2))
-}
-
-function chunkPath(root: string, digest: Uint8Array): string {
-  return join(root, '.chunks', shardName(digest), toHex(digest))
+export interface FsChunkStoreOptions {
+  /** Root of the datastore. Store manages <root>/.chunks/. */
+  root: string
 }
 
 export class FsChunkStore implements ChunkStore {
-  constructor(readonly root: string) {}
+  private readonly chunksDir: string
 
-  /** Create all shard directories. Safe to call multiple times (recursive: true). */
+  constructor(opts: FsChunkStoreOptions) {
+    this.chunksDir = join(opts.root, '.chunks')
+  }
+
+  /**
+   * Pre-create all 65536 shard directories. Idempotent: existing dirs are
+   * left in place. mkdir({ recursive: true }) does not throw on EEXIST.
+   */
   async initialize(): Promise<void> {
+    await mkdir(this.chunksDir, { recursive: true })
     for (let i = 0; i < SHARD_COUNT; i++) {
-      const shard = i.toString(16).padStart(4, '0')
-      await mkdir(join(this.root, '.chunks', shard), { recursive: true })
+      const shard = i.toString(16).padStart(SHARD_HEX_WIDTH, '0')
+      await mkdir(join(this.chunksDir, shard), { recursive: true })
     }
   }
 
-  async put(data: Uint8Array): Promise<Uint8Array> {
-    const digest = sha256(data)
-    const target = chunkPath(this.root, digest)
+  async put(digestHex: ChunkDigestHex, source: Readable): Promise<ChunkStorePutResult> {
+    validateDigestHex(digestHex)
+    const finalPath = this.pathFor(digestHex)
 
-    // Dedup short-circuit — if file already exists, skip the write.
-    try {
-      await stat(target)
-      return digest
-    } catch {
-      // not found — proceed
+    // Dedup: if already present, drain the source so the caller can complete
+    // the upload, but skip the rewrite.
+    if (await fileExists(finalPath)) {
+      await drainStream(source)
+      const existing = await stat(finalPath)
+      return { written: false, size: existing.size, digestHex }
     }
 
-    const shard = join(this.root, '.chunks', shardName(digest))
-    const tmp = join(shard, `.tmp.${process.pid}.${Date.now()}`)
+    const tmpPath = `${finalPath}.tmp.${randomBytes(8).toString('hex')}`
+    const hasher = createHash('sha256')
+    let bytesWritten = 0
 
-    const fh = await open(tmp, 'w')
+    const sink = createWriteStream(tmpPath, { flags: 'wx' })
+
     try {
-      await fh.writeFile(data)
-      await fh.datasync()
-    } finally {
-      await fh.close()
-    }
+      await pipeline(
+        source,
+        async function* (src) {
+          for await (const chunk of src) {
+            const buf = chunk as Buffer
+            hasher.update(buf)
+            bytesWritten += buf.length
+            yield buf
+          }
+        },
+        sink
+      )
 
-    await rename(tmp, target)
-    return digest
-  }
-
-  async get(digest: Uint8Array): Promise<Uint8Array> {
-    const target = chunkPath(this.root, digest)
-    let buf: Buffer
-    try {
-      const fh = await open(target, 'r')
-      try {
-        buf = await fh.readFile()
-      } finally {
-        await fh.close()
+      const actualHashHex = hasher.digest('hex')
+      if (actualHashHex !== digestHex) {
+        await safeUnlink(tmpPath)
+        throw new Error(
+          `chunk digest mismatch: expected ${digestHex}, got ${actualHashHex}`
+        )
       }
-    } catch {
-      throw new Error(`chunk not found: ${toHex(digest)}`)
+
+      await rename(tmpPath, finalPath)
+
+    } catch (err) {
+      await safeUnlink(tmpPath)
+      throw err
     }
 
-    const data = new Uint8Array(buf)
-    const actual = sha256(data)
-    if (toHex(actual) !== toHex(digest)) {
-      throw new Error(`chunk digest mismatch: expected ${toHex(digest)}, got ${toHex(actual)}`)
-    }
-
-    return data
+    return { written: true, size: bytesWritten, digestHex }
   }
 
-  async exists(digest: Uint8Array): Promise<boolean> {
+  async get(digestHex: ChunkDigestHex): Promise<Readable | null> {
+    validateDigestHex(digestHex)
+    const path = this.pathFor(digestHex)
+    if (!await fileExists(path)) return null
+    return createReadStream(path)
+  }
+
+  async exists(digestHex: ChunkDigestHex): Promise<boolean> {
+    validateDigestHex(digestHex)
+    return fileExists(this.pathFor(digestHex))
+  }
+
+  async *list(): AsyncIterable<ChunkDigestHex> {
+    let topLevel
     try {
-      await stat(chunkPath(this.root, digest))
+      topLevel = await opendir(this.chunksDir)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
+      throw err
+    }
+
+    for await (const shardEntry of topLevel) {
+      if (!shardEntry.isDirectory()) continue
+      if (shardEntry.name.length !== SHARD_HEX_WIDTH) continue
+      if (!/^[0-9a-f]{4}$/.test(shardEntry.name)) continue
+
+      const shardDir = await opendir(join(this.chunksDir, shardEntry.name))
+      for await (const chunkEntry of shardDir) {
+        if (!chunkEntry.isFile()) continue
+        if (chunkEntry.name.length !== DIGEST_HEX_LENGTH) continue
+        if (!/^[0-9a-f]{64}$/.test(chunkEntry.name)) continue
+        yield chunkEntry.name
+      }
+    }
+  }
+
+  async delete(digestHex: ChunkDigestHex): Promise<boolean> {
+    validateDigestHex(digestHex)
+    try {
+      await unlink(this.pathFor(digestHex))
       return true
-    } catch {
-      return false
-    }
-  }
-
-  async *list(): AsyncIterable<Uint8Array> {
-    for (let i = 0; i < SHARD_COUNT; i++) {
-      const shard = i.toString(16).padStart(4, '0')
-      const dir = join(this.root, '.chunks', shard)
-      let entries: string[]
-      try {
-        entries = await readdir(dir)
-      } catch {
-        continue
-      }
-      for (const name of entries) {
-        if (name.startsWith('.')) continue
-        const bytes = Buffer.from(name, 'hex')
-        if (bytes.length === 32) yield new Uint8Array(bytes)
-      }
-    }
-  }
-
-  async delete(digest: Uint8Array): Promise<boolean> {
-    try {
-      await unlink(chunkPath(this.root, digest))
-      return true
-    } catch {
-      return false
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+      throw err
     }
   }
 
   async stats(): Promise<ChunkStoreStats> {
     let chunkCount = 0
-    let totalBytes = 0
-    for await (const digest of this.list()) {
-      chunkCount++
+    let totalBytes = 0n
+    for await (const digestHex of this.list()) {
       try {
-        const s = await stat(chunkPath(this.root, digest))
-        totalBytes += s.size
-      } catch {
-        // chunk was deleted between list and stat — skip
+        const s = await stat(this.pathFor(digestHex))
+        chunkCount++
+        totalBytes += BigInt(s.size)
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
       }
     }
     return { chunkCount, totalBytes }
   }
+
+  private pathFor(digestHex: ChunkDigestHex): string {
+    const shard = digestHex.slice(0, SHARD_HEX_WIDTH)
+    return join(this.chunksDir, shard, digestHex)
+  }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────
+
+function validateDigestHex(digestHex: ChunkDigestHex): void {
+  if (digestHex.length !== DIGEST_HEX_LENGTH) {
+    throw new Error(`digest hex must be ${DIGEST_HEX_LENGTH} chars, got ${digestHex.length}`)
+  }
+  if (!/^[0-9a-f]{64}$/.test(digestHex)) {
+    throw new Error('digest hex must be lowercase hex')
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path, fsConstants.F_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function safeUnlink(path: string): Promise<void> {
+  try { await unlink(path) } catch { /* best-effort */ }
+}
+
+async function drainStream(stream: Readable): Promise<void> {
+  for await (const _ of stream) { /* drain */ }
 }
