@@ -101,6 +101,17 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
     startedAt: new Date(),
   })
 
+  try {
+    appendLog({
+      level: 'info',
+      component: 'web',
+      message: `Restore dispatched for spec "${spec.name}"`,
+      entityType: 'restore_run',
+      entityId: runId,
+      payload: { specId, snapshotId },
+    })
+  } catch (err) { console.error('[logger]', err) }
+
   executeRestoreSpec(parsed, snapshotId, 'local', deliverRestoreNotification).then(async (result: RestoreRunResult) => {
     await db
       .update(restoreRuns)
