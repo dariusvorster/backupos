@@ -94,6 +94,9 @@ importers:
       '@backupos/pbs-server':
         specifier: workspace:*
         version: link:../../packages/pbs-server
+      '@backupos/pbs-storage':
+        specifier: workspace:*
+        version: link:../../packages/pbs-storage
       '@backupos/restore':
         specifier: workspace:*
         version: link:../../packages/restore
