@@ -861,7 +861,7 @@ void app.prepare().then(() => {
     void import('./lib/scheduler').then(({ initScheduler }) => initScheduler())
 
     // PBS-compatible protocol listener (port 8007).
-    // Boots after Next.js. Uses cert at /etc/backupos/pbs-cert.pem.
+    // Boots after Next.js. Cert lives in /var/lib/backupos/pbs/ (writable by service user).
     // Version endpoint only in M3a; auth and protocol endpoints land in M3b/M4/M5.
     void (async () => {
       try {
@@ -869,8 +869,8 @@ void app.prepare().then(() => {
           port: Number(process.env['PBS_PORT'] ?? '8007'),
           host: process.env['PBS_HOST'] ?? '0.0.0.0',
           certPaths: {
-            certPath: process.env['PBS_TLS_CERT'] ?? '/etc/backupos/pbs-cert.pem',
-            keyPath:  process.env['PBS_TLS_KEY']  ?? '/etc/backupos/pbs-key.pem',
+            certPath: process.env['PBS_TLS_CERT'] ?? '/var/lib/backupos/pbs/cert.pem',
+            keyPath:  process.env['PBS_TLS_KEY']  ?? '/var/lib/backupos/pbs/key.pem',
           },
           log: (msg) => console.log(`[pbs] ${msg}`),
         })
