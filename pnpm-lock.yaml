@@ -91,6 +91,9 @@ importers:
       '@backupos/monitors':
         specifier: workspace:*
         version: link:../../packages/monitors
+      '@backupos/pbs-server':
+        specifier: workspace:*
+        version: link:../../packages/pbs-server
       '@backupos/restore':
         specifier: workspace:*
         version: link:../../packages/restore
@@ -176,6 +179,9 @@ importers:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
 
   apps/web-site:
     dependencies:
@@ -355,6 +361,47 @@ importers:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
+
+  packages/pbs-protocol:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+
+  packages/pbs-server:
+    dependencies:
+      '@backupos/pbs-protocol':
+        specifier: workspace:*
+        version: link:../pbs-protocol
+      '@backupos/pbs-storage':
+        specifier: workspace:*
+        version: link:../pbs-storage
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+
+  packages/pbs-storage:
+    dependencies:
+      '@backupos/pbs-protocol':
+        specifier: workspace:*
+        version: link:../pbs-protocol
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/restore:
     dependencies:

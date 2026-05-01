@@ -8,6 +8,7 @@ import { createSecureServer, type Http2SecureServer, type ServerHttp2Session } f
 import type { AddressInfo } from 'net'
 import { ensureSelfSignedCert, type CertPaths } from './cert'
 import { handleVersion } from './handlers/version'
+import { validatePbsAuth, type AuthLookup } from './auth'
 
 export interface StartPbsServerOptions {
   /** TCP port for the listener. Defaults to 8007 (PBS default). */
@@ -22,6 +23,12 @@ export interface StartPbsServerOptions {
   reportedRelease?: string
   /** Optional log function for boot messages. Defaults to console.log. */
   log?: (msg: string) => void
+  /**
+   * Token lookup callback. When provided, every request is authenticated via
+   * `Authorization: PBSAPIToken=…`; unauthenticated requests receive 401.
+   * When omitted, auth is skipped (useful for integration tests and local dev).
+   */
+  authLookup?: AuthLookup
 }
 
 export interface PbsServerHandle {
@@ -60,7 +67,16 @@ export function startPbsServer(opts: StartPbsServerOptions): Promise<PbsServerHa
   // The 'request' event fires for both HTTP/2 and HTTP/1.1 on Http2SecureServer
   // with allowHTTP1: true. Using 'stream' in addition would double-handle H2
   // requests and cause ERR_HTTP2_HEADERS_SENT.
-  server.on('request', (req, res) => {
+  server.on('request', async (req, res) => {
+    if (opts.authLookup) {
+      const authResult = await validatePbsAuth(req, opts.authLookup)
+      if (!authResult.ok) {
+        res.writeHead(401, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: authResult.reason }))
+        return
+      }
+    }
+
     const path = req.url ?? '/'
     if (req.method === 'GET' && path.startsWith('/api2/json/version')) {
       const body = JSON.stringify(handleVersion({

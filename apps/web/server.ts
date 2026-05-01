@@ -8,7 +8,7 @@ import type { IncomingMessage } from 'http'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
+import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, pbsTokens, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete } from './lib/ws-state'
@@ -862,7 +862,6 @@ void app.prepare().then(() => {
 
     // PBS-compatible protocol listener (port 8007).
     // Boots after Next.js. Cert lives in /var/lib/backupos/pbs/ (writable by service user).
-    // Version endpoint only in M3a; auth and protocol endpoints land in M3b/M4/M5.
     void (async () => {
       try {
         const pbsHandle = await startPbsServer({
@@ -873,6 +872,31 @@ void app.prepare().then(() => {
             keyPath:  process.env['PBS_TLS_KEY']  ?? '/var/lib/backupos/pbs/key.pem',
           },
           log: (msg) => console.log(`[pbs] ${msg}`),
+          authLookup: async (user, realm, tokenName) => {
+            const db = getDb()
+            const rows = await db
+              .select()
+              .from(pbsTokens)
+              .where(
+                and(
+                  eq(pbsTokens.user,      user),
+                  eq(pbsTokens.realm,     realm),
+                  eq(pbsTokens.tokenName, tokenName),
+                )
+              )
+              .limit(1)
+            const row = rows[0]
+            if (!row) return null
+            return {
+              tokenId:     row.id,
+              secretHash:  row.secretHash,
+              user:        row.user,
+              realm:       row.realm,
+              tokenName:   row.tokenName,
+              permissions: row.permissions,
+              expiresAt:   row.expiresAt ?? null,
+            }
+          },
         })
         console.log(`[pbs] cert fingerprint: ${pbsHandle.certFingerprint}`)
       } catch (err) {

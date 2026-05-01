@@ -15,3 +15,6 @@ export {
   computeCertFingerprint,
 } from './cert'
 export type { CertPaths, CertMaterial } from './cert'
+
+export { validatePbsAuth } from './auth'
+export type { AuthLookup, AuthLookupResult, PbsTokenIdentity, ValidateResult } from './auth'
