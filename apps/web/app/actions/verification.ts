@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, verificationTests, verificationRuns, backupRuns, backupJobs, repositories, eq, and, desc } from '@backupos/db'
-import { decryptField } from '@/lib/repo-crypto'
+import { encryptField, decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { connectedAgentIds } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
@@ -15,10 +15,24 @@ export async function createVerificationTest(data: {
   targetType: string
   validationHook: string
   schedule: string
+  targetConfig?: {
+    host: string
+    user: string
+    port?: number
+    sshKey: string
+    remoteDir: string
+    cleanupRemote?: boolean
+  } | null
 }): Promise<void> {
   await requireAdmin() // admin only
-  const { name, jobId, targetType, validationHook, schedule } = data
+  const { name, jobId, targetType, validationHook, schedule, targetConfig } = data
   if (!name || !jobId || !targetType || !schedule) return
+
+  let storedTargetConfig: string | null = null
+  if (targetType === 'ssh_target' && targetConfig) {
+    const { sshKey, ...rest } = targetConfig
+    storedTargetConfig = JSON.stringify({ ...rest, sshKey: encryptField(sshKey) })
+  }
 
   const db = getDb()
   const id = crypto.randomUUID()
@@ -27,6 +41,7 @@ export async function createVerificationTest(data: {
     name,
     jobId,
     targetType,
+    targetConfig:   storedTargetConfig,
     validationHook: validationHook || null,
     schedule,
     enabled:   true,
