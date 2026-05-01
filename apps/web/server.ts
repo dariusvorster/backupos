@@ -569,10 +569,10 @@ void app.prepare().then(() => {
             totalSize:       msg.stats.totalBytesProcessed,
             duration:        msg.stats.durationMs,
           }).where(eq(backupRuns.id, run.id))
-          try { appendLog({ level: 'info', component: 'web', message: `Backup succeeded for job ${msg.jobId}`, entityType: 'job', entityId: msg.jobId, payload: { runId: run.id, snapshotId: msg.snapshotId, durationMs: msg.stats.durationMs, sizeBytes: msg.stats.totalBytesProcessed } }) } catch (err) { console.error('[logger]', err) }
-
-          const [jobForNext] = await db.select({ schedule: backupJobs.schedule })
+          const [jobForNext] = await db.select({ schedule: backupJobs.schedule, name: backupJobs.name })
             .from(backupJobs).where(eq(backupJobs.id, msg.jobId)).limit(1)
+          const jobLabel = jobForNext?.name ?? msg.jobId
+          try { appendLog({ level: 'info', component: 'web', message: `Backup succeeded for job "${jobLabel}"`, entityType: 'job', entityId: msg.jobId, payload: { runId: run.id, snapshotId: msg.snapshotId, durationMs: msg.stats.durationMs, sizeBytes: msg.stats.totalBytesProcessed } }) } catch (err) { console.error('[logger]', err) }
           let nextRunAt: Date | undefined
           try { nextRunAt = parseExpression(jobForNext?.schedule ?? '', { tz: 'UTC' }).next().toDate() } catch { /* invalid cron */ }
           await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'success', ...(nextRunAt ? { nextRunAt } : {}) })
@@ -686,7 +686,10 @@ void app.prepare().then(() => {
             log:          msg.log ?? null,
             errorMessage: msg.error, errorDetail: msg.detail,
           }).where(eq(backupRuns.id, run.id))
-          try { appendLog({ level: 'error', component: 'web', message: `Backup failed for job ${msg.jobId}: ${msg.error}`, entityType: 'job', entityId: msg.jobId, payload: { runId: run.id, errorMessage: msg.error } }) } catch (err) { console.error('[logger]', err) }
+          const [failedJob] = await db.select({ name: backupJobs.name })
+            .from(backupJobs).where(eq(backupJobs.id, msg.jobId)).limit(1)
+          const failedJobLabel = failedJob?.name ?? msg.jobId
+          try { appendLog({ level: 'error', component: 'web', message: `Backup failed for job "${failedJobLabel}": ${msg.error}`, entityType: 'job', entityId: msg.jobId, payload: { runId: run.id, errorMessage: msg.error } }) } catch (err) { console.error('[logger]', err) }
 
           await db.update(backupJobs).set({ lastRunAt: new Date(), lastRunStatus: 'failed' })
             .where(eq(backupJobs.id, msg.jobId))
@@ -821,7 +824,10 @@ void app.prepare().then(() => {
             resourceType: 'agent', resourceId: agentId,
             actor: 'system', createdAt: new Date(),
           })
-          try { appendLog({ level: 'info', component: 'agent', message: `Agent ${agentId} disconnected`, entityType: 'agent', entityId: agentId }) } catch (err) { console.error('[logger]', err) }
+          const [disconnectedAgent] = await db.select({ hostname: agents.hostname })
+            .from(agents).where(eq(agents.id, agentId)).limit(1)
+          const agentLabel = disconnectedAgent?.hostname ?? agentId
+          try { appendLog({ level: 'info', component: 'agent', message: `Agent ${agentLabel} disconnected`, entityType: 'agent', entityId: agentId }) } catch (err) { console.error('[logger]', err) }
         }
       })()
     })
