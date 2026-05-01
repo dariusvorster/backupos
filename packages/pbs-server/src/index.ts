@@ -1,18 +1,17 @@
 // @backupos/pbs-server
 // HTTP/2 server implementing the Proxmox Backup Server protocol.
 //
-// Milestone 0: skeleton only. startPbsServer is a no-op stub that will
-// be wired in milestone 3.
+// V1 milestone 3a: listener boots, /api2/json/version answers, no auth.
+// Subsequent milestones add: token auth (M3b), backup endpoints (M4),
+// restore endpoints (M5), GC/retention (M6), UI (M7).
 
-export interface StartPbsServerOptions {
-  port?: number
-  storageRoot?: string
-}
+export { startPbsServer, stopPbsServer } from './server'
+export type { StartPbsServerOptions, PbsServerHandle } from './server'
 
-export function startPbsServer(_opts: StartPbsServerOptions = {}): void {
-  // Stub — implemented in milestone 3.
-}
-
-export function stopPbsServer(): void {
-  // Stub — implemented in milestone 3.
-}
+export {
+  ensureSelfSignedCert,
+  generateSelfSignedCert,
+  loadCert,
+  computeCertFingerprint,
+} from './cert'
+export type { CertPaths, CertMaterial } from './cert'
