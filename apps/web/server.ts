@@ -1,5 +1,6 @@
 import { createServer } from 'http'
 import { createHash } from 'crypto'
+import { startPbsServer } from '@backupos/pbs-server'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { parse } from 'url'
@@ -858,5 +859,26 @@ void app.prepare().then(() => {
   server.listen(port, '0.0.0.0', () => {
     console.log(`> Ready on http://0.0.0.0:${port}`)
     void import('./lib/scheduler').then(({ initScheduler }) => initScheduler())
+
+    // PBS-compatible protocol listener (port 8007).
+    // Boots after Next.js. Uses cert at /etc/backupos/pbs-cert.pem.
+    // Version endpoint only in M3a; auth and protocol endpoints land in M3b/M4/M5.
+    void (async () => {
+      try {
+        const pbsHandle = await startPbsServer({
+          port: Number(process.env['PBS_PORT'] ?? '8007'),
+          host: process.env['PBS_HOST'] ?? '0.0.0.0',
+          certPaths: {
+            certPath: process.env['PBS_TLS_CERT'] ?? '/etc/backupos/pbs-cert.pem',
+            keyPath:  process.env['PBS_TLS_KEY']  ?? '/etc/backupos/pbs-key.pem',
+          },
+          log: (msg) => console.log(`[pbs] ${msg}`),
+        })
+        console.log(`[pbs] cert fingerprint: ${pbsHandle.certFingerprint}`)
+      } catch (err) {
+        // PBS listener failure must not crash the main app — log and continue.
+        console.error(`[pbs] failed to start: ${(err as Error).message}`)
+      }
+    })()
   })
 })
