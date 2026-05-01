@@ -1,5 +1,5 @@
 import { createServer } from 'http'
-import { createHash, randomUUID } from 'crypto'
+import { createHash } from 'crypto'
 import { startPbsServer } from '@backupos/pbs-server'
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -8,7 +8,7 @@ import type { IncomingMessage } from 'http'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, pbsTokens, pbsDatastores, pbsActiveSessions, eq, and, desc } from '@backupos/db'
+import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, pbsTokens, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete } from './lib/ws-state'
@@ -894,42 +894,6 @@ void app.prepare().then(() => {
               permissions: row.permissions,
               expiresAt:   row.expiresAt ?? null,
             }
-          },
-          datastoreLookup: async (name) => {
-            const db = getDb()
-            const rows = await db
-              .select()
-              .from(pbsDatastores)
-              .where(eq(pbsDatastores.name, name))
-              .limit(1)
-            const row = rows[0]
-            if (!row) return null
-            return { id: row.id, path: row.path }
-          },
-          sessionStore: {
-            create: async (input) => {
-              const db = getDb()
-              const id = randomUUID()
-              await db.insert(pbsActiveSessions).values({
-                id,
-                tokenId:     input.tokenId,
-                datastoreId: input.datastoreId,
-                backupType:  input.backupType,
-                backupId:    input.backupId,
-                backupTime:  input.backupTime,
-                startedAt:   new Date(),
-                state:       input.state,
-                scratchPath: null,
-              })
-              return id
-            },
-            finalize: async (sessionId, state) => {
-              const db = getDb()
-              await db
-                .update(pbsActiveSessions)
-                .set({ state })
-                .where(eq(pbsActiveSessions.id, sessionId))
-            },
           },
         })
         console.log(`[pbs] cert fingerprint: ${pbsHandle.certFingerprint}`)

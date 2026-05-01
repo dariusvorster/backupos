@@ -1,69 +1,98 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { request }      from 'node:https'
-import { mkdtemp, rm }  from 'node:fs/promises'
-import { join }         from 'node:path'
-import { tmpdir }       from 'node:os'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtemp, rm } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { connect as h2connect, constants } from 'http2'
 import { startPbsServer, type PbsServerHandle } from './server'
 
-let handle: PbsServerHandle
-let certDir: string
+describe('PBS HTTP/2 server', () => {
+  let dir: string
+  let handle: PbsServerHandle
 
-beforeAll(async () => {
-  certDir = await mkdtemp(join(tmpdir(), 'pbs-server-test-'))
-  handle = await startPbsServer({
-    port: 0,
-    host: '127.0.0.1',
-    certPaths: {
-      certPath: join(certDir, 'cert.pem'),
-      keyPath:  join(certDir, 'key.pem'),
-    },
-    log: () => { /* silence */ },
-  })
-}, 30_000)
-
-afterAll(async () => {
-  await handle.stop()
-  await rm(certDir, { recursive: true, force: true })
-})
-
-function get(path: string): Promise<{ status: number; body: string }> {
-  return new Promise((resolve, reject) => {
-    const req = request(
-      {
-        host:               '127.0.0.1',
-        port:               handle.address.port,
-        path,
-        method:             'GET',
-        rejectUnauthorized: false,
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'pbs-server-test-'))
+    handle = await startPbsServer({
+      port: 0, // ephemeral
+      host: '127.0.0.1',
+      certPaths: {
+        certPath: join(dir, 'cert.pem'),
+        keyPath:  join(dir, 'key.pem'),
       },
-      (res) => {
+      log: () => { /* silence */ },
+    })
+  }, 30_000)
+
+  afterEach(async () => {
+    await handle.stop()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('responds to GET /api2/json/version over HTTP/2', async () => {
+    const url = `https://127.0.0.1:${handle.address.port}`
+    const session = h2connect(url, { rejectUnauthorized: false })
+    try {
+      const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = session.request({
+          [constants.HTTP2_HEADER_METHOD]: 'GET',
+          [constants.HTTP2_HEADER_PATH]:   '/api2/json/version',
+        })
         let body = ''
-        res.on('data', (chunk: string) => body += chunk)
-        res.on('end', () => resolve({ status: res.statusCode ?? 0, body }))
-      },
-    )
-    req.on('error', reject)
-    req.end()
-  })
-}
+        let status = 0
+        req.on('response', (h) => { status = Number(h[constants.HTTP2_HEADER_STATUS]) })
+        req.setEncoding('utf8')
+        req.on('data', (chunk: string) => { body += chunk })
+        req.on('end', () => resolve({ status, body }))
+        req.on('error', reject)
+        req.end()
+      })
 
-describe('startPbsServer (M4b — HTTPS / HTTP-1.1 entry)', () => {
-  it('serves /api2/json/version unauthenticated over HTTP/1.1', async () => {
-    const r = await get('/api2/json/version')
-    expect(r.status).toBe(200)
-    const parsed = JSON.parse(r.body) as { data: { version: string; repoid: string } }
-    expect(parsed.data.version).toBeTruthy()
-    expect(parsed.data.repoid).toBe('backupos')
-  })
-
-  it('returns 404 for unknown HTTP/1.1 paths', async () => {
-    const r = await get('/garbage')
-    expect(r.status).toBe(404)
+      expect(res.status).toBe(200)
+      const parsed = JSON.parse(res.body) as { data: { version: string; repoid: string } }
+      expect(parsed.data.version).toBeTruthy()
+      expect(parsed.data.repoid).toBe('backupos')
+    } finally {
+      session.close()
+    }
   })
 
-  it('returns 404 for /api2/json/backup via plain HTTP/1.1 (no Upgrade)', async () => {
-    const r = await get('/api2/json/backup?store=default&backup-type=vm&backup-id=100&backup-time=1730000000')
-    expect(r.status).toBe(404)
+  it('returns 404 for unknown paths', async () => {
+    const url = `https://127.0.0.1:${handle.address.port}`
+    const session = h2connect(url, { rejectUnauthorized: false })
+    try {
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = session.request({
+          [constants.HTTP2_HEADER_METHOD]: 'GET',
+          [constants.HTTP2_HEADER_PATH]:   '/api2/json/nonexistent',
+        })
+        req.on('response', (h) => resolve(Number(h[constants.HTTP2_HEADER_STATUS])))
+        req.on('error', reject)
+        req.end()
+      })
+
+      expect(status).toBe(404)
+    } finally {
+      session.close()
+    }
+  })
+
+  it('returns 501 for not-yet-implemented protocol upgrade endpoints', async () => {
+    const url = `https://127.0.0.1:${handle.address.port}`
+    const session = h2connect(url, { rejectUnauthorized: false })
+    try {
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = session.request({
+          [constants.HTTP2_HEADER_METHOD]: 'GET',
+          [constants.HTTP2_HEADER_PATH]:   '/api2/json/backup',
+        })
+        req.on('response', (h) => resolve(Number(h[constants.HTTP2_HEADER_STATUS])))
+        req.on('error', reject)
+        req.end()
+      })
+
+      expect(status).toBe(501)
+    } finally {
+      session.close()
+    }
   })
 
   it('exposes the cert fingerprint', () => {
