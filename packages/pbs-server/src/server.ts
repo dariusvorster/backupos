@@ -208,11 +208,39 @@ export function startPbsServer(opts: StartPbsServerOptions): Promise<PbsServerHa
         log(`failed to finalize session ${sessionId}: ${e.message}`)
       )
     }
+
+    // Preface-arrival timeout. After we hand the socket to the H2 server we
+    // expect the client to send the H2 connection preface (PRI * HTTP/2.0…)
+    // promptly. If they never do (e.g. an HTTP/1.1-only client that sent the
+    // upgrade headers but can't speak H2), the socket is owned by the H2
+    // machinery (socket events are intercepted) but no 'session' event fires,
+    // so the pbs_active_sessions row would stay in state='backup' forever.
+    //
+    // Mirrors Node's own unknownProtocolTimeout (CVE-2021-22883 mitigation),
+    // which we can't use because we bypass the unknownProtocol path by
+    // overriding alpnProtocol = 'h2' above.
+    const PREFACE_TIMEOUT_MS = 30_000
+    const prefaceTimer = setTimeout(() => {
+      log(`session ${sessionId}: H2 preface not received within ${PREFACE_TIMEOUT_MS}ms — aborting`)
+      finalize('aborted')
+      socket.destroy()
+    }, PREFACE_TIMEOUT_MS)
+    // Allow Node to exit even if this timer is still pending.
+    prefaceTimer.unref()
+
     h2Server.on('session', (session) => {
+      // Preface arrived — H2 session established. Cancel the timeout.
+      clearTimeout(prefaceTimer)
       session.once('close', () => finalize('aborted'))
     })
-    socket.once('close', () => finalize('aborted'))
-    socket.once('error', () => finalize('aborted'))
+    socket.once('close', () => {
+      clearTimeout(prefaceTimer)
+      finalize('aborted')
+    })
+    socket.once('error', () => {
+      clearTimeout(prefaceTimer)
+      finalize('aborted')
+    })
 
     // Unshift any pre-buffered bytes so the H2 connection preface isn't lost,
     // then inject the socket into the H2 server via the 'connection' event.
