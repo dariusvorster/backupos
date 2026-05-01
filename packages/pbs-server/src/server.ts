@@ -218,6 +218,24 @@ export function startPbsServer(opts: StartPbsServerOptions): Promise<PbsServerHa
     // then inject the socket into the H2 server via the 'connection' event.
     // Requires Node 17.4+ (commit 3c99a4d) — confirmed working on Node v22+.
     if (head.length > 0) socket.unshift(head)
+
+    // Override the socket's alpnProtocol property before injection. Node's
+    // http2 connectionListener reads socket.alpnProtocol and rejects any value
+    // that isn't 'h2', sending a 403 Forbidden / Missing ALPN Protocol response.
+    // Upgraded TLS sockets carry the original 'http/1.1' from the TLS handshake;
+    // we override to 'h2' because the socket IS now speaking H2 — the client
+    // sends the H2 connection preface as its very next bytes after the 101.
+    // We use Object.defineProperty rather than direct assignment because
+    // alpnProtocol is a getter on the TLSSocket prototype and simple assignment
+    // would silently fail in strict mode.
+    //
+    // Source: Node lib/internal/http2/core.js connectionListener function.
+    Object.defineProperty(socket, 'alpnProtocol', {
+      value:        'h2',
+      writable:     true,
+      configurable: true,
+    })
+
     h2Server.emit('connection', socket)
   })
 
