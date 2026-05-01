@@ -150,6 +150,7 @@ export type AgentMessage =
   | { type: 'mount_failed'; requestId: string; repoId: string; error: string }
   | { type: 'filesystem_restore_started'; requestId: string; restoreId: string }
   | { type: 'filesystem_restore_complete'; restoreId: string; success: boolean; filesRestored?: number; durationSec?: number; error?: string; targetPath?: string; sourcePath?: string }
+  | { type: 'filesystem_restore_cancelled'; restoreId: string; reason: 'user_requested' | 'not_running' }
 
 export interface DetectedResources {
   dockerVolumes?: string[]
@@ -174,3 +175,4 @@ export type ServerMessage =
   | { type: 'mount_repository'; requestId: string; repoId: string; nfsServer: string; nfsExport: string; nfsOptions: string }
   | { type: 'run_verification'; verificationRunId: string; repoId: string; snapshotId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; targetType: 'temp_directory'; validationHook?: string | null }
   | { type: 'run_filesystem_restore'; requestId: string; restoreId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; targetPath: string; sourcePath: string; targetIsAgentLocal: boolean }
+  | { type: 'cancel_filesystem_restore'; restoreId: string }

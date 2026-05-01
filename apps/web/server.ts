@@ -782,6 +782,15 @@ void app.prepare().then(() => {
             actor: agentId, createdAt: new Date(),
           })
 
+        } else if (msg.type === 'filesystem_restore_cancelled' && agentId) {
+          console.log(`[restore] filesystem_restore_cancelled restoreId=${msg.restoreId} agentId=${agentId} reason=${msg.reason}`)
+          await db.update(restoreRuns).set({
+            status:      'cancelled',
+            completedAt: new Date(),
+            log:         JSON.stringify({ cancelled: true, reason: msg.reason }),
+          }).where(eq(restoreRuns.id, msg.restoreId))
+          try { appendLog({ level: 'info', component: 'web', message: `Filesystem restore cancelled (${msg.reason})`, entityType: 'restore_run', entityId: msg.restoreId }) } catch (err) { console.error('[logger]', err) }
+
         } else if (msg.type === 'filesystem_restore_started' && agentId) {
           console.log(`[restore] filesystem_restore_started restoreId=${msg.restoreId} agentId=${agentId}`)
           resolveFilesystemRestoreStarted(msg.requestId)
