@@ -2,9 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, eq, desc } from '@backupos/db'
-import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult } from '@backupos/restore'
+import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, alertChannels, eq, desc } from '@backupos/db'
+import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery } from '@backupos/restore'
 import { requireAdmin } from '@/lib/user'
+import { dispatchToChannel } from '@/lib/alerts'
+import type { AlertType, AlertPayload } from '@/lib/alerts'
 import { decryptField } from '@/lib/repo-crypto'
 import { connectedAgentIds, requestFilesystemRestore } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
@@ -71,6 +73,16 @@ export async function forkSpec(name: string, yamlContent: string): Promise<void>
   redirect(`/restore/${id}`)
 }
 
+async function deliverRestoreNotification(channel: string, message: string): Promise<void> {
+  const db       = getDb()
+  const channels = await db.select().from(alertChannels).all()
+  const target   = channels.find(c => c.enabled && c.name === channel)
+  if (!target) throw new Error(`No enabled alert channel named '${channel}'`)
+  const type: AlertType    = 'backup_failed'
+  const payload: AlertPayload = { jobId: '', jobName: 'restore', error: message }
+  await dispatchToChannel(target, type, message, 'info', payload)
+}
+
 export async function runSpec(specId: string, snapshotId = 'latest'): Promise<void> {
   const db     = getDb()
   const [spec] = await db.select().from(restoreSpecs).where(eq(restoreSpecs.id, specId)).limit(1)
@@ -88,7 +100,7 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
     startedAt: new Date(),
   })
 
-  executeRestoreSpec(parsed, snapshotId, 'local').then(async (result: RestoreRunResult) => {
+  executeRestoreSpec(parsed, snapshotId, 'local', deliverRestoreNotification).then(async (result: RestoreRunResult) => {
     await db
       .update(restoreRuns)
       .set({

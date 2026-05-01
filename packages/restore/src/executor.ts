@@ -12,6 +12,15 @@ import type {
   StepResult,
 } from './types'
 
+/**
+ * Optional callback to actually deliver notify steps. Receives the channel
+ * identifier (free-form string from the spec — typically a channel NAME)
+ * plus the message. Should throw on delivery failure.
+ *
+ * If undefined, notify steps return failure with a clear error.
+ */
+export type NotifyDelivery = (channel: string, message: string) => Promise<void>
+
 // ── Step executors ────────────────────────────────────────────────────────────
 
 async function execFilesystemRestore(
@@ -157,10 +166,21 @@ async function execContainerRestart(step: ContainerRestartStep): Promise<Omit<St
   })
 }
 
-async function execNotify(step: NotifyStep): Promise<Omit<StepResult, 'step' | 'durationMs'>> {
-  // V1: log only — actual delivery wired in V2 via notification service
-  console.log(`[notify] channel=${step.channel} message=${step.message ?? '(none)'}`)
-  return { success: true, output: `Notification sent via ${step.channel}` }
+async function execNotify(
+  step: NotifyStep,
+  notifyDelivery?: NotifyDelivery,
+): Promise<Omit<StepResult, 'step' | 'durationMs'>> {
+  const message = step.message ?? `Restore step '${step.name}' completed`
+  if (!notifyDelivery) {
+    return { success: false, output: `Notify step skipped: no delivery callback configured (channel=${step.channel})` }
+  }
+  try {
+    await notifyDelivery(step.channel, message)
+    return { success: true, output: `Notification delivered to channel '${step.channel}'` }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    return { success: false, output: `Notification delivery failed for channel '${step.channel}': ${errMsg}` }
+  }
 }
 
 // ── Step dispatcher ───────────────────────────────────────────────────────────
@@ -169,6 +189,7 @@ async function executeStep(
   step: RestoreStep,
   snapshotId: string,
   agentId: string,
+  notifyDelivery?: NotifyDelivery,
 ): Promise<StepResult> {
   const start = Date.now()
   let result: Omit<StepResult, 'step' | 'durationMs'>
@@ -190,7 +211,7 @@ async function executeStep(
       result = await execContainerRestart(step)
       break
     case 'notify':
-      result = await execNotify(step)
+      result = await execNotify(step, notifyDelivery)
       break
   }
 
@@ -203,11 +224,12 @@ export async function executeRestoreSpec(
   spec: ParsedRestoreSpec,
   snapshotId: string,
   agentId: string,
+  notifyDelivery?: NotifyDelivery,
 ): Promise<RestoreRunResult> {
   const results: StepResult[] = []
 
   for (const step of spec.steps) {
-    const stepResult = await executeStep(step, snapshotId, agentId)
+    const stepResult = await executeStep(step, snapshotId, agentId, notifyDelivery)
     results.push(stepResult)
 
     if (!stepResult.success && step.onFailure === 'abort') {
