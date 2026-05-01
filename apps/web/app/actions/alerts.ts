@@ -126,6 +126,46 @@ export async function deleteAlertChannelForType(channelId: string, integType: st
   redirect(`/settings/integrations/${integType}?saved=1`)
 }
 
+export type TestAlertChannelInput =
+  | { kind: 'saved'; channelId: string }
+  | { kind: 'unsaved'; type: string; config: Record<string, string> }
+
+export type TestAlertChannelResult =
+  | { ok: true }
+  | { ok: false; error: string }
+
+export async function testAlertChannel(input: TestAlertChannelInput): Promise<TestAlertChannelResult> {
+  await requireAdmin()
+
+  let testChannel: { id: string; type: string; config: string }
+
+  if (input.kind === 'saved') {
+    if (!input.channelId) return { ok: false, error: 'Channel id required' }
+    const db = getDb()
+    const [row] = await db.select().from(alertChannels).where(eq(alertChannels.id, input.channelId)).limit(1)
+    if (!row) return { ok: false, error: 'Channel not found' }
+    testChannel = { id: row.id, type: row.type, config: row.config }
+  } else {
+    if (!(VALID_CHANNEL_TYPES as readonly string[]).includes(input.type)) {
+      return { ok: false, error: 'Invalid channel type' }
+    }
+    if (!input.config || Object.keys(input.config).length === 0) {
+      return { ok: false, error: 'Missing configuration fields' }
+    }
+    testChannel = { id: 'test', type: input.type, config: JSON.stringify(input.config) }
+  }
+
+  const message = 'BackupOS test message — if you can read this, your channel is configured correctly.'
+  const testPayload = { jobId: 'test', jobName: 'Test alert', error: message }
+
+  try {
+    await dispatchToChannel(testChannel, 'backup_failed', message, 'info', testPayload)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 export async function sendTestAlert(channelId: string): Promise<{ ok: boolean; error?: string }> {
   await requireAdmin()
   const db = getDb()
