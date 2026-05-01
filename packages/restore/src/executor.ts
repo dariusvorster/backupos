@@ -21,6 +21,12 @@ import type {
  */
 export type NotifyDelivery = (channel: string, message: string) => Promise<void>
 
+export type DatabaseRestoreDelivery = (
+  step: DatabaseRestoreStep,
+  snapshotId: string,
+  agentId: string,
+) => Promise<{ success: boolean; output?: string; error?: string; durationSec?: number }>
+
 // ── Step executors ────────────────────────────────────────────────────────────
 
 async function execFilesystemRestore(
@@ -56,13 +62,35 @@ async function execFilesystemRestore(
 
 async function execDatabaseRestore(
   step: DatabaseRestoreStep,
-  _snapshotId: string,
-  _agentId: string,
+  snapshotId: string,
+  agentId: string,
+  databaseRestoreDelivery?: DatabaseRestoreDelivery,
 ): Promise<Omit<StepResult, 'step' | 'durationMs'>> {
-  // App-hook-aware database restore is agent-side; stub returns not-implemented
-  return {
-    success: false,
-    error:   `database_restore for ${step.app} requires a connected agent (V2)`,
+  if (step.app === 'sqlite' || step.app === 'redis' || step.app === 'mongodb') {
+    return {
+      success: false,
+      error:   `database_restore for ${step.app} is not yet implemented (only postgres + mysql/mariadb supported in V1)`,
+    }
+  }
+
+  if (!databaseRestoreDelivery) {
+    return {
+      success: false,
+      error:   `database_restore step requires server-side delivery wiring; no callback provided`,
+    }
+  }
+
+  try {
+    const result = await databaseRestoreDelivery(step, snapshotId, agentId)
+    if (!result.success) {
+      return { success: false, error: result.error ?? `database_restore for ${step.app} failed` }
+    }
+    return { success: true, output: result.output ?? `Restored ${step.app}` }
+  } catch (err) {
+    return {
+      success: false,
+      error:   err instanceof Error ? err.message : String(err),
+    }
   }
 }
 
@@ -190,6 +218,7 @@ async function executeStep(
   snapshotId: string,
   agentId: string,
   notifyDelivery?: NotifyDelivery,
+  databaseRestoreDelivery?: DatabaseRestoreDelivery,
 ): Promise<StepResult> {
   const start = Date.now()
   let result: Omit<StepResult, 'step' | 'durationMs'>
@@ -199,7 +228,7 @@ async function executeStep(
       result = await execFilesystemRestore(step, snapshotId, agentId)
       break
     case 'database_restore':
-      result = await execDatabaseRestore(step, snapshotId, agentId)
+      result = await execDatabaseRestore(step, snapshotId, agentId, databaseRestoreDelivery)
       break
     case 'shell':
       result = await execShell(step)
@@ -225,11 +254,12 @@ export async function executeRestoreSpec(
   snapshotId: string,
   agentId: string,
   notifyDelivery?: NotifyDelivery,
+  databaseRestoreDelivery?: DatabaseRestoreDelivery,
 ): Promise<RestoreRunResult> {
   const results: StepResult[] = []
 
   for (const step of spec.steps) {
-    const stepResult = await executeStep(step, snapshotId, agentId, notifyDelivery)
+    const stepResult = await executeStep(step, snapshotId, agentId, notifyDelivery, databaseRestoreDelivery)
     results.push(stepResult)
 
     if (!stepResult.success && step.onFailure === 'abort') {

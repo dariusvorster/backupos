@@ -252,3 +252,52 @@ export function requestFilesystemRestore(
 export function resolveFilesystemRestoreStarted(requestId: string): void {
   pendingFsRestores.get(requestId)?.({ ok: true })
 }
+
+type DbRestoreResult = { success: boolean; output?: string; error?: string; durationSec?: number }
+const pendingDbRestoreStarted  = new Map<string, () => void>()
+const pendingDbRestoreComplete = new Map<string, (r: DbRestoreResult) => void>()
+
+export function requestDatabaseRestore(
+  agentId: string,
+  payload: {
+    restoreId:       string
+    app:             'postgres' | 'mysql' | 'mariadb'
+    dumpFilePath:    string
+    targetContainer?: string
+    targetDatabase?:  string
+    targetUsername?:  string
+    targetHost?:      string
+    targetPort?:      number
+    passwordEnv?:     string
+  },
+): Promise<DbRestoreResult> {
+  const requestId = crypto.randomUUID()
+  const sent = dispatch(agentId, { type: 'run_database_restore', requestId, ...payload })
+  if (!sent) return Promise.reject(new Error(`Agent ${agentId} not connected`))
+
+  return new Promise((resolve, reject) => {
+    const startedTimeout = setTimeout(() => {
+      pendingDbRestoreStarted.delete(requestId)
+      pendingDbRestoreComplete.delete(payload.restoreId)
+      reject(new Error('Agent did not acknowledge database restore start within 30s'))
+    }, 30_000)
+
+    pendingDbRestoreStarted.set(requestId, () => {
+      clearTimeout(startedTimeout)
+    })
+
+    pendingDbRestoreComplete.set(payload.restoreId, (result) => {
+      pendingDbRestoreStarted.delete(requestId)
+      pendingDbRestoreComplete.delete(payload.restoreId)
+      resolve(result)
+    })
+  })
+}
+
+export function resolveDatabaseRestoreStarted(requestId: string): void {
+  pendingDbRestoreStarted.get(requestId)?.()
+}
+
+export function resolveDatabaseRestoreComplete(restoreId: string, result: DbRestoreResult): void {
+  pendingDbRestoreComplete.get(restoreId)?.(result)
+}

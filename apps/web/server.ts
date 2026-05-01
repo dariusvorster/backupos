@@ -10,7 +10,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete } from './lib/ws-state'
 import { ensureRepoMountedOnAgent } from './lib/repo-mount'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
@@ -790,6 +790,19 @@ void app.prepare().then(() => {
             log:         JSON.stringify({ cancelled: true, reason: msg.reason }),
           }).where(eq(restoreRuns.id, msg.restoreId))
           try { appendLog({ level: 'info', component: 'web', message: `Filesystem restore cancelled (${msg.reason})`, entityType: 'restore_run', entityId: msg.restoreId }) } catch (err) { console.error('[logger]', err) }
+
+        } else if (msg.type === 'database_restore_started') {
+          console.log(`[restore] database_restore_started restoreId=${msg.restoreId}`)
+          resolveDatabaseRestoreStarted(msg.requestId)
+
+        } else if (msg.type === 'database_restore_complete' && agentId) {
+          console.log(`[restore] database_restore_complete restoreId=${msg.restoreId} success=${msg.success}`)
+          resolveDatabaseRestoreComplete(msg.restoreId, {
+            success:     msg.success,
+            output:      msg.output,
+            error:       msg.error,
+            durationSec: msg.durationSec,
+          })
 
         } else if (msg.type === 'filesystem_restore_started' && agentId) {
           console.log(`[restore] filesystem_restore_started restoreId=${msg.restoreId} agentId=${agentId}`)

@@ -3,12 +3,12 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, alertChannels, eq, desc } from '@backupos/db'
-import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery } from '@backupos/restore'
+import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery, type DatabaseRestoreDelivery } from '@backupos/restore'
 import { requireAdmin } from '@/lib/user'
 import { dispatchToChannel } from '@/lib/alerts'
 import type { AlertType, AlertPayload } from '@/lib/alerts'
 import { decryptField } from '@/lib/repo-crypto'
-import { connectedAgentIds, requestFilesystemRestore, dispatch } from '@/lib/ws-state'
+import { connectedAgentIds, requestFilesystemRestore, requestDatabaseRestore, dispatch } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import { appendLog } from '@/lib/logger'
 
@@ -74,6 +74,21 @@ export async function forkSpec(name: string, yamlContent: string): Promise<void>
   redirect(`/restore/${id}`)
 }
 
+const deliverDatabaseRestore: DatabaseRestoreDelivery = async (step, _snapshotId, agentId) => {
+  if (step.app !== 'postgres' && step.app !== 'mysql' && step.app !== 'mariadb') {
+    return { success: false, error: `Unsupported database app: ${step.app}` }
+  }
+
+  return requestDatabaseRestore(agentId, {
+    restoreId:       crypto.randomUUID(),
+    app:             step.app,
+    dumpFilePath:    step.snapshotPath,
+    targetContainer: step.target.container,
+    targetDatabase:  step.target.database,
+    targetUsername:  step.target.username,
+  })
+}
+
 async function deliverRestoreNotification(channel: string, message: string): Promise<void> {
   const db       = getDb()
   const channels = await db.select().from(alertChannels).all()
@@ -112,7 +127,7 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
     })
   } catch (err) { console.error('[logger]', err) }
 
-  executeRestoreSpec(parsed, snapshotId, 'local', deliverRestoreNotification).then(async (result: RestoreRunResult) => {
+  executeRestoreSpec(parsed, snapshotId, 'local', deliverRestoreNotification, deliverDatabaseRestore).then(async (result: RestoreRunResult) => {
     await db
       .update(restoreRuns)
       .set({
