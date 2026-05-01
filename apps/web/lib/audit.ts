@@ -17,6 +17,7 @@ export type AuditAction =
   | 'settings.updated'
   | 'user.created'
   | 'user.role_changed'
+  | 'pbs_token.created' | 'pbs_token.revoked'
 
 function canonical(fields: {
   action: string; resourceType: string; resourceId?: string | null;

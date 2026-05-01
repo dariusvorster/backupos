@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "tsx server.ts",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@backupos/agent-protocol": "workspace:*",
@@ -47,6 +48,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.5.0",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
   }
 }
