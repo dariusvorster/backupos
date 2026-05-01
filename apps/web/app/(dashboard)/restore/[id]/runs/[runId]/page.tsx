@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { getDb, restoreRuns, restoreSpecs } from '@backupos/db'
 import { eq } from '@backupos/db'
-import { PollWrapper } from '../poll-wrapper'
+import { PollWrapper } from '@/components/poll-wrapper'
 
 interface StepResult {
   step: { name: string; type: string }

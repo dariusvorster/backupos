@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { getDb, restoreRuns, restoreSpecs, eq, desc } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { PollWrapper } from './poll-wrapper'
+import { PollWrapper } from '@/components/poll-wrapper'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
