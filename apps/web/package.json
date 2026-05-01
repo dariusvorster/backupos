@@ -13,6 +13,7 @@
   "dependencies": {
     "@backupos/agent-protocol": "workspace:*",
     "@backupos/pbs-server": "workspace:*",
+    "@backupos/pbs-storage": "workspace:*",
     "@backupos/api": "workspace:*",
     "@backupos/db": "workspace:*",
     "@backupos/docs-content": "workspace:*",
