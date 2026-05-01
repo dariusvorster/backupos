@@ -53,9 +53,19 @@ export class FsChunkStore implements ChunkStore {
    */
   async initialize(): Promise<void> {
     await mkdir(this.chunksDir, { recursive: true })
-    for (let i = 0; i < SHARD_COUNT; i++) {
-      const shard = i.toString(16).padStart(SHARD_HEX_WIDTH, '0')
-      await mkdir(join(this.chunksDir, shard), { recursive: true })
+    // Pre-create all 65536 shard directories. Sequential mkdir would do
+    // 65536 syscalls round-trip — easily 5+ seconds even on fast disks.
+    // Parallelize in batches small enough not to exhaust file descriptor
+    // limits (default ulimit -n is 1024 on most Linuxes). 256 in flight
+    // is comfortably under that and saturates the underlying fs.
+    const BATCH = 256
+    for (let base = 0; base < SHARD_COUNT; base += BATCH) {
+      const batch: Promise<string | undefined>[] = []
+      for (let i = base; i < Math.min(base + BATCH, SHARD_COUNT); i++) {
+        const shard = i.toString(16).padStart(SHARD_HEX_WIDTH, '0')
+        batch.push(mkdir(join(this.chunksDir, shard), { recursive: true }))
+      }
+      await Promise.all(batch)
     }
   }
 
@@ -74,6 +84,14 @@ export class FsChunkStore implements ChunkStore {
     const tmpPath = `${finalPath}.tmp.${randomBytes(8).toString('hex')}`
     const hasher = createHash('sha256')
     let bytesWritten = 0
+
+    // Ensure shard directory exists. Cheap when already present (mkdir
+    // recursive returns undefined immediately on EEXIST). Defensive: if
+    // initialize() wasn't called, this still works — at the cost of one
+    // mkdir per put. In production initialize() is called once per
+    // datastore creation, so this is effectively a no-op then.
+    const shardDir = join(this.chunksDir, digestHex.slice(0, SHARD_HEX_WIDTH))
+    await mkdir(shardDir, { recursive: true })
 
     const sink = createWriteStream(tmpPath, { flags: 'wx' })
 

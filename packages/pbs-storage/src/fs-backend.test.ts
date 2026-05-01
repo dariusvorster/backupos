@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, rm, readdir, writeFile } from 'fs/promises'
+import { mkdtemp, rm, readdir, writeFile, mkdir } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { Readable } from 'stream'
@@ -21,7 +21,10 @@ describe('FsChunkStore', () => {
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'pbs-store-test-'))
     store = new FsChunkStore({ root })
-    await store.initialize()
+    // Note: NOT calling store.initialize() here. Most tests don't need
+    // 65536 pre-allocated shard dirs — put() lazy-creates the one shard
+    // it needs. Tests that specifically check initialize() behavior call
+    // it explicitly.
   })
 
   afterEach(async () => {
@@ -29,7 +32,10 @@ describe('FsChunkStore', () => {
   })
 
   describe('initialize', () => {
-    it('creates 65536 shard directories', async () => {
+    // initialize() creates 65536 dirs. Even with 256-wide batching that
+    // takes 1–2 seconds on most disks. Bump timeout for these tests.
+    it('creates 65536 shard directories', { timeout: 30_000 }, async () => {
+      await store.initialize()
       const shards = await readdir(join(root, '.chunks'))
       expect(shards.length).toBe(65536)
       expect(shards).toContain('0000')
@@ -37,7 +43,7 @@ describe('FsChunkStore', () => {
       expect(shards).toContain('ffff')
     })
 
-    it('is idempotent', async () => {
+    it('is idempotent', { timeout: 60_000 }, async () => {
       await store.initialize()
       await store.initialize()
       const shards = await readdir(join(root, '.chunks'))
@@ -201,6 +207,7 @@ describe('FsChunkStore', () => {
     })
 
     it('ignores non-digest files in shard directories', async () => {
+      await mkdir(join(root, '.chunks', '0000'), { recursive: true })
       await writeFile(join(root, '.chunks', '0000', 'README'), 'not a chunk')
       const found: string[] = []
       for await (const d of store.list()) found.push(d)
