@@ -10,6 +10,7 @@ import type { AlertType, AlertPayload } from '@/lib/alerts'
 import { decryptField } from '@/lib/repo-crypto'
 import { connectedAgentIds, requestFilesystemRestore } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
+import { appendLog } from '@/lib/logger'
 
 export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -109,11 +110,42 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
         completedAt: result.completedAt ?? result.abortedAt ?? new Date(),
       })
       .where(eq(restoreRuns.id, runId))
+    try {
+      if (result.success) {
+        appendLog({
+          level: 'info',
+          component: 'web',
+          message: `Restore succeeded for spec "${spec.name}"`,
+          entityType: 'restore_run',
+          entityId: runId,
+          payload: { specId, snapshotId, stepCount: result.steps.length },
+        })
+      } else {
+        appendLog({
+          level: 'error',
+          component: 'web',
+          message: `Restore failed for spec "${spec.name}"${result.failedStep ? ` at step "${result.failedStep}"` : ''}`,
+          entityType: 'restore_run',
+          entityId: runId,
+          payload: { specId, snapshotId, failedStep: result.failedStep, stepCount: result.steps.length },
+        })
+      }
+    } catch (err) { console.error('[logger]', err) }
   }).catch(async (err: unknown) => {
     await db.update(restoreRuns).set({
       status: 'failed', completedAt: new Date(),
     }).where(eq(restoreRuns.id, runId))
     console.error('[restore] executeRestoreSpec failed:', err)
+    try {
+      appendLog({
+        level: 'error',
+        component: 'web',
+        message: `Restore engine threw for spec "${spec.name}": ${err instanceof Error ? err.message : String(err)}`,
+        entityType: 'restore_run',
+        entityId: runId,
+        payload: { specId, errorMessage: err instanceof Error ? err.message : String(err) },
+      })
+    } catch (logErr) { console.error('[logger]', logErr) }
   })
 
   redirect(`/restore/${specId}/runs`)
