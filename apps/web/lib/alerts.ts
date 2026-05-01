@@ -33,6 +33,36 @@ const GOTIFY_PRIORITY:   Record<string, number> = { error: 8, warning: 5, info: 
 const PUSHOVER_PRIORITY: Record<string, number> = { error: 1, warning: 0, info: -1 }
 const PAGERDUTY_SEV:     Record<string, string> = { error: 'error', warning: 'warning', info: 'info' }
 
+/**
+ * Sends an alert delivery request and throws if the response isn't 2xx.
+ * Wraps fetch so all fire* functions reliably surface delivery failures
+ * (otherwise the Test button and production logs report false success
+ * when destination servers return 4xx/5xx).
+ */
+async function deliverOrThrow(
+  channelType: string,
+  url: string,
+  init: RequestInit,
+): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(url, init)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`${channelType} delivery failed: ${msg}`)
+  }
+  if (!response.ok) {
+    let bodySnippet = ''
+    try {
+      const text = await response.text()
+      bodySnippet = text.slice(0, 200).replace(/\s+/g, ' ').trim()
+    } catch { /* ignore body read errors */ }
+    throw new Error(
+      `${channelType} delivery failed: HTTP ${response.status} ${response.statusText}${bodySnippet ? ` — ${bodySnippet}` : ''}`,
+    )
+  }
+}
+
 function buildMessage(type: AlertType, payload: AlertPayload): string {
   if (type === 'backup_failed') {
     const p = payload as AlertBackupFailed
@@ -56,7 +86,7 @@ async function fireDiscord(url: string, type: AlertType, message: string, severi
       timestamp: new Date().toISOString(),
     }],
   }
-  await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  await deliverOrThrow('Discord', url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function fireSlack(url: string, type: AlertType, message: string): Promise<void> {
@@ -66,12 +96,12 @@ async function fireSlack(url: string, type: AlertType, message: string): Promise
       { type: 'section', text: { type: 'mrkdwn', text: `*[BackupOS] ${type.replace(/_/g, ' ')}*\n${message}` } },
     ],
   }
-  await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  await deliverOrThrow('Slack', url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function fireWebhook(url: string, type: AlertType, severity: string, message: string, payload: AlertPayload): Promise<void> {
   const body = { type, severity, message, timestamp: new Date().toISOString(), payload }
-  await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  await deliverOrThrow('Webhook', url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function fireEmail(type: AlertType, message: string): Promise<void> {
@@ -117,7 +147,7 @@ async function fireZulip(cfg: ZulipConfig, type: AlertType, message: string, sev
     topic:   cfg.topic ?? '[BackupOS] alerts',
     content: `${emoji} ${message}`,
   })
-  await fetch(`${cfg.url}/api/v1/messages`, {
+  await deliverOrThrow('Zulip', `${cfg.url}/api/v1/messages`, {
     method:  'POST',
     headers: {
       'Authorization': `Basic ${Buffer.from(`${cfg.email}:${cfg.apiKey}`).toString('base64')}`,
@@ -129,7 +159,7 @@ async function fireZulip(cfg: ZulipConfig, type: AlertType, message: string, sev
 
 async function fireTelegram(cfg: TelegramConfig, type: AlertType, message: string, severity: string): Promise<void> {
   const emoji = SEVERITY_EMOJI[severity] ?? ''
-  await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
+  await deliverOrThrow('Telegram', `https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ chat_id: cfg.chatId, text: `${emoji} ${message}`, parse_mode: 'Markdown' }),
@@ -137,7 +167,7 @@ async function fireTelegram(cfg: TelegramConfig, type: AlertType, message: strin
 }
 
 async function firePagerDuty(cfg: PagerDutyConfig, type: AlertType, message: string, severity: string, payload: AlertPayload): Promise<void> {
-  await fetch('https://events.pagerduty.com/v2/enqueue', {
+  await deliverOrThrow('PagerDuty', 'https://events.pagerduty.com/v2/enqueue', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({
@@ -160,11 +190,11 @@ async function fireNtfy(cfg: NtfyConfig, type: AlertType, message: string, sever
     'Tags':     type,
   }
   if (cfg.auth) headers['Authorization'] = cfg.auth
-  await fetch(`${cfg.url}/${cfg.topic}`, { method: 'POST', headers, body: message })
+  await deliverOrThrow('ntfy', `${cfg.url}/${cfg.topic}`, { method: 'POST', headers, body: message })
 }
 
 async function fireGotify(cfg: GotifyConfig, type: AlertType, message: string, severity: string): Promise<void> {
-  await fetch(`${cfg.url}/message?token=${cfg.appToken}`, {
+  await deliverOrThrow('Gotify', `${cfg.url}/message?token=${cfg.appToken}`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({
@@ -183,7 +213,7 @@ async function firePushover(cfg: PushoverConfig, type: AlertType, message: strin
     message,
     priority: String(PUSHOVER_PRIORITY[severity] ?? -1),
   })
-  await fetch('https://api.pushover.net/1/messages.json', {
+  await deliverOrThrow('Pushover', 'https://api.pushover.net/1/messages.json', {
     method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body:    params.toString(),
