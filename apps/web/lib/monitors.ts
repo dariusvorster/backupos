@@ -42,6 +42,25 @@ export async function performMonitorSync(
     } else {
       msg = String(err)
     }
+
+    try {
+      await db.insert(monitorResults).values({
+        id:               crypto.randomUUID(),
+        monitorId,
+        status:           'failed',
+        lastBackupAt:     null,
+        lastBackupStatus: null,
+        sizeBytes:        null,
+        details:          JSON.stringify({ error: msg || 'Sync failed' }),
+        checkedAt:        new Date(),
+      })
+      await db.update(backupMonitors)
+        .set({ lastSyncedAt: new Date(), status: 'failed' })
+        .where(eq(backupMonitors.id, monitorId))
+    } catch (insertErr) {
+      console.error('[monitors] failed to record sync failure:', insertErr)
+    }
+
     return { ok: false, error: msg || 'Sync failed' }
   }
 }
