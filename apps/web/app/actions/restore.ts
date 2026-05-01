@@ -8,7 +8,7 @@ import { requireAdmin } from '@/lib/user'
 import { dispatchToChannel } from '@/lib/alerts'
 import type { AlertType, AlertPayload } from '@/lib/alerts'
 import { decryptField } from '@/lib/repo-crypto'
-import { connectedAgentIds, requestFilesystemRestore } from '@/lib/ws-state'
+import { connectedAgentIds, requestFilesystemRestore, dispatch } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import { appendLog } from '@/lib/logger'
 
@@ -318,4 +318,20 @@ export async function restoreFromSnapshot(
   }
 
   return { ok: true, runId }
+}
+
+export async function cancelRestore(restoreId: string): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin()
+  if (!restoreId) return { ok: false, error: 'restoreId required' }
+
+  const db = getDb()
+  const [run] = await db.select().from(restoreRuns).where(eq(restoreRuns.id, restoreId)).limit(1)
+  if (!run) return { ok: false, error: 'Restore run not found' }
+  if (run.status !== 'running') return { ok: false, error: `Restore is ${run.status}, not running` }
+
+  for (const agentId of connectedAgentIds()) {
+    dispatch(agentId, { type: 'cancel_filesystem_restore', restoreId })
+  }
+
+  return { ok: true }
 }

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PollWrapper } from './poll-wrapper'
+import { CancelRunButton } from './CancelRunButton'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -46,6 +47,7 @@ export default async function RestoreRunsPage({ params }: { params: Promise<{ id
                 <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Status</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Trigger</th>
                 <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}>Snapshot</th>
+                <th style={{ padding: '10px 20px', textAlign: 'left', fontWeight: 500 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -85,6 +87,9 @@ export default async function RestoreRunsPage({ params }: { params: Promise<{ id
                     >
                       {run.snapshotId?.slice(0, 8) ?? '—'}
                     </Link>
+                  </td>
+                  <td style={{ padding: '12px 20px' }}>
+                    {run.status === 'running' && <CancelRunButton runId={run.id} />}
                   </td>
                 </tr>
               ))}

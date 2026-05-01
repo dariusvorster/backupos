@@ -147,6 +147,10 @@ interface ActiveJob { ctrl: AbortController; runId: string; phase: string; lastR
 // Active jobs — keyed by jobId
 const activeJobs = new Map<string, ActiveJob>()
 
+interface ActiveRestore { ctrl: AbortController; cancelled: boolean }
+// Active ad-hoc filesystem restores — keyed by restoreId
+const activeRestores = new Map<string, ActiveRestore>()
+
 // Emit a heartbeat for every in-flight backup every 5 seconds
 setInterval(() => {
   for (const [jobId, job] of activeJobs) {
@@ -248,8 +252,20 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       await runComposeRestore(msg, send, activeJobs, BINARY)
     })()
 
+  } else if (msg.type === 'cancel_filesystem_restore') {
+    const restore = activeRestores.get(msg.restoreId)
+    if (!restore) {
+      console.warn(`[agent] cancel_filesystem_restore: no active restore for restoreId=${msg.restoreId}`)
+      send({ type: 'filesystem_restore_cancelled', restoreId: msg.restoreId, reason: 'not_running' })
+    } else {
+      console.log(`[agent] cancel_filesystem_restore restoreId=${msg.restoreId} — aborting`)
+      restore.cancelled = true
+      restore.ctrl.abort()
+      send({ type: 'filesystem_restore_cancelled', restoreId: msg.restoreId, reason: 'user_requested' })
+    }
+
   } else if (msg.type === 'run_filesystem_restore') {
-    void handleFilesystemRestore(msg, send, BINARY)
+    void handleFilesystemRestore(msg, send, activeRestores, BINARY)
 
   } else if (msg.type === 'mount_repository') {
     void runMountRepository(msg, send)
