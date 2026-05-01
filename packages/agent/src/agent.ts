@@ -10,6 +10,7 @@ import { detectCapabilities } from './capabilities'
 import { resolveHostPrefix, applyHostPrefixAll } from './lib/host-prefix'
 import { runMountRepository } from './handlers/mountRepository'
 import { handleFilesystemRestore } from './handlers/filesystemRestore'
+import { handleDatabaseRestore } from './handlers/databaseRestore'
 
 function requireEnv(name: string): string {
   const v = process.env[name]
@@ -263,6 +264,9 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       restore.ctrl.abort()
       send({ type: 'filesystem_restore_cancelled', restoreId: msg.restoreId, reason: 'user_requested' })
     }
+
+  } else if (msg.type === 'run_database_restore') {
+    void handleDatabaseRestore(msg, send)
 
   } else if (msg.type === 'run_filesystem_restore') {
     void handleFilesystemRestore(msg, send, activeRestores, BINARY)

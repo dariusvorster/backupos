@@ -151,6 +151,8 @@ export type AgentMessage =
   | { type: 'filesystem_restore_started'; requestId: string; restoreId: string }
   | { type: 'filesystem_restore_complete'; restoreId: string; success: boolean; filesRestored?: number; durationSec?: number; error?: string; targetPath?: string; sourcePath?: string }
   | { type: 'filesystem_restore_cancelled'; restoreId: string; reason: 'user_requested' | 'not_running' }
+  | { type: 'database_restore_started'; requestId: string; restoreId: string }
+  | { type: 'database_restore_complete'; restoreId: string; success: boolean; output?: string; error?: string; durationSec?: number }
 
 export interface DetectedResources {
   dockerVolumes?: string[]
@@ -176,3 +178,4 @@ export type ServerMessage =
   | { type: 'run_verification'; verificationRunId: string; repoId: string; snapshotId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; targetType: 'temp_directory'; validationHook?: string | null }
   | { type: 'run_filesystem_restore'; requestId: string; restoreId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; targetPath: string; sourcePath: string; targetIsAgentLocal: boolean }
   | { type: 'cancel_filesystem_restore'; restoreId: string }
+  | { type: 'run_database_restore'; requestId: string; restoreId: string; app: 'postgres' | 'mysql' | 'mariadb'; dumpFilePath: string; targetContainer?: string; targetDatabase?: string; targetUsername?: string; targetHost?: string; targetPort?: number; passwordEnv?: string }

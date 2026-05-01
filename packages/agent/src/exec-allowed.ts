@@ -3,7 +3,10 @@ import { spawn } from 'child_process'
 export const ALLOWED_COMMANDS = new Set([
   'restic',
   'pg_dump',
+  'pg_restore',
+  'psql',
   'mysqldump',
+  'mysql',
   'redis-cli',
   'sqlite3',
   'docker',
