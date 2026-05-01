@@ -46,6 +46,25 @@ ok()     { echo "[backupos] ✓ $*"; }
 die()    { echo "[backupos] ERROR: $*" >&2; exit 1; }
 rand32() { openssl rand -hex 32 2>/dev/null || tr -dc 'a-f0-9' </dev/urandom | head -c 64; }
 
+# Wait until no process has the DB file open (max 30 seconds).
+# After systemctl stop returns the OS should have released handles, but
+# defending against slow shutdowns and SIGKILL stragglers — see #109.
+wait_for_db_unlock() {
+  local db_path="${DATA_DIR}/backupos.db"
+  local i
+  if [[ ! -f "$db_path" ]]; then
+    return 0  # No DB yet — fresh install
+  fi
+  for i in $(seq 1 30); do
+    if ! fuser "$db_path" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  log "WARN: $db_path still held after 30s wait — proceeding anyway"
+  return 0
+}
+
 [[ $EUID -eq 0 ]] || die "Run as root:  sudo bash $0 $COMMAND"
 
 # ── Uninstall ─────────────────────────────────────────────────────────────────
@@ -177,6 +196,8 @@ if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
   WAS_RUNNING=true
   log "Stopping service for update..."
   systemctl stop "$SERVICE_NAME"
+  log "Waiting for database lock to release..."
+  wait_for_db_unlock
 fi
 
 rsync -a --delete \
