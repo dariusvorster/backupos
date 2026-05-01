@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { PollWrapper } from './poll-wrapper'
+import { PollWrapper } from '@/components/poll-wrapper'
 import { CancelRunButton } from './CancelRunButton'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']

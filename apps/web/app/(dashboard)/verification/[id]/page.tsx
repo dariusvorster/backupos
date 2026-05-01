@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { getDb, verificationTests, verificationRuns, backupJobs, eq, desc } from '@backupos/db'
 import { Badge } from '@/components/ui/badge'
 import { RunVerificationButton } from './run-verification-button'
+import { PollWrapper } from '@/components/poll-wrapper'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -91,6 +92,8 @@ export default async function VerificationDetailPage({ params }: { params: Promi
     .orderBy(desc(verificationRuns.startedAt))
     .all()
 
+  const hasRunning = runs.some(r => r.status === 'running')
+
   const infoRow: React.CSSProperties = {
     display: 'flex', justifyContent: 'space-between', padding: '10px 0',
     borderBottom: '1px solid var(--border)', fontSize: 13,
@@ -98,6 +101,7 @@ export default async function VerificationDetailPage({ params }: { params: Promi
 
   return (
     <div>
+      <PollWrapper initialStatus={hasRunning ? 'running' : 'idle'} />
       <div style={{ marginBottom: 24 }}>
         <Link href="/verification" style={{ fontSize: 13, color: 'var(--fg-mute)', textDecoration: 'none' }}>
           ← Verification
