@@ -1,3 +1,3 @@
 export * from './types'
 export { parseRestoreSpec, RestoreSpecParseError } from './parser'
-export { executeRestoreSpec } from './executor'
+export { executeRestoreSpec, type NotifyDelivery } from './executor'
