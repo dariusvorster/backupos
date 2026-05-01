@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, verificationTests, verificationRuns, backupRuns, backupJobs, repositories, eq, and, desc } from '@backupos/db'
-import { decryptField } from '@/lib/repo-crypto'
+import { encryptField, decryptField } from '@/lib/repo-crypto'
+import type { SshVerificationTargetConfig } from '@backupos/agent-protocol'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { connectedAgentIds } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
@@ -15,10 +16,24 @@ export async function createVerificationTest(data: {
   targetType: string
   validationHook: string
   schedule: string
+  sshConfig?: {
+    host: string
+    user: string
+    port?: number
+    remoteDir: string
+    sshKey: string
+    cleanupRemote?: boolean
+  }
 }): Promise<void> {
   await requireAdmin() // admin only
-  const { name, jobId, targetType, validationHook, schedule } = data
+  const { name, jobId, targetType, validationHook, schedule, sshConfig } = data
   if (!name || !jobId || !targetType || !schedule) return
+
+  let targetConfig: string | null = null
+  if (targetType === 'ssh_target' && sshConfig) {
+    const { sshKey, ...rest } = sshConfig
+    targetConfig = JSON.stringify({ ...rest, sshKey: encryptField(sshKey) })
+  }
 
   const db = getDb()
   const id = crypto.randomUUID()
@@ -27,6 +42,7 @@ export async function createVerificationTest(data: {
     name,
     jobId,
     targetType,
+    targetConfig,
     validationHook: validationHook || null,
     schedule,
     enabled:   true,
@@ -96,6 +112,15 @@ export async function runVerification(testId: string): Promise<void> {
     return
   }
 
+  let targetConfig: SshVerificationTargetConfig | undefined
+  if (test.targetType === 'ssh_target' && test.targetConfig) {
+    const stored = JSON.parse(test.targetConfig) as Record<string, unknown>
+    targetConfig = {
+      ...(stored as Omit<SshVerificationTargetConfig, 'sshKey'>),
+      sshKey: decryptField(stored['sshKey'] as string),
+    }
+  }
+
   const result = await dispatchToAgent(agentId, {
     type:              'run_verification',
     verificationRunId: runId,
@@ -104,7 +129,8 @@ export async function runVerification(testId: string): Promise<void> {
     repoUrl,
     repoPassword,
     envVars:           repoCfg,
-    targetType:        'temp_directory',
+    targetType:        test.targetType as 'temp_directory' | 'docker_volume' | 'ssh_target',
+    targetConfig,
     validationHook:    test.validationHook ?? null,
   })
 

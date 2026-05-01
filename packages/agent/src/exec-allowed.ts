@@ -11,6 +11,8 @@ export const ALLOWED_COMMANDS = new Set([
   'sqlite3',
   'docker',
   'cp',
+  'rsync',
+  'ssh',
 ])
 
 export function spawnAllowed(

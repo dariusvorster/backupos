@@ -13,7 +13,8 @@ const TARGET_TYPES = [
   { value: 'ssh_target',        label: 'SSH target',         desc: 'Restore to a remote host via SSH' },
 ]
 
-const STEP_LABELS = ['Pick job', 'Sandbox target', 'Validation hook', 'Schedule']
+// Step 2 (SSH config) is only shown when targetType === 'ssh_target'
+const STEP_LABELS = ['Pick job', 'Sandbox target', 'SSH config', 'Validation hook', 'Schedule']
 
 interface Props { jobs: Job[] }
 
@@ -26,6 +27,32 @@ export function VerificationWizard({ jobs }: Props) {
   const [schedule,       setSchedule]       = useState('0 3 * * 0')
   const [submitting,     startSubmit]       = useTransition()
 
+  // SSH config state
+  const [sshHost,      setSshHost]      = useState('')
+  const [sshUser,      setSshUser]      = useState('root')
+  const [sshPort,      setSshPort]      = useState('22')
+  const [sshRemoteDir, setSshRemoteDir] = useState('')
+  const [sshKey,       setSshKey]       = useState('')
+  const [sshCleanup,   setSshCleanup]   = useState(true)
+
+  const isSsh = targetType === 'ssh_target'
+  const lastStep = 4
+
+  const handleNext = () => {
+    if (step === 1 && !isSsh) setStep(3)
+    else setStep(s => s + 1)
+  }
+
+  const handleBack = () => {
+    if (step === 3 && !isSsh) setStep(1)
+    else setStep(s => s - 1)
+  }
+
+  const continueDisabled =
+    (step === 0 && !jobId) ||
+    (step === 1 && !targetType) ||
+    (step === 2 && isSsh && (!sshHost || !sshUser || !sshRemoteDir || !sshKey))
+
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '8px 12px',
     backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
@@ -35,6 +62,16 @@ export function VerificationWizard({ jobs }: Props) {
 
   const labelStyle: React.CSSProperties = {
     display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500,
+  }
+
+  const isStepActive = (i: number) => {
+    if (i === 2 && !isSsh) return false
+    return i === step
+  }
+
+  const isStepDone = (i: number) => {
+    if (i === 2 && !isSsh) return step > 2
+    return i < step
   }
 
   return (
@@ -48,17 +85,17 @@ export function VerificationWizard({ jobs }: Props) {
                 width: 28, height: 28, borderRadius: '50%',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 12, fontWeight: 600,
-                backgroundColor: i === step ? 'var(--accent)' : i < step ? 'var(--ok)' : 'var(--surf2)',
-                color: i <= step ? 'var(--bg)' : 'var(--fg-dim)',
+                backgroundColor: isStepActive(i) ? 'var(--accent)' : isStepDone(i) ? 'var(--ok)' : 'var(--surf2)',
+                color: isStepActive(i) || isStepDone(i) ? 'var(--bg)' : 'var(--fg-dim)',
               }}>
-                {i < step ? '✓' : i + 1}
+                {isStepDone(i) ? '✓' : i + 1}
               </div>
-              <span style={{ fontSize: 11, color: i === step ? 'var(--fg)' : 'var(--fg-dim)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: isStepActive(i) ? 'var(--fg)' : 'var(--fg-dim)', whiteSpace: 'nowrap' }}>
                 {label}
               </span>
             </div>
             {i < STEP_LABELS.length - 1 && (
-              <div style={{ flex: 1, height: 1, backgroundColor: i < step ? 'var(--ok)' : 'var(--border)', margin: '0 8px', marginBottom: 22 }} />
+              <div style={{ flex: 1, height: 1, backgroundColor: isStepDone(i) ? 'var(--ok)' : 'var(--border)', margin: '0 8px', marginBottom: 22 }} />
             )}
           </div>
         ))}
@@ -123,8 +160,77 @@ export function VerificationWizard({ jobs }: Props) {
           </div>
         )}
 
-        {/* Step 2: Validation hook + name */}
+        {/* Step 2: SSH config (only for ssh_target) */}
         {step === 2 && (
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>SSH target configuration</h2>
+            <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 20 }}>
+              BackupOS will restore the snapshot locally, then rsync it to this remote host. The SSH private key is encrypted at rest.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={labelStyle}>Host</label>
+                <input
+                  type="text"
+                  placeholder="192.168.1.50"
+                  value={sshHost}
+                  onChange={e => setSshHost(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Port</label>
+                <input
+                  type="number"
+                  value={sshPort}
+                  onChange={e => setSshPort(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>SSH user</label>
+              <input
+                type="text"
+                placeholder="root"
+                value={sshUser}
+                onChange={e => setSshUser(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>Remote directory</label>
+              <input
+                type="text"
+                placeholder="/tmp/backupos-verify"
+                value={sshRemoteDir}
+                onChange={e => setSshRemoteDir(e.target.value)}
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 13 }}
+              />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>Private key (PEM)</label>
+              <textarea
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."
+                value={sshKey}
+                onChange={e => setSshKey(e.target.value)}
+                rows={6}
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 12, resize: 'vertical' }}
+              />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={sshCleanup}
+                onChange={e => setSshCleanup(e.target.checked)}
+              />
+              <span style={{ fontSize: 13, color: 'var(--fg-mute)' }}>Remove remote directory after verification</span>
+            </label>
+          </div>
+        )}
+
+        {/* Step 3: Validation hook + name */}
+        {step === 3 && (
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>Validation hook</h2>
             <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 20 }}>
@@ -156,8 +262,8 @@ export function VerificationWizard({ jobs }: Props) {
           </div>
         )}
 
-        {/* Step 3: Schedule */}
-        {step === 3 && (
+        {/* Step 4: Schedule */}
+        {step === 4 && (
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg)', marginBottom: 4 }}>Schedule</h2>
             <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 20 }}>
@@ -181,6 +287,9 @@ export function VerificationWizard({ jobs }: Props) {
               <div style={{ fontSize: 13, color: 'var(--fg)', lineHeight: 1.7 }}>
                 <div><span style={{ color: 'var(--fg-mute)' }}>Name:</span> {testName || '—'}</div>
                 <div><span style={{ color: 'var(--fg-mute)' }}>Target:</span> {TARGET_TYPES.find(t => t.value === targetType)?.label ?? '—'}</div>
+                {isSsh && (
+                  <div><span style={{ color: 'var(--fg-mute)' }}>SSH host:</span> {sshUser}@{sshHost}:{sshPort} → {sshRemoteDir}</div>
+                )}
                 <div><span style={{ color: 'var(--fg-mute)' }}>Hook:</span> {validationHook || 'none'}</div>
                 <div><span style={{ color: 'var(--fg-mute)' }}>Schedule:</span> <code style={{ fontFamily: 'var(--font-mono)' }}>{schedule}</code></div>
               </div>
@@ -192,21 +301,18 @@ export function VerificationWizard({ jobs }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 28 }}>
           <div>
             {step > 0 && (
-              <Button variant="secondary" size="md" onClick={() => setStep(s => s - 1)}>
+              <Button variant="secondary" size="md" onClick={handleBack}>
                 Back
               </Button>
             )}
           </div>
           <div>
-            {step < 3 ? (
+            {step < lastStep ? (
               <Button
                 variant="primary"
                 size="md"
-                onClick={() => setStep(s => s + 1)}
-                disabled={
-                  (step === 0 && !jobId) ||
-                  (step === 1 && !targetType)
-                }
+                onClick={handleNext}
+                disabled={continueDisabled}
               >
                 Continue
               </Button>
@@ -217,6 +323,16 @@ export function VerificationWizard({ jobs }: Props) {
                 disabled={submitting || !testName}
                 onClick={() => startSubmit(() => createVerificationTest({
                   name: testName, jobId, targetType, validationHook, schedule,
+                  ...(isSsh ? {
+                    sshConfig: {
+                      host:          sshHost,
+                      user:          sshUser,
+                      port:          parseInt(sshPort) || 22,
+                      remoteDir:     sshRemoteDir,
+                      sshKey,
+                      cleanupRemote: sshCleanup,
+                    },
+                  } : {}),
                 }))}
               >
                 {submitting ? 'Creating…' : 'Create test'}
