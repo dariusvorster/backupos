@@ -6,10 +6,10 @@ import { createVerificationTest } from '@/app/actions/verification'
 
 interface Job { id: string; name: string }
 
-const TARGET_TYPES = [
+const TARGET_TYPES: { value: string; label: string; desc: string; disabled?: boolean }[] = [
   { value: 'temp_directory',    label: 'Temp directory',     desc: 'Restore to a temporary directory on the agent host, cleaned up after verification' },
   { value: 'docker_volume',     label: 'Docker volume',      desc: 'Restore to a named Docker volume on the agent host' },
-  { value: 'proxmox_vm_clone',  label: 'Proxmox VM clone',   desc: 'Restore into a cloned Proxmox VM — requires a hypervisor driver' },
+  { value: 'proxmox_vm_clone',  label: 'Proxmox VM clone',   desc: 'Restore into a cloned Proxmox VM — requires a hypervisor driver. Not yet implemented (#142).', disabled: true },
   { value: 'ssh_target',        label: 'SSH target',         desc: 'Restore to a remote host via SSH' },
 ]
 
@@ -113,9 +113,10 @@ export function VerificationWizard({ jobs }: Props) {
                 <label key={tt.value} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10,
                   padding: '12px 14px',
-                  backgroundColor: targetType === tt.value ? 'var(--accent-dim)' : 'var(--surf2)',
-                  border: `1px solid ${targetType === tt.value ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                  backgroundColor: tt.disabled ? 'var(--surf2)' : (targetType === tt.value ? 'var(--accent-dim)' : 'var(--surf2)'),
+                  border: `1px solid ${targetType === tt.value && !tt.disabled ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-sm)', cursor: tt.disabled ? 'not-allowed' : 'pointer',
+                  opacity: tt.disabled ? 0.55 : 1,
                 }}>
                   <input
                     type="radio"
@@ -123,10 +124,23 @@ export function VerificationWizard({ jobs }: Props) {
                     value={tt.value}
                     checked={targetType === tt.value}
                     onChange={() => setTargetType(tt.value)}
+                    disabled={tt.disabled}
                     style={{ marginTop: 2 }}
                   />
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>{tt.label}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)' }}>{tt.label}</div>
+                      {tt.disabled && (
+                        <span style={{
+                          fontSize: 10, padding: '2px 8px',
+                          backgroundColor: 'var(--surf)', border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-sm)', color: 'var(--fg-dim)',
+                          textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600,
+                        }}>
+                          Coming soon
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 2 }}>{tt.desc}</div>
                   </div>
                 </label>

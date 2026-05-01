@@ -31,6 +31,11 @@ export async function runVerificationHandler(msg: RunMsg, send: SendFn, binaryPa
   if (msg.targetType === 'docker_volume') {
     return runVerificationDockerVolume(msg, send, binaryPath)
   }
+  if (msg.targetType === 'proxmox_vm_clone') {
+    const errorMessage = 'proxmox_vm_clone target type is not yet implemented — see issue #142'
+    send({ type: 'verification_complete', verificationRunId: msg.verificationRunId, success: false, log: `ERROR: ${errorMessage}`, errorMessage })
+    return
+  }
   return runVerificationTempDirectory(msg, send, binaryPath)
 }
 
