@@ -161,7 +161,21 @@ fi
 restic version &>/dev/null || die "restic installed but cannot execute — check architecture"
 ok "restic $(restic version | head -1 | awk '{print $2}')"
 
-# Go (1.22+) for backupos-pbs service
+# Go (1.22+) for backupos-pbs service.
+#
+# Users typically install Go from the official tarball at /usr/local/go/.
+# That puts go at /usr/local/go/bin/go but it's only on $PATH for shells
+# that source /etc/profile.d/go.sh (login shells). sudo non-login bash
+# (which is what runs this script) doesn't get that. Augment PATH here
+# and create symlinks in /usr/local/bin/ so subsequent sudo invocations
+# find go automatically.
+if [[ -x /usr/local/go/bin/go ]] && ! command -v go &>/dev/null; then
+  log "Found Go at /usr/local/go/bin — adding to PATH and linking to /usr/local/bin"
+  export PATH="/usr/local/go/bin:$PATH"
+  ln -sf /usr/local/go/bin/go /usr/local/bin/go
+  ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+fi
+
 if ! command -v go &>/dev/null; then
   die "Go not installed — install Go 1.22+ from https://go.dev/dl/ and re-run"
 fi
