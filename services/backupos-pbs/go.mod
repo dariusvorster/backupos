@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/klauspost/compress v1.17.11
 	golang.org/x/net v0.27.0
 	modernc.org/sqlite v1.34.1
 )

@@ -35,6 +35,10 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/db"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/finish"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedappend"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedchunk"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedclose"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedindex"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
@@ -87,6 +91,10 @@ func main() {
 		sessionStore,
 		blob.NewHandler(),
 		finish.NewHandler(sessionStore),
+		fixedindex.NewHandler(),
+		fixedchunk.NewHandler(),
+		fixedappend.NewHandler(),
+		fixedclose.NewHandler(),
 		upgrade.StubStreamHandler(),
 	)
 

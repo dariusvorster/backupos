@@ -15,6 +15,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/streamctx"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/wstate"
 )
 
 // UpgradeToken is the custom Upgrade header value PVE sends for backup
@@ -36,31 +37,44 @@ const UpgradeToken = "proxmox-backup-protocol-v1"
 // is expected to wrap this with the requireAuth middleware, which also
 // attaches the Identity to the request context via auth.WithIdentity.
 type Handler struct {
-	datastores    *datastore.Lookup
-	sessions      *session.Store
-	blobHandler   http.Handler
-	finishHandler http.Handler
-	streamHandler http.Handler // fallback 501-stub for unimplemented H2 paths
+	datastores         *datastore.Lookup
+	sessions           *session.Store
+	blobHandler        http.Handler
+	finishHandler      http.Handler
+	fixedIndexHandler  http.Handler
+	fixedChunkHandler  http.Handler
+	fixedAppendHandler http.Handler
+	fixedCloseHandler  http.Handler
+	streamHandler      http.Handler // fallback 501-stub for unimplemented H2 paths
 }
 
 // NewHandler constructs a new upgrade Handler.
 //
 // blobHandler handles POST /blob; finishHandler handles POST /finish.
-// streamHandler is the fallback invoked for all other H2 paths (501 stub until
-// M4c-go-fixed-index, etc. land).
+// fixedIndexHandler, fixedChunkHandler, fixedAppendHandler, fixedCloseHandler
+// handle the fixed-index lifecycle.
+// streamHandler is the fallback invoked for all other H2 paths (501 stub).
 func NewHandler(
 	datastores *datastore.Lookup,
 	sessions *session.Store,
 	blobHandler http.Handler,
 	finishHandler http.Handler,
+	fixedIndexHandler http.Handler,
+	fixedChunkHandler http.Handler,
+	fixedAppendHandler http.Handler,
+	fixedCloseHandler http.Handler,
 	streamHandler http.Handler,
 ) *Handler {
 	return &Handler{
-		datastores:    datastores,
-		sessions:      sessions,
-		blobHandler:   blobHandler,
-		finishHandler: finishHandler,
-		streamHandler: streamHandler,
+		datastores:         datastores,
+		sessions:           sessions,
+		blobHandler:        blobHandler,
+		finishHandler:      finishHandler,
+		fixedIndexHandler:  fixedIndexHandler,
+		fixedChunkHandler:  fixedChunkHandler,
+		fixedAppendHandler: fixedAppendHandler,
+		fixedCloseHandler:  fixedCloseHandler,
+		streamHandler:      streamHandler,
 	}
 }
 
@@ -97,7 +111,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, datastore.ErrInvalidName) {
-		// Should be caught by ParseParams; defensive.
 		writeUpgradeError(w, http.StatusBadRequest, "invalid datastore name")
 		return
 	}
@@ -110,8 +123,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Step 4: Begin session row (token from context, set by requireAuth).
 	identity := auth.FromContext(r.Context())
 	if identity == nil {
-		// Should be impossible — requireAuth always attaches identity.
-		// Defensive: refuse the upgrade rather than insert a row with NULL token_id.
 		slog.Error("upgrade reached without auth identity in context")
 		writeUpgradeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -139,7 +150,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Step 5: Hijack the connection.
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		// Should never happen with the standard http.Server.
 		slog.Error("ResponseWriter does not support hijacking")
 		writeUpgradeError(w, http.StatusInternalServerError, "hijack not supported")
 		_, _ = h.sessions.Finalize(sessionID)
@@ -176,9 +186,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Step 7: Hand off to http2.Server with a per-session router.
 	//
-	// Every H2 stream on this connection shares the same session context
-	// (datastore, backup-type/id/time). We build a per-session router that
-	// attaches that context to each stream's request before dispatching.
+	// Each H2 connection gets its own WriterState for in-memory fixed/dynamic
+	// index writer maps. Cleanup drops any open writers when the connection closes.
+	ws := wstate.New()
+	defer ws.Cleanup()
+
 	sessionCtx := &streamctx.SessionContext{
 		SessionID:     sessionID,
 		DatastoreID:   ds.ID,
@@ -187,8 +199,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		BackupID:      params.BackupID,
 		BackupTime:    params.BackupTime,
 		Namespace:     params.Namespace,
+		WriterState:   ws,
 	}
-	sessionRouter := buildSessionRouter(h.blobHandler, h.finishHandler, h.streamHandler)
+	sessionRouter := buildSessionRouter(
+		h.blobHandler, h.finishHandler,
+		h.fixedIndexHandler, h.fixedChunkHandler,
+		h.fixedAppendHandler, h.fixedCloseHandler,
+		h.streamHandler,
+	)
 	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sessionRouter.ServeHTTP(w, r.WithContext(streamctx.WithSession(r.Context(), sessionCtx)))
 	})
@@ -196,13 +214,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h2srv := &http2.Server{}
 	h2srv.ServeConn(conn, &http2.ServeConnOpts{
 		Handler: wrapped,
-		// We intentionally do NOT set UpgradeRequest — that's specifically
-		// for h2c upgrades where the original HTTP/1.1 request becomes the
-		// first H2 stream. PBS doesn't work that way; the upgrade response
-		// is ack-only and the client opens new streams.
-		// SawClientPreface stays false — the client preface arrives after
-		// our 101 over the same connection, which is what http2.Server
-		// expects as its default state.
 	})
 
 	// Step 8: Finalize on connection close.
@@ -270,13 +281,30 @@ func identifyKind(path string) string {
 }
 
 // buildSessionRouter routes H2 streams to the appropriate handler.
-func buildSessionRouter(blobHandler, finishHandler, fallback http.Handler) http.Handler {
+// /fixed_index dispatches POST→fixedIndex and PUT→fixedAppend.
+func buildSessionRouter(blobHandler, finishHandler, fixedIndexHandler, fixedChunkHandler, fixedAppendHandler, fixedCloseHandler, fallback http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/blob":
 			blobHandler.ServeHTTP(w, r)
 		case "/finish":
 			finishHandler.ServeHTTP(w, r)
+		case "/fixed_index":
+			switch r.Method {
+			case http.MethodPost:
+				fixedIndexHandler.ServeHTTP(w, r)
+			case http.MethodPut:
+				fixedAppendHandler.ServeHTTP(w, r)
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Allow", "POST, PUT")
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+			}
+		case "/fixed_chunk":
+			fixedChunkHandler.ServeHTTP(w, r)
+		case "/fixed_close":
+			fixedCloseHandler.ServeHTTP(w, r)
 		default:
 			fallback.ServeHTTP(w, r)
 		}

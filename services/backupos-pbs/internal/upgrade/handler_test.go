@@ -18,6 +18,10 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/blob"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/finish"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedappend"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedchunk"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedclose"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedindex"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 )
 
@@ -60,9 +64,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 }
 
 // wrapWithTestIdentity injects a synthetic auth.Identity into the request
-// context, simulating what requireAuth does in production. Tests that bypass
-// the auth middleware need this wrapper so the upgrade handler can read the
-// identity for session row creation.
+// context, simulating what requireAuth does in production.
 func wrapWithTestIdentity(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := auth.WithIdentity(r.Context(), &auth.Identity{
@@ -75,9 +77,24 @@ func wrapWithTestIdentity(h http.Handler) http.Handler {
 	})
 }
 
+// newTestHandler constructs a Handler with all real sub-handlers and stub fallback.
+func newTestHandler(db *sql.DB) *Handler {
+	return NewHandler(
+		datastore.NewLookup(db),
+		session.NewStore(db),
+		blob.NewHandler(),
+		finish.NewHandler(session.NewStore(db)),
+		fixedindex.NewHandler(),
+		fixedchunk.NewHandler(),
+		fixedappend.NewHandler(),
+		fixedclose.NewHandler(),
+		StubStreamHandler(),
+	)
+}
+
 func TestHandler_NoUpgradeHeaders_Returns501(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), blob.NewHandler(), finish.NewHandler(session.NewStore(db)), StubStreamHandler())
+	h := newTestHandler(db)
 
 	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
@@ -95,7 +112,7 @@ func TestHandler_NoUpgradeHeaders_Returns501(t *testing.T) {
 
 func TestHandler_InvalidParams_Returns400(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), blob.NewHandler(), finish.NewHandler(session.NewStore(db)), StubStreamHandler())
+	h := newTestHandler(db)
 
 	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
@@ -116,7 +133,7 @@ func TestHandler_InvalidParams_Returns400(t *testing.T) {
 
 func TestHandler_DatastoreNotFound_Returns404(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), blob.NewHandler(), finish.NewHandler(session.NewStore(db)), StubStreamHandler())
+	h := newTestHandler(db)
 
 	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
@@ -147,7 +164,7 @@ func TestHandler_DatastoreNotFound_Returns404(t *testing.T) {
 // crashed Node in PR #244.
 func TestHandler_FullUpgradeDance(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), blob.NewHandler(), finish.NewHandler(session.NewStore(db)), StubStreamHandler())
+	h := newTestHandler(db)
 
 	// Use a TLS test server. EnableHTTP2=false so the test server doesn't
 	// negotiate H2 via ALPN — we want to drive the upgrade manually.

@@ -13,19 +13,22 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/wstate"
 )
 
 // SessionContext holds everything a per-stream handler needs to know about
 // the session it's serving. Once the upgrade handshake completes, this is
 // constant for the lifetime of the H2 connection.
 type SessionContext struct {
-	SessionID     string    // pbs_active_sessions.id (UUID)
-	DatastoreID   string    // pbs_datastores.id
-	DatastoreRoot string    // absolute filesystem path of the datastore
-	BackupType    string    // "vm" | "ct" | "host"
-	BackupID      string    // e.g. "100"
-	BackupTime    time.Time // backup-time
-	Namespace     string    // optional, "" if none
+	SessionID     string       // pbs_active_sessions.id (UUID)
+	DatastoreID   string       // pbs_datastores.id
+	DatastoreRoot string       // absolute filesystem path of the datastore
+	BackupType    string       // "vm" | "ct" | "host"
+	BackupID      string       // e.g. "100"
+	BackupTime    time.Time    // backup-time
+	Namespace     string       // optional, "" if none
+	WriterState   *wstate.State // per-session writer state (fixed/dynamic index maps)
 }
 
 type ctxKey struct{}
