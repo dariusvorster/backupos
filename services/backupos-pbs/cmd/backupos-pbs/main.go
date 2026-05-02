@@ -6,12 +6,12 @@
 //   - Reads/writes the same SQLite database as the Node service
 //   - Runs alongside backupos.service as a separate systemd unit
 //
-// In M4b-go-auth (this PR), endpoints are:
+// In M4b-go-upgrade (this PR), endpoints are:
 //   - GET  /api2/json/version    unauthenticated, 200 JSON
-//   - any  /api2/json/backup     401 without valid auth, 501 stub with auth
-//   - any  /api2/json/reader     401 without valid auth, 501 stub with auth
+//   - any  /api2/json/backup     401 without valid auth; with auth: upgrade handshake → H2 streams (501 stubs)
+//   - any  /api2/json/reader     401 without valid auth; with auth: upgrade handshake → H2 streams (501 stubs)
 //
-// The actual backup endpoints + upgrade handshake land in subsequent PRs.
+// Real backup endpoint handlers land in M4c-go-*.
 package main
 
 import (
@@ -28,8 +28,10 @@ import (
 	"time"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/db"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
 )
 
 // Build-time variables, set via -ldflags during go build.
@@ -72,6 +74,8 @@ func main() {
 	logger.Info("database opened", "path", *dbPath)
 
 	validator := auth.NewValidator(database)
+	datastoreLookup := datastore.NewLookup(database)
+	upgradeHandler := upgrade.NewHandler(datastoreLookup, upgrade.StubStreamHandler())
 
 	cert, err := tls.LoadX509KeyPair(*certPath, *keyPath)
 	if err != nil {
@@ -87,8 +91,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
-	mux.HandleFunc("/api2/json/backup", requireAuth(validator, stub501("backup")))
-	mux.HandleFunc("/api2/json/reader", requireAuth(validator, stub501("reader")))
+	mux.HandleFunc("/api2/json/backup", requireAuth(validator, upgradeHandler.ServeHTTP))
+	mux.HandleFunc("/api2/json/reader", requireAuth(validator, upgradeHandler.ServeHTTP))
 	mux.HandleFunc("/", notFound)
 
 	server := &http.Server{
@@ -183,23 +187,6 @@ func writeAuthError(w http.ResponseWriter, reason string) {
 	w.WriteHeader(http.StatusUnauthorized)
 	resp := map[string]string{"error": reason}
 	_ = json.NewEncoder(w).Encode(resp)
-}
-
-func stub501(kind string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("501 stub hit",
-			"kind", kind,
-			"method", r.Method,
-			"path", r.URL.Path,
-			"remote", r.RemoteAddr,
-		)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		resp := map[string]string{
-			"error": "PBS protocol " + kind + " endpoint pending — handler lands in M4b-go-upgrade / M4c-go",
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {
