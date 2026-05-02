@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -270,6 +271,81 @@ func TestFinish_AfterAbortedIsNoop(t *testing.T) {
 	_ = db.QueryRow(`SELECT state FROM pbs_active_sessions WHERE id = ?`, id).Scan(&gotState)
 	if gotState != "aborted" {
 		t.Errorf("state should remain aborted, got %q", gotState)
+	}
+}
+
+func TestOldestActiveStartedAt_NoSessions_ReturnsZero(t *testing.T) {
+	db := setupTestDB(t)
+	s := NewStore(db)
+
+	got, err := s.OldestActiveStartedAt(context.Background())
+	if err != nil {
+		t.Fatalf("OldestActiveStartedAt: %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("expected zero time for empty table, got %v", got)
+	}
+}
+
+func TestOldestActiveStartedAt_ReturnsOldestBackup(t *testing.T) {
+	db := setupTestDB(t)
+	db.SetMaxOpenConns(1)
+	s := NewStore(db)
+
+	// Insert two backup sessions with known started_at values.
+	older := time.Now().Add(-2 * time.Hour).Truncate(time.Millisecond)
+	newer := time.Now().Add(-1 * time.Hour).Truncate(time.Millisecond)
+
+	_, err := db.Exec(`
+		INSERT INTO pbs_active_sessions (id, token_id, datastore_id, backup_type, backup_id, backup_time, started_at, state)
+		VALUES ('s1', '', '', 'vm', '100', 0, ?, 'backup')
+	`, older.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`
+		INSERT INTO pbs_active_sessions (id, token_id, datastore_id, backup_type, backup_id, backup_time, started_at, state)
+		VALUES ('s2', '', '', 'vm', '101', 0, ?, 'backup')
+	`, newer.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.OldestActiveStartedAt(context.Background())
+	if err != nil {
+		t.Fatalf("OldestActiveStartedAt: %v", err)
+	}
+	if got.UnixMilli() != older.UnixMilli() {
+		t.Errorf("got %v, want %v", got, older)
+	}
+}
+
+func TestOldestActiveStartedAt_IgnoresNonBackupSessions(t *testing.T) {
+	db := setupTestDB(t)
+	db.SetMaxOpenConns(1)
+	s := NewStore(db)
+
+	// Reader and finished sessions should not count.
+	for _, row := range []struct{ id, state string }{
+		{"r1", "reader"},
+		{"f1", "finished"},
+		{"a1", "aborted"},
+	} {
+		_, err := db.Exec(`
+			INSERT INTO pbs_active_sessions (id, token_id, datastore_id, backup_type, backup_id, backup_time, started_at, state)
+			VALUES (?, '', '', 'vm', '100', 0, ?, ?)
+		`, row.id, time.Now().Add(-time.Hour).UnixMilli(), row.state)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.OldestActiveStartedAt(context.Background())
+	if err != nil {
+		t.Fatalf("OldestActiveStartedAt: %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("expected zero time (no backup sessions), got %v", got)
 	}
 }
 

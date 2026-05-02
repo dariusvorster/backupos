@@ -15,6 +15,7 @@
 package session
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -127,6 +128,23 @@ func (s *Store) Finish(sessionID string) (bool, error) {
 		return false, fmt.Errorf("rows affected: %w", err)
 	}
 	return rows > 0, nil
+}
+
+// OldestActiveStartedAt returns the start time of the oldest active backup
+// session (state='backup'). Returns the zero time and nil if no active backup
+// sessions exist — the caller interprets a zero time as "no writer to protect".
+func (s *Store) OldestActiveStartedAt(ctx context.Context) (time.Time, error) {
+	const query = `
+		SELECT MIN(started_at) FROM pbs_active_sessions WHERE state = 'backup'
+	`
+	var ms sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, query).Scan(&ms); err != nil {
+		return time.Time{}, fmt.Errorf("oldest active started_at: %w", err)
+	}
+	if !ms.Valid {
+		return time.Time{}, nil
+	}
+	return time.UnixMilli(ms.Int64), nil
 }
 
 // ErrNotFound is returned when no session matches the id.
