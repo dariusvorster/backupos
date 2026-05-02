@@ -37,22 +37,26 @@ const UpgradeToken = "proxmox-backup-protocol-v1"
 // is expected to wrap this with the requireAuth middleware, which also
 // attaches the Identity to the request context via auth.WithIdentity.
 type Handler struct {
-	datastores         *datastore.Lookup
-	sessions           *session.Store
-	blobHandler        http.Handler
-	finishHandler      http.Handler
-	fixedIndexHandler  http.Handler
-	fixedChunkHandler  http.Handler
-	fixedAppendHandler http.Handler
-	fixedCloseHandler  http.Handler
-	streamHandler      http.Handler // fallback 501-stub for unimplemented H2 paths
+	datastores          *datastore.Lookup
+	sessions            *session.Store
+	blobHandler         http.Handler
+	finishHandler       http.Handler
+	fixedIndexHandler   http.Handler
+	fixedChunkHandler   http.Handler
+	fixedAppendHandler  http.Handler
+	fixedCloseHandler   http.Handler
+	dynamicIndexHandler  http.Handler
+	dynamicChunkHandler  http.Handler
+	dynamicAppendHandler http.Handler
+	dynamicCloseHandler  http.Handler
+	streamHandler       http.Handler // fallback 501-stub for unimplemented H2 paths
 }
 
 // NewHandler constructs a new upgrade Handler.
 //
 // blobHandler handles POST /blob; finishHandler handles POST /finish.
-// fixedIndexHandler, fixedChunkHandler, fixedAppendHandler, fixedCloseHandler
-// handle the fixed-index lifecycle.
+// fixed* handlers handle the fixed-index lifecycle (/fixed_index, /fixed_chunk, /fixed_close).
+// dynamic* handlers handle the dynamic-index lifecycle (/dynamic_index, /dynamic_chunk, /dynamic_close).
 // streamHandler is the fallback invoked for all other H2 paths (501 stub).
 func NewHandler(
 	datastores *datastore.Lookup,
@@ -63,18 +67,26 @@ func NewHandler(
 	fixedChunkHandler http.Handler,
 	fixedAppendHandler http.Handler,
 	fixedCloseHandler http.Handler,
+	dynamicIndexHandler http.Handler,
+	dynamicChunkHandler http.Handler,
+	dynamicAppendHandler http.Handler,
+	dynamicCloseHandler http.Handler,
 	streamHandler http.Handler,
 ) *Handler {
 	return &Handler{
-		datastores:         datastores,
-		sessions:           sessions,
-		blobHandler:        blobHandler,
-		finishHandler:      finishHandler,
-		fixedIndexHandler:  fixedIndexHandler,
-		fixedChunkHandler:  fixedChunkHandler,
-		fixedAppendHandler: fixedAppendHandler,
-		fixedCloseHandler:  fixedCloseHandler,
-		streamHandler:      streamHandler,
+		datastores:           datastores,
+		sessions:             sessions,
+		blobHandler:          blobHandler,
+		finishHandler:        finishHandler,
+		fixedIndexHandler:    fixedIndexHandler,
+		fixedChunkHandler:    fixedChunkHandler,
+		fixedAppendHandler:   fixedAppendHandler,
+		fixedCloseHandler:    fixedCloseHandler,
+		dynamicIndexHandler:  dynamicIndexHandler,
+		dynamicChunkHandler:  dynamicChunkHandler,
+		dynamicAppendHandler: dynamicAppendHandler,
+		dynamicCloseHandler:  dynamicCloseHandler,
+		streamHandler:        streamHandler,
 	}
 }
 
@@ -205,6 +217,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.blobHandler, h.finishHandler,
 		h.fixedIndexHandler, h.fixedChunkHandler,
 		h.fixedAppendHandler, h.fixedCloseHandler,
+		h.dynamicIndexHandler, h.dynamicChunkHandler,
+		h.dynamicAppendHandler, h.dynamicCloseHandler,
 		h.streamHandler,
 	)
 	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -282,7 +296,19 @@ func identifyKind(path string) string {
 
 // buildSessionRouter routes H2 streams to the appropriate handler.
 // /fixed_index dispatches POST→fixedIndex and PUT→fixedAppend.
-func buildSessionRouter(blobHandler, finishHandler, fixedIndexHandler, fixedChunkHandler, fixedAppendHandler, fixedCloseHandler, fallback http.Handler) http.Handler {
+// /dynamic_index dispatches POST→dynamicIndex and PUT→dynamicAppend.
+func buildSessionRouter(
+	blobHandler, finishHandler,
+	fixedIndexHandler, fixedChunkHandler, fixedAppendHandler, fixedCloseHandler,
+	dynamicIndexHandler, dynamicChunkHandler, dynamicAppendHandler, dynamicCloseHandler,
+	fallback http.Handler,
+) http.Handler {
+	methodNotAllowed := func(w http.ResponseWriter, allow string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Allow", allow)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/blob":
@@ -296,15 +322,25 @@ func buildSessionRouter(blobHandler, finishHandler, fixedIndexHandler, fixedChun
 			case http.MethodPut:
 				fixedAppendHandler.ServeHTTP(w, r)
 			default:
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("Allow", "POST, PUT")
-				w.WriteHeader(http.StatusMethodNotAllowed)
-				_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+				methodNotAllowed(w, "POST, PUT")
 			}
 		case "/fixed_chunk":
 			fixedChunkHandler.ServeHTTP(w, r)
 		case "/fixed_close":
 			fixedCloseHandler.ServeHTTP(w, r)
+		case "/dynamic_index":
+			switch r.Method {
+			case http.MethodPost:
+				dynamicIndexHandler.ServeHTTP(w, r)
+			case http.MethodPut:
+				dynamicAppendHandler.ServeHTTP(w, r)
+			default:
+				methodNotAllowed(w, "POST, PUT")
+			}
+		case "/dynamic_chunk":
+			dynamicChunkHandler.ServeHTTP(w, r)
+		case "/dynamic_close":
+			dynamicCloseHandler.ServeHTTP(w, r)
 		default:
 			fallback.ServeHTTP(w, r)
 		}

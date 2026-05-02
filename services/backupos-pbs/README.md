@@ -45,7 +45,7 @@ go run ./cmd/backupos-pbs \
 go test ./...
 ```
 
-## Endpoints (M4c-go-fixed-index)
+## Endpoints (M4c-go-dynamic-index)
 
 ### HTTP/1.1 surface (upgrade handshake)
 
@@ -70,7 +70,11 @@ go test ./...
 | PUT | /fixed_index | JSON `{wid, digest-list, offset-list}` | 200, batch-associate digests with positions |
 | POST | /fixed_chunk | `wid=N&digest=H&size=N&encoded-size=N` body=DataBlob | 200, chunk stored, registered in known_chunks |
 | POST | /fixed_close | `wid=N&chunk-count=N&size=N&csum=H` | 200, validates and finalises .fidx file |
-| any other | (any) | | 501 stub (M4c-go-dynamic-index follows) |
+| POST | /dynamic_index | `archive-name=X.didx` | 200, creates .didx writer, returns wid |
+| PUT | /dynamic_index | JSON `{wid, digest-list, offset-list}` | 200, batch-associate digests with positions |
+| POST | /dynamic_chunk | `wid=N&digest=H&size=N&encoded-size=N` body=DataBlob | 200, chunk stored, registered in known_chunks |
+| POST | /dynamic_close | `wid=N&chunk-count=N&csum=H` | 200, validates and finalises .didx file |
+| any other | (any) | | 501 stub (M5-go-reader follows) |
 
 Session lifecycle: a clean session ends with `POST /finish`, which transitions
 state from `backup`/`reader` to `finished`. If the connection closes without
