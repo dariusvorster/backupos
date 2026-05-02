@@ -27,7 +27,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			backup_time   INTEGER NOT NULL,
 			started_at    INTEGER NOT NULL,
 			state         TEXT NOT NULL,
-			scratch_path  TEXT
+			scratch_path  TEXT,
+			namespace      TEXT NOT NULL DEFAULT ''
 		);
 	`)
 	if err != nil {

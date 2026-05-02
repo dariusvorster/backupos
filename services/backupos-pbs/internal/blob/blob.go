@@ -79,7 +79,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapDir, err := snapshot.EnsureDir(sc.DatastoreRoot, sc.BackupType, sc.BackupID, sc.BackupTime)
+	snapDir, err := snapshot.EnsureDir(sc.DatastoreRoot, sc.Namespace, sc.BackupType, sc.BackupID, sc.BackupTime)
 	if err != nil {
 		slog.Error("snapshot dir ensure failed",
 			"error", err,

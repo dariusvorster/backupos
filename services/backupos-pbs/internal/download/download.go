@@ -60,7 +60,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	snapDir := filepath.Join(
-		sc.DatastoreRoot,
+		sc.Namespace.JoinPath(sc.DatastoreRoot),
 		sc.BackupType,
 		sc.BackupID,
 		sc.BackupTime.UTC().Format("2006-01-02T15:04:05Z"),

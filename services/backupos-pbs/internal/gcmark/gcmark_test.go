@@ -276,6 +276,48 @@ func TestMark_CtxCancelled(t *testing.T) {
 	}
 }
 
+func TestMark_NamespacedSnapshot_Processed(t *testing.T) {
+	root := setupDatastore(t)
+
+	// Create snapshot under ns/alice/vm/100/<time>/ (one namespace level).
+	nsSnapDir := filepath.Join(root, "ns", "alice", "vm", "100", snapshotSubdir[len("vm/100/"):])
+	if err := os.MkdirAll(nsSnapDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	digest := [32]byte{0: 0xDD}
+	const chunkSize = 4096
+	idxPath := filepath.Join(nsSnapDir, "drive-0.img.fidx")
+	w, err := fidx.Create(idxPath, chunkSize, chunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.AddChunk(chunkSize, chunkSize, digest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	chunkPath := writeChunk(t, root, digest, true)
+
+	stats, err := Mark(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Mark: %v", err)
+	}
+	if len(stats.Errors) != 0 {
+		t.Errorf("unexpected errors: %v", stats.Errors)
+	}
+	if stats.IndexFilesProcessed != 1 {
+		t.Errorf("index files: got %d, want 1", stats.IndexFilesProcessed)
+	}
+	if stats.DigestsTouched != 1 {
+		t.Errorf("digests touched: got %d, want 1", stats.DigestsTouched)
+	}
+	if !recentAtime(t, chunkPath) {
+		t.Errorf("namespaced chunk atime not advanced by Mark")
+	}
+}
+
 func TestMark_SkipsChunkStore(t *testing.T) {
 	root := setupDatastore(t)
 

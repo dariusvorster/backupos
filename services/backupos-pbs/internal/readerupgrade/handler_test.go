@@ -455,7 +455,9 @@ func TestHandler_InvalidBackupType_Returns400(t *testing.T) {
 	}
 }
 
-func TestHandler_NamespaceProvided_Returns400(t *testing.T) {
+func TestHandler_NamespaceProvided_SnapshotNotFound_Returns404(t *testing.T) {
+	// Validates that ?ns= is accepted (not rejected 400) and the namespace is
+	// threaded through: snapshot lookup in ns/alice/ fails with 404, not 400.
 	tmp := t.TempDir()
 	db := setupTestDB(t, tmp)
 	h := newTestHandler(db)
@@ -463,7 +465,7 @@ func TestHandler_NamespaceProvided_Returns400(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
-	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/reader"+readerQuerySfx+"&ns=mynamespace", nil)
+	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/reader"+readerQuerySfx+"&ns=alice", nil)
 	req.Header.Set("Authorization", readerAuthHeader())
 	req.Header.Set("Connection", "Upgrade")
 	req.Header.Set("Upgrade", ReaderProtocolID)
@@ -474,8 +476,8 @@ func TestHandler_NamespaceProvided_Returns400(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 (snapshot missing in ns/alice), got %d", resp.StatusCode)
 	}
 }
 

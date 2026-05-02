@@ -1,10 +1,10 @@
 // Package snapshot implements snapshot directory layout helpers for the
 // PBS protocol. Per the PBS spec, snapshots live at:
 //
-//	<datastore-root>/<backup-type>/<backup-id>/<backup-time-ISO>/
+//	<ns-path>/<backup-type>/<backup-id>/<backup-time-ISO>/
 //
-// The Go service creates the snapshot directory lazily on first write
-// (blob, index, etc.) so aborted sessions leave no filesystem footprint.
+// where <ns-path> is the namespace-adjusted datastore root (empty namespace
+// = datastore root unchanged; "alice" → <root>/ns/alice).
 package snapshot
 
 import (
@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 )
 
 // backupIDRegex matches the same constraints upgrade.ParseParams enforces.
@@ -38,7 +40,7 @@ func (e *ErrInvalidBackupParams) Error() string { return e.Reason }
 // The PBS time format is RFC3339 with second precision and no fractional
 // seconds, suffixed with Z (e.g. "2024-12-24T00:26:40Z"). The timestamp is
 // always normalized to UTC.
-func Path(datastoreRoot, backupType, backupID string, backupTime time.Time) (string, error) {
+func Path(datastoreRoot string, ns namespace.Namespace, backupType, backupID string, backupTime time.Time) (string, error) {
 	if !validBackupTypes[backupType] {
 		return "", &ErrInvalidBackupParams{Reason: fmt.Sprintf("invalid backup-type %q", backupType)}
 	}
@@ -46,14 +48,14 @@ func Path(datastoreRoot, backupType, backupID string, backupTime time.Time) (str
 		return "", &ErrInvalidBackupParams{Reason: fmt.Sprintf("invalid backup-id %q", backupID)}
 	}
 	timeStr := backupTime.UTC().Format("2006-01-02T15:04:05Z")
-	return filepath.Join(datastoreRoot, backupType, backupID, timeStr), nil
+	return filepath.Join(ns.JoinPath(datastoreRoot), backupType, backupID, timeStr), nil
 }
 
 // EnsureDir returns the canonical snapshot path AND ensures it exists on
 // disk (creating parent directories as needed). Idempotent — safe to call
 // multiple times for the same snapshot.
-func EnsureDir(datastoreRoot, backupType, backupID string, backupTime time.Time) (string, error) {
-	p, err := Path(datastoreRoot, backupType, backupID, backupTime)
+func EnsureDir(datastoreRoot string, ns namespace.Namespace, backupType, backupID string, backupTime time.Time) (string, error) {
+	p, err := Path(datastoreRoot, ns, backupType, backupID, backupTime)
 	if err != nil {
 		return "", err
 	}
@@ -66,8 +68,8 @@ func EnsureDir(datastoreRoot, backupType, backupID string, backupTime time.Time)
 // ResolveDir returns the absolute path to an existing snapshot directory, or
 // an error if it doesn't exist. Unlike EnsureDir, this never creates anything.
 // Used by reader sessions which require the snapshot to already exist.
-func ResolveDir(datastoreRoot, backupType, backupID string, backupTime time.Time) (string, error) {
-	p, err := Path(datastoreRoot, backupType, backupID, backupTime)
+func ResolveDir(datastoreRoot string, ns namespace.Namespace, backupType, backupID string, backupTime time.Time) (string, error) {
+	p, err := Path(datastoreRoot, ns, backupType, backupID, backupTime)
 	if err != nil {
 		return "", err
 	}

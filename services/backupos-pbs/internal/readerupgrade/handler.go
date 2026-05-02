@@ -27,6 +27,7 @@ import (
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/owner"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/rstate"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/snaplock"
@@ -114,8 +115,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Step 4: Parse query parameters.
 	q := r.URL.Query()
 
-	if ns := q.Get("ns"); ns != "" {
-		writeJSONError(w, http.StatusBadRequest, "namespaces not supported in V1")
+	ns, err := namespace.Parse(q.Get("ns"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid namespace: %s", err))
 		return
 	}
 
@@ -169,7 +171,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Owner check: caller must match the stored authid per PBS check_backup_owner semantics.
 	callerAuthid := identity.Authid()
-	if err := owner.Check(ds.Path, backupType, backupID, callerAuthid); err != nil {
+	if err := owner.Check(ds.Path, ns, backupType, backupID, callerAuthid); err != nil {
 		if errors.Is(err, owner.ErrOwnerMismatch) {
 			slog.Info("reader rejected: backup group owner mismatch",
 				"user", callerAuthid,
@@ -187,7 +189,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 6: Resolve snapshot (must exist) and acquire shared lock.
-	snapDir, err := snapshot.ResolveDir(ds.Path, backupType, backupID, backupTime)
+	snapDir, err := snapshot.ResolveDir(ds.Path, ns, backupType, backupID, backupTime)
 	if err != nil {
 		slog.Info("reader rejected: snapshot not found",
 			"store", storeName, "backup_type", backupType,
@@ -251,6 +253,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		BackupType:    backupType,
 		BackupID:      backupID,
 		BackupTime:    backupTime,
+		Namespace:     ns,
 		ReaderState:   rs,
 	}
 
