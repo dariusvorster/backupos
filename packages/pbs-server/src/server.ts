@@ -68,16 +68,10 @@ export function startPbsServer(opts: StartPbsServerOptions): Promise<PbsServerHa
   // with allowHTTP1: true. Using 'stream' in addition would double-handle H2
   // requests and cause ERR_HTTP2_HEADERS_SENT.
   server.on('request', async (req, res) => {
-    if (opts.authLookup) {
-      const authResult = await validatePbsAuth(req, opts.authLookup)
-      if (!authResult.ok) {
-        res.writeHead(401, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ error: authResult.reason }))
-        return
-      }
-    }
-
     const path = req.url ?? '/'
+
+    // /api2/json/version is unauthenticated. PVE uses this as a liveness
+    // probe before any authentication is configured — same as real PBS behaviour.
     if (req.method === 'GET' && path.startsWith('/api2/json/version')) {
       const body = JSON.stringify(handleVersion({
         version: opts.reportedVersion ?? '4.0.0',
@@ -87,6 +81,16 @@ export function startPbsServer(opts: StartPbsServerOptions): Promise<PbsServerHa
       res.end(body)
       return
     }
+
+    if (opts.authLookup) {
+      const authResult = await validatePbsAuth(req, opts.authLookup)
+      if (!authResult.ok) {
+        res.writeHead(401, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: authResult.reason }))
+        return
+      }
+    }
+
     if (req.method === 'GET' && (path.startsWith('/api2/json/backup') || path.startsWith('/api2/json/reader'))) {
       res.writeHead(501, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ error: 'PBS protocol upgrade endpoints are pending — Go service in progress' }))
