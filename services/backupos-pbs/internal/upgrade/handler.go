@@ -13,6 +13,7 @@ import (
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/owner"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/streamctx"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/wstate"
@@ -147,6 +148,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"datastore_id", ds.ID,
 			"remote", r.RemoteAddr,
 		)
+		return
+	}
+
+	userRealm := identity.User + "@" + identity.Realm
+	if err := owner.SetIfAbsent(ds.Path, string(params.BackupType), params.BackupID, userRealm); err != nil {
+		if errors.Is(err, owner.ErrOwnerMismatch) {
+			slog.Info("upgrade rejected: backup group owner mismatch",
+				"user", userRealm,
+				"datastore_id", ds.ID,
+				"backup_type", params.BackupType,
+				"backup_id", params.BackupID,
+				"remote", r.RemoteAddr,
+			)
+			writeUpgradeError(w, http.StatusForbidden, "backup group owned by a different user")
+			return
+		}
+		slog.Error("set owner failed", "error", err, "datastore_id", ds.ID)
+		writeUpgradeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 

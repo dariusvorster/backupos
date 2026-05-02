@@ -27,6 +27,7 @@ import (
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/owner"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/rstate"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/snaplock"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/snapshot"
@@ -159,6 +160,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// AuthorizeDatastore: token must be unrestricted or scoped to this datastore.
 	if err := auth.AuthorizeDatastore(identity, ds.ID); err != nil {
 		writeJSONError(w, http.StatusForbidden, "token not authorized for this datastore")
+		return
+	}
+
+	// Owner check: requesting user must own the backup group (or no owner file exists — V1 backcompat).
+	userRealm := identity.User + "@" + identity.Realm
+	if err := owner.Check(ds.Path, backupType, backupID, userRealm); err != nil {
+		if errors.Is(err, owner.ErrOwnerMismatch) {
+			slog.Info("reader rejected: backup group owner mismatch",
+				"user", userRealm,
+				"datastore_id", ds.ID,
+				"backup_type", backupType,
+				"backup_id", backupID,
+				"remote", r.RemoteAddr,
+			)
+			writeJSONError(w, http.StatusForbidden, "backup group owned by a different user")
+			return
+		}
+		slog.Error("owner check failed", "error", err, "datastore_id", ds.ID)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 

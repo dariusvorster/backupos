@@ -146,6 +146,153 @@ func TestHandler_WrongDatastore_Returns403(t *testing.T) {
 	}
 }
 
+func TestReader_OwnerMatches_Allowed(t *testing.T) {
+	tmp := t.TempDir()
+	makeSnapDir(t, tmp)
+	db := setupTestDB(t, tmp)
+
+	// Write owner file as root@pbs — matches the test token's user@realm.
+	groupDir := filepath.Join(tmp, "vm", "100")
+	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("root@pbs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newTestHandler(db)
+	srv := httptest.NewUnstartedServer(h)
+	srv.EnableHTTP2 = false
+	srv.StartTLS()
+	defer srv.Close()
+
+	host := strings.TrimPrefix(srv.URL, "https://")
+	certPool := x509.NewCertPool()
+	certPool.AddCert(srv.Certificate())
+
+	tlsConn, err := tls.Dial("tcp", host, &tls.Config{RootCAs: certPool, NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tlsConn.Close()
+	_ = tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	req := "GET /api2/json/reader" + readerQuerySfx + " HTTP/1.1\r\n" +
+		"Host: " + host + "\r\n" +
+		"Authorization: " + readerAuthHeader() + "\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Upgrade: " + ReaderProtocolID + "\r\n" +
+		"\r\n"
+	if _, err := tlsConn.Write([]byte(req)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	buf := make([]byte, 4096)
+	got := []byte{}
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(string(got), "\r\n\r\n") {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out reading response; got: %q", got)
+		}
+		n, readErr := tlsConn.Read(buf)
+		if n > 0 {
+			got = append(got, buf[:n]...)
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	headers, _, _ := strings.Cut(string(got), "\r\n\r\n")
+	if !strings.HasPrefix(headers, "HTTP/1.1 101") {
+		t.Errorf("expected 101 for matching owner, got:\n%s", headers)
+	}
+}
+
+func TestReader_OwnerMismatch_Returns403(t *testing.T) {
+	tmp := t.TempDir()
+	db := setupTestDB(t, tmp)
+
+	// Write owner file as alice@pbs — does NOT match root@pbs test token.
+	// MkdirAll is required because makeSnapDir is not called here.
+	groupDir := filepath.Join(tmp, "vm", "100")
+	if err := os.MkdirAll(groupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("alice@pbs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newTestHandler(db)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/reader"+readerQuerySfx, nil)
+	req.Header.Set("Authorization", readerAuthHeader())
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", ReaderProtocolID)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for owner mismatch, got %d", resp.StatusCode)
+	}
+}
+
+func TestReader_LegacyGroup_NoOwnerFile_Allowed(t *testing.T) {
+	tmp := t.TempDir()
+	makeSnapDir(t, tmp)
+	db := setupTestDB(t, tmp)
+
+	// No owner file written — V1 backcompat: should allow.
+	h := newTestHandler(db)
+	srv := httptest.NewUnstartedServer(h)
+	srv.EnableHTTP2 = false
+	srv.StartTLS()
+	defer srv.Close()
+
+	host := strings.TrimPrefix(srv.URL, "https://")
+	certPool := x509.NewCertPool()
+	certPool.AddCert(srv.Certificate())
+
+	tlsConn, err := tls.Dial("tcp", host, &tls.Config{RootCAs: certPool, NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tlsConn.Close()
+	_ = tlsConn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	req := "GET /api2/json/reader" + readerQuerySfx + " HTTP/1.1\r\n" +
+		"Host: " + host + "\r\n" +
+		"Authorization: " + readerAuthHeader() + "\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Upgrade: " + ReaderProtocolID + "\r\n" +
+		"\r\n"
+	if _, err := tlsConn.Write([]byte(req)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	buf := make([]byte, 4096)
+	got := []byte{}
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(string(got), "\r\n\r\n") {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out reading response; got: %q", got)
+		}
+		n, readErr := tlsConn.Read(buf)
+		if n > 0 {
+			got = append(got, buf[:n]...)
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	headers, _, _ := strings.Cut(string(got), "\r\n\r\n")
+	if !strings.HasPrefix(headers, "HTTP/1.1 101") {
+		t.Errorf("expected 101 for legacy group (no owner file), got:\n%s", headers)
+	}
+}
+
 func TestHandler_WrongMethod_Returns405(t *testing.T) {
 	tmp := t.TempDir()
 	db := setupTestDB(t, tmp)
