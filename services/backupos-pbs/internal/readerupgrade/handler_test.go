@@ -96,10 +96,14 @@ func makeSnapDir(t *testing.T, root string) string {
 }
 
 func newTestHandler(db *sql.DB) *Handler {
+	stub := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotImplemented)
+	})
 	return NewHandler(
 		auth.NewValidator(db),
 		datastore.NewLookup(db),
-		Stub501Handler(),
+		stub,
+		stub,
 	)
 }
 
@@ -339,8 +343,8 @@ func TestHandler_ExclusivelyLockedSnapshot_Returns409(t *testing.T) {
 //  1. Send GET with Upgrade headers + auth over TLS
 //  2. Receive 101 Switching Protocols with Upgrade: proxmox-backup-reader-protocol-v1
 //  3. Drive HTTP/2 over the same connection
-//  4. Issue an H2 GET request
-//  5. Receive 501 from Stub501Handler
+//  4. Issue an H2 GET to an unknown path
+//  5. Receive 404 from the router (no matching route)
 //  6. No pbs_active_sessions row is written (readers are not persisted)
 func TestHandler_FullUpgradeDance(t *testing.T) {
 	tmp := t.TempDir()
@@ -421,9 +425,9 @@ func TestHandler_FullUpgradeDance(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// Step 5: expect 501 from Stub501Handler.
-	if resp.StatusCode != http.StatusNotImplemented {
-		t.Errorf("expected 501 from stub handler, got %d", resp.StatusCode)
+	// Step 5: expect 404 — unknown route, real router has no match.
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 from router (unknown route), got %d", resp.StatusCode)
 	}
 
 	// Step 6: reader sessions are NOT persisted — no pbs_active_sessions table

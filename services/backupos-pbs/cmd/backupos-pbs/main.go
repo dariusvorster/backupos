@@ -43,7 +43,9 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedchunk"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedclose"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedindex"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/download"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readchunk"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readerupgrade"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
@@ -119,7 +121,12 @@ func main() {
 		RepoID:  repoIDString,
 	})
 
-	readerHandler := readerupgrade.NewHandler(validator, datastoreLookup, readerupgrade.Stub501Handler())
+	readerHandler := readerupgrade.NewHandler(
+		validator,
+		datastoreLookup,
+		download.NewHandler(),
+		readchunk.NewHandler(),
+	)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
