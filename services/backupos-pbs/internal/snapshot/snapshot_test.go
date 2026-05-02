@@ -86,3 +86,46 @@ func TestEnsureDir_Idempotent(t *testing.T) {
 		t.Errorf("paths differ across calls: %q vs %q", p1, p2)
 	}
 }
+
+func TestResolveDir_ExistingSnapshot_ReturnsPath(t *testing.T) {
+	tmp := t.TempDir()
+	// Pre-create the snapshot dir.
+	p, err := EnsureDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	if err != nil {
+		t.Fatalf("ResolveDir: %v", err)
+	}
+	if got != p {
+		t.Errorf("path: got %q, want %q", got, p)
+	}
+}
+
+func TestResolveDir_NonexistentSnapshot_ReturnsError(t *testing.T) {
+	tmp := t.TempDir()
+	_, err := ResolveDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	if err == nil {
+		t.Error("expected error for nonexistent snapshot, got nil")
+	}
+}
+
+func TestResolveDir_NonDirectoryPath_ReturnsError(t *testing.T) {
+	tmp := t.TempDir()
+	// Create a file where the snapshot dir would be.
+	p, _ := Path(tmp, "vm", "100", time.Unix(1735000000, 0))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	_, err = ResolveDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	if err == nil {
+		t.Error("expected error for non-directory path, got nil")
+	}
+}

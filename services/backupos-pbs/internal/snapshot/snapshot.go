@@ -62,3 +62,25 @@ func EnsureDir(datastoreRoot, backupType, backupID string, backupTime time.Time)
 	}
 	return p, nil
 }
+
+// ResolveDir returns the absolute path to an existing snapshot directory, or
+// an error if it doesn't exist. Unlike EnsureDir, this never creates anything.
+// Used by reader sessions which require the snapshot to already exist.
+func ResolveDir(datastoreRoot, backupType, backupID string, backupTime time.Time) (string, error) {
+	p, err := Path(datastoreRoot, backupType, backupID, backupTime)
+	if err != nil {
+		return "", err
+	}
+	st, err := os.Stat(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("snapshot does not exist: %s/%s/%s",
+				backupType, backupID, backupTime.UTC().Format("2006-01-02T15:04:05Z"))
+		}
+		return "", fmt.Errorf("stat snapshot: %w", err)
+	}
+	if !st.IsDir() {
+		return "", fmt.Errorf("snapshot path is not a directory: %s", p)
+	}
+	return p, nil
+}

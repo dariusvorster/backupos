@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/rstate"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/wstate"
 )
 
@@ -28,7 +29,8 @@ type SessionContext struct {
 	BackupID      string       // e.g. "100"
 	BackupTime    time.Time    // backup-time
 	Namespace     string       // optional, "" if none
-	WriterState   *wstate.State // per-session writer state (fixed/dynamic index maps)
+	WriterState   *wstate.State // per-session writer state (fixed/dynamic index maps); nil for reader sessions
+	ReaderState   *rstate.State // per-session reader state (allowed_chunks set); nil for backup sessions
 }
 
 type ctxKey struct{}
