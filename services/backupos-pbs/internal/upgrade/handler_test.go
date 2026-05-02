@@ -438,7 +438,7 @@ func TestHandler_DatastoreNotFound_Returns404(t *testing.T) {
 // This is the moment-of-truth integration test — the same dance that
 // crashed Node in PR #244.
 func TestHandler_FullUpgradeDance(t *testing.T) {
-	db := setupTestDB(t)
+	db := setupTestDBAtPath(t, t.TempDir())
 	h := newTestHandler(db)
 
 	// Use a TLS test server. EnableHTTP2=false so the test server doesn't
