@@ -52,6 +52,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readchunk"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readerupgrade"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/speedtest"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/sessionreaper"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
@@ -132,6 +133,7 @@ func main() {
 		datastoreLookup,
 		download.NewHandler(),
 		readchunk.NewHandler(),
+		speedtest.Handler(),
 	)
 
 	datastoreRoots := make(map[string]string)
