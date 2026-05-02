@@ -52,6 +52,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readchunk"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readerupgrade"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/sessionreaper"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
 )
 
@@ -153,6 +154,14 @@ func main() {
 	))
 	mux.HandleFunc("/", notFound)
 
+	// serverCtx is cancelled on SIGINT/SIGTERM so background goroutines
+	// (reaper, future cron jobs) stop cleanly alongside the HTTP server.
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	defer serverCancel()
+
+	reaper := sessionreaper.New(database, 0, 0)
+	go reaper.Run(serverCtx)
+
 	server := &http.Server{
 		Addr:    *bind,
 		Handler: mux,
@@ -172,6 +181,7 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		sig := <-sigCh
 		logger.Info("received signal, shutting down", "signal", sig)
+		serverCancel() // stop background goroutines
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
