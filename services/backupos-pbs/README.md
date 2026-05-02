@@ -45,18 +45,27 @@ go run ./cmd/backupos-pbs \
 go test ./...
 ```
 
-## Endpoints (M4b-go-session)
+## Endpoints (M4c-go-blob)
+
+### HTTP/1.1 surface (upgrade handshake)
 
 | Method | Path | Auth | Upgrade | Result |
 |--------|------|------|---------|--------|
 | GET | /api2/json/version | No | n/a | 200 JSON |
 | any | /api2/json/backup | No | n/a | 401 |
 | any | /api2/json/backup | Yes | No | 501 stub |
-| GET | /api2/json/backup | Yes | Yes (valid params) | 101 → HTTP/2 → all streams 501 |
+| GET | /api2/json/backup | Yes | Yes (valid params) | 101 → HTTP/2 |
 | GET | /api2/json/backup | Yes | Yes (invalid params) | 400 |
 | GET | /api2/json/backup | Yes | Yes (datastore not found) | 404 |
 | same shape | /api2/json/reader | | | same as backup |
 | any | (other) | | | 404 |
+
+### HTTP/2 stream handlers (after upgrade)
+
+| Method | Path | Query params | Result |
+|--------|------|-------------|--------|
+| POST | /blob | `file-name=X.blob&encoded-size=N` | 200, blob written atomically to snapshot dir |
+| any other | (any) | | 501 stub (M4c-go-finish, M4c-go-fixed-index, etc. follow) |
 
 Authentication uses PBS token format:
 `Authorization: PBSAPIToken=user@realm!tokenname:secret`
@@ -71,6 +80,18 @@ When an upgrade is accepted, a row is inserted into `pbs_active_sessions`
 with `state='backup'` or `state='reader'` BEFORE the 101 response is written.
 When the HTTP/2 connection closes, the row's state is updated to `'aborted'`
 unless M4c-go-finish has already set `state='finished'`.
+
+### Snapshot directory layout
+
+Blobs are written atomically to:
+
+```
+<datastore-root>/<backup-type>/<backup-id>/<RFC3339-Z>/
+  <file>.blob    ← this PR
+  <file>.fidx    ← M4c-go-fixed-index
+  <file>.didx    ← M4c-go-dynamic-index
+  index.json     ← M4c-go-finish
+```
 
 ## Roadmap
 
