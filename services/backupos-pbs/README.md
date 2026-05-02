@@ -45,7 +45,7 @@ go run ./cmd/backupos-pbs \
 go test ./...
 ```
 
-## Endpoints (M4c-go-blob)
+## Endpoints (M4c-go-finish)
 
 ### HTTP/1.1 surface (upgrade handshake)
 
@@ -65,7 +65,13 @@ go test ./...
 | Method | Path | Query params | Result |
 |--------|------|-------------|--------|
 | POST | /blob | `file-name=X.blob&encoded-size=N` | 200, blob written atomically to snapshot dir |
-| any other | (any) | | 501 stub (M4c-go-finish, M4c-go-fixed-index, etc. follow) |
+| POST | /finish | (none) | 200, session state→finished, snapshot dir fsynced |
+| any other | (any) | | 501 stub (M4c-go-fixed-index, dynamic-index, chunk-upload follow) |
+
+Session lifecycle: a clean session ends with `POST /finish`, which transitions
+state from `backup`/`reader` to `finished`. If the connection closes without
+`/finish`, the post-`ServeConn` finalize sets state to `aborted`. If `/finish`
+ran first, that finalize is a no-op (state remains `finished`).
 
 Authentication uses PBS token format:
 `Authorization: PBSAPIToken=user@realm!tokenname:secret`

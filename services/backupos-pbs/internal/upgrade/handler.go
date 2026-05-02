@@ -39,24 +39,27 @@ type Handler struct {
 	datastores    *datastore.Lookup
 	sessions      *session.Store
 	blobHandler   http.Handler
+	finishHandler http.Handler
 	streamHandler http.Handler // fallback 501-stub for unimplemented H2 paths
 }
 
 // NewHandler constructs a new upgrade Handler.
 //
-// blobHandler handles POST /blob on the H2 connection.
+// blobHandler handles POST /blob; finishHandler handles POST /finish.
 // streamHandler is the fallback invoked for all other H2 paths (501 stub until
-// M4c-go-finish, M4c-go-fixed-index, etc. land).
+// M4c-go-fixed-index, etc. land).
 func NewHandler(
 	datastores *datastore.Lookup,
 	sessions *session.Store,
 	blobHandler http.Handler,
+	finishHandler http.Handler,
 	streamHandler http.Handler,
 ) *Handler {
 	return &Handler{
 		datastores:    datastores,
 		sessions:      sessions,
 		blobHandler:   blobHandler,
+		finishHandler: finishHandler,
 		streamHandler: streamHandler,
 	}
 }
@@ -185,7 +188,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		BackupTime:    params.BackupTime,
 		Namespace:     params.Namespace,
 	}
-	sessionRouter := buildSessionRouter(h.blobHandler, h.streamHandler)
+	sessionRouter := buildSessionRouter(h.blobHandler, h.finishHandler, h.streamHandler)
 	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sessionRouter.ServeHTTP(w, r.WithContext(streamctx.WithSession(r.Context(), sessionCtx)))
 	})
@@ -266,15 +269,17 @@ func identifyKind(path string) string {
 	return "backup"
 }
 
-// buildSessionRouter routes H2 streams: POST /blob goes to blobHandler;
-// everything else falls through to the fallback (501-stub until M4c-go-finish etc.).
-func buildSessionRouter(blobHandler http.Handler, fallback http.Handler) http.Handler {
+// buildSessionRouter routes H2 streams to the appropriate handler.
+func buildSessionRouter(blobHandler, finishHandler, fallback http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/blob" {
+		switch r.URL.Path {
+		case "/blob":
 			blobHandler.ServeHTTP(w, r)
-			return
+		case "/finish":
+			finishHandler.ServeHTTP(w, r)
+		default:
+			fallback.ServeHTTP(w, r)
 		}
-		fallback.ServeHTTP(w, r)
 	})
 }
 

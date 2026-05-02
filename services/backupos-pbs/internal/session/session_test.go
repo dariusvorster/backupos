@@ -197,3 +197,108 @@ func TestFinalize_NonexistentIDIsNoop(t *testing.T) {
 		t.Errorf("expected no-op for nonexistent ID")
 	}
 }
+
+func TestFinish_FromBackupToFinished(t *testing.T) {
+	db := setupTestDB(t)
+	s := NewStore(db)
+
+	id, _ := s.Begin(BeginParams{
+		TokenID: "tok-1", DatastoreID: "ds-1",
+		BackupType: "vm", BackupID: "100",
+		BackupTime: time.Unix(1735000000, 0), Kind: KindBackup,
+	})
+
+	updated, err := s.Finish(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated {
+		t.Errorf("expected row updated, got false")
+	}
+
+	var gotState string
+	_ = db.QueryRow(`SELECT state FROM pbs_active_sessions WHERE id = ?`, id).Scan(&gotState)
+	if gotState != "finished" {
+		t.Errorf("state: got %q, want finished", gotState)
+	}
+}
+
+func TestFinish_AlreadyFinishedIsNoop(t *testing.T) {
+	db := setupTestDB(t)
+	s := NewStore(db)
+
+	id, _ := s.Begin(BeginParams{
+		TokenID: "tok-1", DatastoreID: "ds-1",
+		BackupType: "vm", BackupID: "100",
+		BackupTime: time.Unix(1735000000, 0), Kind: KindBackup,
+	})
+
+	if _, err := s.Finish(id); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := s.Finish(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated {
+		t.Errorf("second Finish: expected no-op, but row was updated")
+	}
+}
+
+func TestFinish_AfterAbortedIsNoop(t *testing.T) {
+	db := setupTestDB(t)
+	s := NewStore(db)
+
+	id, _ := s.Begin(BeginParams{
+		TokenID: "tok-1", DatastoreID: "ds-1",
+		BackupType: "vm", BackupID: "100",
+		BackupTime: time.Unix(1735000000, 0), Kind: KindBackup,
+	})
+
+	if _, err := s.Finalize(id); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := s.Finish(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated {
+		t.Errorf("Finish after Finalize: expected no-op, row was updated")
+	}
+
+	var gotState string
+	_ = db.QueryRow(`SELECT state FROM pbs_active_sessions WHERE id = ?`, id).Scan(&gotState)
+	if gotState != "aborted" {
+		t.Errorf("state should remain aborted, got %q", gotState)
+	}
+}
+
+// TestFinishThenFinalize_StaysFinished verifies the connection-close Finalize
+// is a no-op when /finish already set state='finished'.
+func TestFinishThenFinalize_StaysFinished(t *testing.T) {
+	db := setupTestDB(t)
+	s := NewStore(db)
+
+	id, _ := s.Begin(BeginParams{
+		TokenID: "tok-1", DatastoreID: "ds-1",
+		BackupType: "vm", BackupID: "100",
+		BackupTime: time.Unix(1735000000, 0), Kind: KindBackup,
+	})
+
+	if _, err := s.Finish(id); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := s.Finalize(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated {
+		t.Errorf("Finalize after Finish: expected no-op, row was updated")
+	}
+
+	var gotState string
+	_ = db.QueryRow(`SELECT state FROM pbs_active_sessions WHERE id = ?`, id).Scan(&gotState)
+	if gotState != "finished" {
+		t.Errorf("state should remain finished, got %q", gotState)
+	}
+}
