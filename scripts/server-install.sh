@@ -70,6 +70,9 @@ wait_for_db_unlock() {
 # ── Uninstall ─────────────────────────────────────────────────────────────────
 if [[ "$COMMAND" == "uninstall" ]]; then
   log "Stopping and removing BackupOS server..."
+  systemctl stop    "$SERVICE_NAME-pbs" 2>/dev/null || true
+  systemctl disable "$SERVICE_NAME-pbs" 2>/dev/null || true
+  rm -f /etc/systemd/system/${SERVICE_NAME}-pbs.service
   systemctl stop  "$SERVICE_NAME" 2>/dev/null || true
   systemctl disable "$SERVICE_NAME" 2>/dev/null || true
   rm -f /etc/systemd/system/${SERVICE_NAME}.service
@@ -158,6 +161,18 @@ fi
 restic version &>/dev/null || die "restic installed but cannot execute — check architecture"
 ok "restic $(restic version | head -1 | awk '{print $2}')"
 
+# Go (1.22+) for backupos-pbs service
+if ! command -v go &>/dev/null; then
+  die "Go not installed — install Go 1.22+ from https://go.dev/dl/ and re-run"
+fi
+GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
+GO_MAJOR=$(echo "$GO_VERSION" | cut -d. -f1)
+GO_MINOR=$(echo "$GO_VERSION" | cut -d. -f2)
+if [[ "$GO_MAJOR" -lt 1 ]] || ([[ "$GO_MAJOR" -eq 1 ]] && [[ "$GO_MINOR" -lt 22 ]]); then
+  die "Go $GO_VERSION too old — need Go 1.22+. Upgrade at https://go.dev/dl/"
+fi
+ok "Go $GO_VERSION"
+
 # ── 2. System user ────────────────────────────────────────────────────────────
 if ! id "$SVC_USER" &>/dev/null; then
   log "Creating system user '$SVC_USER'..."
@@ -228,6 +243,19 @@ pnpm --filter @backupos/docs-content build
 
 log "Building web app..."
 pnpm --filter @backupos/web exec next build
+
+log "Building backupos-pbs Go service..."
+mkdir -p "$INSTALL_DIR/bin"
+(
+  cd "$INSTALL_DIR/services/backupos-pbs" || die "Go service source not found"
+  GOFLAGS=-mod=mod go build \
+    -ldflags="-s -w" \
+    -o "$INSTALL_DIR/bin/backupos-pbs" \
+    ./cmd/backupos-pbs
+) || die "Go build failed"
+chmod 755 "$INSTALL_DIR/bin/backupos-pbs"
+ok "backupos-pbs binary built"
+
 ok "Build complete"
 
 # Fix ownership so the service user can write to data dirs
@@ -321,16 +349,58 @@ SyslogIdentifier=$SERVICE_NAME
 WantedBy=multi-user.target
 SVCEOF
 
-systemctl daemon-reload
-systemctl enable "$SERVICE_NAME"
-systemctl restart "$SERVICE_NAME"
+# ── 8b. systemd service for the Go PBS sidecar ───────────────────────────────
+cat > /etc/systemd/system/${SERVICE_NAME}-pbs.service <<PBSSVCEOF
+[Unit]
+Description=BackupOS PBS protocol service
+Documentation=https://github.com/dariusvorster/backupos
+After=network-online.target $SERVICE_NAME.service
+Wants=network-online.target
 
-# Give it a moment to start
+[Service]
+Type=simple
+User=$SVC_USER
+Group=$SVC_USER
+ExecStart=$INSTALL_DIR/bin/backupos-pbs \\
+  --bind 0.0.0.0:8007 \\
+  --cert $DATA_DIR/pbs/cert.pem \\
+  --key $DATA_DIR/pbs/key.pem \\
+  --db $DATA_DIR/backupos.db \\
+  --pbs-root $DATA_DIR/pbs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=$DATA_DIR
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=$SERVICE_NAME-pbs
+
+[Install]
+WantedBy=multi-user.target
+PBSSVCEOF
+
+systemctl daemon-reload
+systemctl enable "$SERVICE_NAME" "$SERVICE_NAME-pbs"
+systemctl restart "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME-pbs"
+
+# Give them a moment to start
 sleep 2
 if systemctl is-active --quiet "$SERVICE_NAME"; then
-  ok "Service started"
+  ok "Service $SERVICE_NAME started"
 else
-  log "Service may have failed to start. Check:  journalctl -u $SERVICE_NAME -n 50"
+  log "Service $SERVICE_NAME may have failed. Check:  journalctl -u $SERVICE_NAME -n 50"
+fi
+if systemctl is-active --quiet "$SERVICE_NAME-pbs"; then
+  ok "Service $SERVICE_NAME-pbs started"
+else
+  log "Service $SERVICE_NAME-pbs may have failed. Check:  journalctl -u $SERVICE_NAME-pbs -n 50"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
@@ -340,11 +410,13 @@ echo ""
 echo "══════════════════════════════════════════════════════"
 echo "  BackupOS installed successfully"
 echo ""
-echo "  Dashboard:  $PUBLIC_URL_ACTUAL"
-echo "  Logs:       journalctl -u $SERVICE_NAME -f"
-echo "  Status:     systemctl status $SERVICE_NAME"
-echo "  Config:     $ENV_FILE"
-echo "  Data:       $DATA_DIR"
+echo "  Dashboard:    $PUBLIC_URL_ACTUAL"
+echo "  PBS service:  https://<host>:8007/api2/json/version"
+echo "  Logs (web):   journalctl -u $SERVICE_NAME -f"
+echo "  Logs (pbs):   journalctl -u $SERVICE_NAME-pbs -f"
+echo "  Status:       systemctl status $SERVICE_NAME $SERVICE_NAME-pbs"
+echo "  Config:       $ENV_FILE"
+echo "  Data:         $DATA_DIR"
 echo ""
 echo "  To update:    sudo bash $0 update"
 echo "  To uninstall: sudo bash $0 uninstall"

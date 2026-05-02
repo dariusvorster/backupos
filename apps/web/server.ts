@@ -1,6 +1,5 @@
 import { createServer } from 'http'
 import { createHash } from 'crypto'
-import { startPbsServer } from '@backupos/pbs-server'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { parse } from 'url'
@@ -8,7 +7,7 @@ import type { IncomingMessage } from 'http'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, pbsTokens, eq, and, desc } from '@backupos/db'
+import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete } from './lib/ws-state'
@@ -859,48 +858,5 @@ void app.prepare().then(() => {
   server.listen(port, '0.0.0.0', () => {
     console.log(`> Ready on http://0.0.0.0:${port}`)
     void import('./lib/scheduler').then(({ initScheduler }) => initScheduler())
-
-    // PBS-compatible protocol listener (port 8007).
-    // Boots after Next.js. Cert lives in /var/lib/backupos/pbs/ (writable by service user).
-    void (async () => {
-      try {
-        const pbsHandle = await startPbsServer({
-          port: Number(process.env['PBS_PORT'] ?? '8007'),
-          host: process.env['PBS_HOST'] ?? '0.0.0.0',
-          certPaths: {
-            certPath: process.env['PBS_TLS_CERT'] ?? '/var/lib/backupos/pbs/cert.pem',
-            keyPath:  process.env['PBS_TLS_KEY']  ?? '/var/lib/backupos/pbs/key.pem',
-          },
-          log: (msg) => console.log(`[pbs] ${msg}`),
-          authLookup: async (user, realm, tokenName) => {
-            const db = getDb()
-            const rows = await db
-              .select()
-              .from(pbsTokens)
-              .where(and(
-                eq(pbsTokens.user,      user),
-                eq(pbsTokens.realm,     realm),
-                eq(pbsTokens.tokenName, tokenName),
-              ))
-              .limit(1)
-            const row = rows[0]
-            if (!row) return null
-            return {
-              tokenId:     row.id,
-              secretHash:  row.secretHash,
-              user:        row.user,
-              realm:       row.realm,
-              tokenName:   row.tokenName,
-              permissions: row.permissions,
-              expiresAt:   row.expiresAt ?? null,
-            }
-          },
-        })
-        console.log(`[pbs] cert fingerprint: ${pbsHandle.certFingerprint}`)
-      } catch (err) {
-        // PBS listener failure must not crash the main app — log and continue.
-        console.error(`[pbs] failed to start: ${(err as Error).message}`)
-      }
-    })()
   })
 })
