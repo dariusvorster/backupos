@@ -14,17 +14,19 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
 
 // Identity is the result of a successful auth.
 type Identity struct {
-	TokenID     string
-	User        string
-	Realm       string
-	TokenName   string
-	Permissions string
+	TokenID          string
+	User             string
+	Realm            string
+	TokenName        string
+	Permissions      string
+	TokenDatastoreID string // empty = unrestricted; non-empty = token scoped to this datastore ID
 }
 
 // ParsedHeader is the result of parsing the Authorization header.
@@ -125,7 +127,7 @@ func NewValidator(db *sql.DB) *Validator {
 // errors are distinct here for logging purposes.
 func (v *Validator) Validate(parsed *ParsedHeader) (*Identity, error) {
 	const query = `
-		SELECT id, secret_hash, permissions, expires_at
+		SELECT id, secret_hash, permissions, expires_at, datastore_id
 		FROM pbs_tokens
 		WHERE user = ? AND realm = ? AND token_name = ?
 		LIMIT 1
@@ -135,9 +137,10 @@ func (v *Validator) Validate(parsed *ParsedHeader) (*Identity, error) {
 		storedHash      string
 		permissions     string
 		expiresAtMillis sql.NullInt64
+		datastoreID     sql.NullString
 	)
 	err := v.db.QueryRow(query, parsed.User, parsed.Realm, parsed.TokenName).
-		Scan(&tokenID, &storedHash, &permissions, &expiresAtMillis)
+		Scan(&tokenID, &storedHash, &permissions, &expiresAtMillis, &datastoreID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrTokenNotFound
 	}
@@ -159,12 +162,21 @@ func (v *Validator) Validate(parsed *ParsedHeader) (*Identity, error) {
 		}
 	}
 
+	// Non-fatal: record the time this token was last used.
+	if _, err := v.db.Exec(
+		`UPDATE pbs_tokens SET last_used_at = ? WHERE id = ?`,
+		time.Now().UnixMilli(), tokenID,
+	); err != nil {
+		slog.Warn("failed to update last_used_at", "token_id", tokenID, "error", err)
+	}
+
 	return &Identity{
-		TokenID:     tokenID,
-		User:        parsed.User,
-		Realm:       parsed.Realm,
-		TokenName:   parsed.TokenName,
-		Permissions: permissions,
+		TokenID:          tokenID,
+		User:             parsed.User,
+		Realm:            parsed.Realm,
+		TokenName:        parsed.TokenName,
+		Permissions:      permissions,
+		TokenDatastoreID: datastoreID.String,
 	}, nil
 }
 

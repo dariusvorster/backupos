@@ -40,13 +40,15 @@ func setupTestDB(t *testing.T, dsPath string) *sql.DB {
 
 	stmts := []string{
 		`CREATE TABLE pbs_tokens (
-			id          TEXT PRIMARY KEY,
-			user        TEXT NOT NULL,
-			realm       TEXT NOT NULL,
-			token_name  TEXT NOT NULL,
-			secret_hash TEXT NOT NULL,
-			permissions TEXT NOT NULL DEFAULT '',
-			expires_at  INTEGER
+			id            TEXT PRIMARY KEY,
+			user          TEXT NOT NULL,
+			realm         TEXT NOT NULL,
+			token_name    TEXT NOT NULL,
+			secret_hash   TEXT NOT NULL,
+			permissions   TEXT NOT NULL DEFAULT '',
+			expires_at    INTEGER,
+			datastore_id  TEXT,
+			last_used_at  INTEGER
 		)`,
 		`CREATE TABLE pbs_datastores (
 			id                TEXT PRIMARY KEY,
@@ -109,6 +111,39 @@ func newTestHandler(db *sql.DB) *Handler {
 
 func readerAuthHeader() string {
 	return "PBSAPIToken=root@pbs!test1:" + testSecret
+}
+
+func TestHandler_WrongDatastore_Returns403(t *testing.T) {
+	tmp := t.TempDir()
+	db := setupTestDB(t, tmp)
+
+	const scopedSecret = "scoped-secret-reader-test"
+	if _, err := db.Exec(
+		`INSERT INTO pbs_tokens (id, user, realm, token_name, secret_hash, permissions, datastore_id)
+		 VALUES ('tok-scoped', 'root', 'pbs', 'scoped', ?, '', 'other-ds-id')`,
+		auth.HashSecret(scopedSecret),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newTestHandler(db)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/reader"+readerQuerySfx, nil)
+	req.Header.Set("Authorization", "PBSAPIToken=root@pbs!scoped:"+scopedSecret)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", ReaderProtocolID)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
 }
 
 func TestHandler_WrongMethod_Returns405(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcrun"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcstatus"
@@ -76,8 +77,10 @@ func newHandler(t *testing.T, db *sql.DB, runFn func(context.Context, string, gc
 func doRequest(t *testing.T, h *Handler, method, path string) *http.Response {
 	t.Helper()
 	req := httptest.NewRequest(method, path, nil)
+	// Inject an unrestricted identity (empty TokenDatastoreID) to satisfy AuthorizeDatastore.
+	ctx := auth.WithIdentity(req.Context(), &auth.Identity{TokenID: "test-token"})
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
+	h.ServeHTTP(w, req.WithContext(ctx))
 	return w.Result()
 }
 
@@ -285,6 +288,24 @@ func TestInvalidPath_Returns400(t *testing.T) {
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("path %q: got %d, want 400", path, resp.StatusCode)
 		}
+	}
+}
+
+func TestPOST_ScopedTokenWrongDatastore_Returns403(t *testing.T) {
+	root := makeDSRoot(t)
+	db := setupDB(t, "mystore", root)
+	h := newHandler(t, db, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api2/json/admin/datastore/mystore/gc", nil)
+	ctx := auth.WithIdentity(req.Context(), &auth.Identity{
+		TokenID:          "scoped-token",
+		TokenDatastoreID: "other-ds-id",
+	})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req.WithContext(ctx))
+	resp := w.Result()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
 	}
 }
 

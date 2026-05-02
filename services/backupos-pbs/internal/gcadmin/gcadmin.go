@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/dslock"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcrun"
@@ -65,6 +66,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	identity := auth.FromContext(r.Context())
+	if err := auth.AuthorizeDatastore(identity, ds.ID); err != nil {
+		writeJSONError(w, http.StatusForbidden, "token not authorized for this datastore")
 		return
 	}
 
