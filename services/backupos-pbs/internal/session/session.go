@@ -105,6 +105,30 @@ func (s *Store) Finalize(sessionID string) (bool, error) {
 	return rows > 0, nil
 }
 
+// Finish updates the session state to 'finished' if it's still in the
+// initial 'backup' or 'reader' state. Mirrors the idempotency guard of
+// Finalize: only transitions from active states, so calling Finish twice
+// returns updated=false on the second call.
+//
+// The post-ServeConn Finalize is idempotent against a finished state —
+// see Finalize doc.
+func (s *Store) Finish(sessionID string) (bool, error) {
+	const query = `
+		UPDATE pbs_active_sessions
+		SET state = 'finished'
+		WHERE id = ? AND state IN ('backup', 'reader')
+	`
+	res, err := s.db.Exec(query, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("finish session: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("rows affected: %w", err)
+	}
+	return rows > 0, nil
+}
+
 // ErrNotFound is returned when no session matches the id.
 // Exposed for future M4c handlers that look up sessions by id during chunk uploads.
 var ErrNotFound = errors.New("session not found")

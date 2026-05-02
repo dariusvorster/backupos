@@ -6,14 +6,15 @@
 //   - Reads/writes the same SQLite database as the Node service
 //   - Runs alongside backupos.service as a separate systemd unit
 //
-// In M4c-go-blob (this PR), endpoints are:
+// In M4c-go-finish (this PR), endpoints are:
 //   - GET  /api2/json/version    unauthenticated, 200 JSON
 //   - any  /api2/json/backup     401 without valid auth; with auth: upgrade handshake → H2 streams
 //   - any  /api2/json/reader     401 without valid auth; with auth: upgrade handshake → H2 streams
 //
 // Over the H2 connection:
 //   - POST /blob    write opaque blob atomically to snapshot directory (200)
-//   - any other     501 stub (M4c-go-finish, M4c-go-fixed-index, etc. follow)
+//   - POST /finish  mark session finished + fsync snapshot dir (200)
+//   - any other     501 stub (M4c-go-fixed-index, dynamic-index, chunk-upload follow)
 package main
 
 import (
@@ -33,6 +34,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/blob"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/db"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/finish"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
@@ -84,6 +86,7 @@ func main() {
 		datastoreLookup,
 		sessionStore,
 		blob.NewHandler(),
+		finish.NewHandler(sessionStore),
 		upgrade.StubStreamHandler(),
 	)
 
