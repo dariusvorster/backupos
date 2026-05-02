@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -44,6 +45,9 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedclose"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedindex"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/download"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcadmin"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcrun"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gctask"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readchunk"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readerupgrade"
@@ -128,10 +132,25 @@ func main() {
 		readchunk.NewHandler(),
 	)
 
+	gcTracker := gctask.NewTracker()
+	oldestActiveWriter := gcrun.OldestActiveWriterFunc(func(ctx context.Context) (time.Time, error) {
+		return sessionStore.OldestActiveStartedAt(ctx)
+	})
+	gcAdminHandler := gcadmin.NewHandler(datastoreLookup, gcTracker, oldestActiveWriter)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
 	mux.HandleFunc("/api2/json/backup", requireAuth(validator, upgradeHandler.ServeHTTP))
 	mux.HandleFunc("/api2/json/reader", readerHandler.ServeHTTP)
+	mux.HandleFunc("/api2/json/admin/datastore/", requireAuth(validator,
+		func(w http.ResponseWriter, r *http.Request) {
+			if !strings.HasSuffix(r.URL.Path, "/gc") {
+				http.NotFound(w, r)
+				return
+			}
+			gcAdminHandler.ServeHTTP(w, r)
+		},
+	))
 	mux.HandleFunc("/", notFound)
 
 	server := &http.Server{
