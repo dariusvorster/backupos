@@ -10,6 +10,7 @@
 package chunkstore
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -135,4 +136,95 @@ func writeTempInDir(dir string, raw []byte) (string, error) {
 func touchAtime(path string) error {
 	now := time.Now()
 	return os.Chtimes(path, now, now)
+}
+
+// IterCallback is called by Iterate for each valid chunk file.
+// Returning a non-nil error stops the iteration and is returned by Iterate.
+type IterCallback func(digest [32]byte, path string, atime time.Time) error
+
+// Iterate walks the chunk store and calls cb for every chunk file whose
+// shard directory name is exactly 4 hex characters and whose filename is
+// exactly 64 hex characters. Other files (temp files, probes, etc.) are
+// silently skipped.
+func (s *Store) Iterate(ctx context.Context, cb IterCallback) error {
+	chunkDir := filepath.Join(s.root, ".chunks")
+	shards, err := os.ReadDir(chunkDir)
+	if err != nil {
+		return fmt.Errorf("read chunk dir: %w", err)
+	}
+
+	for _, shard := range shards {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if !shard.IsDir() {
+			continue
+		}
+		if !isHex(shard.Name(), 4) {
+			continue
+		}
+
+		shardPath := filepath.Join(chunkDir, shard.Name())
+		entries, err := os.ReadDir(shardPath)
+		if err != nil {
+			return fmt.Errorf("read shard %s: %w", shard.Name(), err)
+		}
+
+		for _, entry := range entries {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			if entry.IsDir() {
+				continue
+			}
+			if !isHex(entry.Name(), 64) {
+				continue
+			}
+
+			digestBytes, err := hex.DecodeString(entry.Name())
+			if err != nil {
+				continue
+			}
+			var digest [32]byte
+			copy(digest[:], digestBytes)
+
+			chunkPath := filepath.Join(shardPath, entry.Name())
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			atime := atimeFromFileInfo(chunkPath, info)
+
+			if err := cb(digest, chunkPath, atime); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// LockMutex acquires the store mutex and returns a function that releases it.
+// Used by the sweep phase to serialize chunk deletion with concurrent inserts.
+func (s *Store) LockMutex() func() {
+	s.mu.Lock()
+	return s.mu.Unlock
+}
+
+// isHex returns true if s is exactly n characters of lowercase hex.
+func isHex(s string, n int) bool {
+	if len(s) != n {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
