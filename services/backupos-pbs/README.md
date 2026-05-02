@@ -107,6 +107,24 @@ Blobs are written atomically to:
   index.json     ← M4c-go-finish
 ```
 
+## Garbage collection (in progress)
+
+GC uses atime-based marking — the same mechanism as the PBS reference implementation.
+
+**M6a (this PR):** mark-phase building blocks:
+- `internal/gcatime` — `TouchChunk` (utimensat UTIME_NOW) + `VerifyAtimeUpdates` safety probe
+- `internal/gcmark` — snapshot walker that enumerates digests from .fidx/.didx and touches atime on each chunk
+- `internal/dslock` — per-datastore exclusive flock so only one GC runs at a time
+
+The atime safety probe is non-negotiable: running GC on a `noatime` filesystem would delete
+every chunk older than the cutoff, including ones still in use. The probe writes a small file,
+sets its atime to a known-old value, then sets it to NOW via UTIME_NOW, and verifies the kernel
+persisted both updates. GC aborts if the probe fails.
+
+**M6b (next):** sweep phase — deletes chunks whose atime is older than the cutoff.
+
+**M6c (following):** admin API endpoint `POST /api2/json/admin/datastore/{store}/garbage-collection`.
+
 ## Roadmap
 
 This is PR 1 of approximately 12-13 in the Go pivot. Subsequent PRs:
@@ -118,5 +136,5 @@ This is PR 1 of approximately 12-13 in the Go pivot. Subsequent PRs:
 - M4c-go-blob — POST /blob (manifest, qemu-server.conf)
 - M4c-go-fixed-index, M4c-go-dynamic-index, M4c-go-chunk-upload, M4c-go-finish
 - M5-go-reader — restore protocol
-- M6-go-gc — garbage collection
+- M6-go-gc — garbage collection (mark M6a ✓, sweep M6b, API M6c)
 - M9-go-hardening — cert rotation, session sweeper, observability
