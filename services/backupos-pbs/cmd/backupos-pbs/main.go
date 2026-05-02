@@ -6,10 +6,10 @@
 //   - Reads/writes the same SQLite database as the Node service
 //   - Runs alongside backupos.service as a separate systemd unit
 //
-// In M4c-go-finish (this PR), endpoints are:
+// Endpoints:
 //   - GET  /api2/json/version    unauthenticated, 200 JSON
 //   - any  /api2/json/backup     401 without valid auth; with auth: upgrade handshake → H2 streams
-//   - any  /api2/json/reader     401 without valid auth; with auth: upgrade handshake → H2 streams
+//   - GET  /api2/json/reader     inline auth; reader upgrade handshake → H2 streams (M5a)
 //
 // Over the H2 connection:
 //   - POST /blob    write opaque blob atomically to snapshot directory (200)
@@ -44,6 +44,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedclose"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedindex"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readerupgrade"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
 )
@@ -118,10 +119,12 @@ func main() {
 		RepoID:  repoIDString,
 	})
 
+	readerHandler := readerupgrade.NewHandler(validator, datastoreLookup, readerupgrade.Stub501Handler())
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
 	mux.HandleFunc("/api2/json/backup", requireAuth(validator, upgradeHandler.ServeHTTP))
-	mux.HandleFunc("/api2/json/reader", requireAuth(validator, upgradeHandler.ServeHTTP))
+	mux.HandleFunc("/api2/json/reader", readerHandler.ServeHTTP)
 	mux.HandleFunc("/", notFound)
 
 	server := &http.Server{
