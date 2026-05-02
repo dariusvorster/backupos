@@ -6,11 +6,13 @@
 //   - Reads/writes the same SQLite database as the Node service
 //   - Runs alongside backupos.service as a separate systemd unit
 //
-// In M4b-go-upgrade (this PR), endpoints are:
+// In M4b-go-session (this PR), endpoints are:
 //   - GET  /api2/json/version    unauthenticated, 200 JSON
 //   - any  /api2/json/backup     401 without valid auth; with auth: upgrade handshake → H2 streams (501 stubs)
 //   - any  /api2/json/reader     401 without valid auth; with auth: upgrade handshake → H2 streams (501 stubs)
 //
+// On upgrade accept: INSERT pbs_active_sessions (state='backup'/'reader').
+// On connection close: UPDATE state='aborted' unless already 'finished'.
 // Real backup endpoint handlers land in M4c-go-*.
 package main
 
@@ -31,6 +33,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/db"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
 )
 
@@ -75,7 +78,8 @@ func main() {
 
 	validator := auth.NewValidator(database)
 	datastoreLookup := datastore.NewLookup(database)
-	upgradeHandler := upgrade.NewHandler(datastoreLookup, upgrade.StubStreamHandler())
+	sessionStore := session.NewStore(database)
+	upgradeHandler := upgrade.NewHandler(datastoreLookup, sessionStore, upgrade.StubStreamHandler())
 
 	cert, err := tls.LoadX509KeyPair(*certPath, *keyPath)
 	if err != nil {
@@ -133,11 +137,8 @@ func main() {
 // requireAuth wraps a handler with PBS token authentication.
 //
 // If the Authorization header is missing or invalid, returns 401.
-// If the token is valid, calls the wrapped handler.
-//
-// On success, the identity is logged but not currently passed to the
-// handler — that becomes important when the upgrade handshake needs
-// the token_id for session creation (M4b-go-session).
+// If the token is valid, attaches the Identity to the request context
+// (via auth.WithIdentity) and calls the wrapped handler.
 func requireAuth(v *auth.Validator, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -177,7 +178,8 @@ func requireAuth(v *auth.Validator, next http.HandlerFunc) http.HandlerFunc {
 			"method", r.Method,
 		)
 
-		next(w, r)
+		ctx := auth.WithIdentity(r.Context(), identity)
+		next(w, r.WithContext(ctx))
 	}
 }
 

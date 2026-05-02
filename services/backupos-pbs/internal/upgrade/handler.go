@@ -11,7 +11,9 @@ import (
 
 	"golang.org/x/net/http2"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 )
 
 // UpgradeToken is the custom Upgrade header value PVE sends for backup
@@ -23,37 +25,40 @@ const UpgradeToken = "proxmox-backup-protocol-v1"
 //  1. Validate the Upgrade headers (Connection: Upgrade, Upgrade: proxmox-backup-protocol-v1)
 //  2. Parse and validate the query parameters
 //  3. Look up the datastore by name
-//  4. Hijack the underlying TCP connection
-//  5. Write 101 Switching Protocols
-//  6. Hand the connection to http2.Server.ServeConn
-//  7. The H2 server dispatches streams to streamHandler (501 stubs in this PR)
+//  4. Insert a pbs_active_sessions row (state='backup' or 'reader')
+//  5. Hijack the underlying TCP connection
+//  6. Write 101 Switching Protocols
+//  7. Hand the connection to http2.Server.ServeConn
+//  8. Finalize the session row (state='aborted') when the connection closes
 //
 // Auth must already have passed before this handler is called — the caller
-// is expected to wrap this with the requireAuth middleware.
+// is expected to wrap this with the requireAuth middleware, which also
+// attaches the Identity to the request context via auth.WithIdentity.
 type Handler struct {
 	datastores    *datastore.Lookup
+	sessions      *session.Store
 	streamHandler http.Handler
 }
 
 // NewHandler constructs a new upgrade Handler.
 //
 // streamHandler is the http.Handler invoked for each HTTP/2 stream after the
-// upgrade succeeds. In M4b-go-upgrade this is a 501-stub; M4c-go-* PRs replace
+// upgrade succeeds. In M4b-go-session this is a 501-stub; M4c-go-* PRs replace
 // it with real backup endpoint handlers.
-func NewHandler(datastores *datastore.Lookup, streamHandler http.Handler) *Handler {
+func NewHandler(datastores *datastore.Lookup, sessions *session.Store, streamHandler http.Handler) *Handler {
 	return &Handler{
 		datastores:    datastores,
+		sessions:      sessions,
 		streamHandler: streamHandler,
 	}
 }
 
 // ServeHTTP implements http.Handler. The auth middleware is expected to
-// have already gated this; we don't re-check Authorization here.
+// have already gated this and attached the Identity to the context.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Step 1: Validate Upgrade headers.
 	if !hasUpgradeHeaders(r) {
 		// Fallback to 501 — caller used /backup or /reader without upgrade.
-		// This matches the existing M4b-go-auth stub behavior.
 		writeStub501(w, identifyKind(r.URL.Path))
 		return
 	}
@@ -91,18 +96,48 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 4: Hijack the connection.
+	// Step 4: Begin session row (token from context, set by requireAuth).
+	identity := auth.FromContext(r.Context())
+	if identity == nil {
+		// Should be impossible — requireAuth always attaches identity.
+		// Defensive: refuse the upgrade rather than insert a row with NULL token_id.
+		slog.Error("upgrade reached without auth identity in context")
+		writeUpgradeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	kind := session.KindBackup
+	if identifyKind(r.URL.Path) == "reader" {
+		kind = session.KindReader
+	}
+
+	sessionID, err := h.sessions.Begin(session.BeginParams{
+		TokenID:     identity.TokenID,
+		DatastoreID: ds.ID,
+		BackupType:  string(params.BackupType),
+		BackupID:    params.BackupID,
+		BackupTime:  params.BackupTime,
+		Kind:        kind,
+	})
+	if err != nil {
+		slog.Error("session begin failed", "error", err, "datastore_id", ds.ID)
+		writeUpgradeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Step 5: Hijack the connection.
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		// Should never happen with the standard http.Server, but the
-		// type system requires us to check.
+		// Should never happen with the standard http.Server.
 		slog.Error("ResponseWriter does not support hijacking")
 		writeUpgradeError(w, http.StatusInternalServerError, "hijack not supported")
+		_, _ = h.sessions.Finalize(sessionID)
 		return
 	}
 	conn, brw, err := hj.Hijack()
 	if err != nil {
 		slog.Error("hijack failed", "error", err)
+		_, _ = h.sessions.Finalize(sessionID)
 		return
 	}
 	// After Hijack, we own conn. ServeConn (below) blocks until the connection
@@ -112,6 +147,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"path", r.URL.Path,
 		"store", params.Store,
 		"datastore_id", ds.ID,
+		"session_id", sessionID,
 		"backup_type", params.BackupType,
 		"backup_id", params.BackupID,
 		"backup_time", params.BackupTime,
@@ -119,14 +155,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"remote", r.RemoteAddr,
 	)
 
-	// Step 5: Write the 101 response.
+	// Step 6: Write the 101 response.
 	if err := writeSwitchingProtocols(brw); err != nil {
-		slog.Error("failed to write 101", "error", err)
+		slog.Error("failed to write 101", "error", err, "session_id", sessionID)
 		_ = conn.Close()
+		_, _ = h.sessions.Finalize(sessionID)
 		return
 	}
 
-	// Step 6: Hand off to http2.Server.
+	// Step 7: Hand off to http2.Server.
 	//
 	// We construct a per-connection http2.Server. This matches the
 	// pmoxs3backuproxy reference architecture and gives us a clean place
@@ -144,9 +181,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// expects as its default state.
 	})
 
+	// Step 8: Finalize on connection close.
+	updated, finErr := h.sessions.Finalize(sessionID)
+	if finErr != nil {
+		slog.Error("session finalize failed", "error", finErr, "session_id", sessionID)
+	}
 	slog.Info("upgrade connection closed",
 		"path", r.URL.Path,
 		"datastore_id", ds.ID,
+		"session_id", sessionID,
+		"finalized_to_aborted", updated,
 	)
 }
 

@@ -14,7 +14,9 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
@@ -36,6 +38,18 @@ func setupTestDB(t *testing.T) *sql.DB {
 		);
 		INSERT INTO pbs_datastores (id, name, path, created_at)
 		VALUES ('test-ds-1', 'default', '/tmp/test-ds', 1735000000000);
+
+		CREATE TABLE pbs_active_sessions (
+			id            TEXT PRIMARY KEY,
+			token_id      TEXT,
+			datastore_id  TEXT,
+			backup_type   TEXT NOT NULL,
+			backup_id     TEXT NOT NULL,
+			backup_time   INTEGER NOT NULL,
+			started_at    INTEGER NOT NULL,
+			state         TEXT NOT NULL,
+			scratch_path  TEXT
+		);
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -43,11 +57,27 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+// wrapWithTestIdentity injects a synthetic auth.Identity into the request
+// context, simulating what requireAuth does in production. Tests that bypass
+// the auth middleware need this wrapper so the upgrade handler can read the
+// identity for session row creation.
+func wrapWithTestIdentity(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := auth.WithIdentity(r.Context(), &auth.Identity{
+			TokenID:   "test-token-id",
+			User:      "root",
+			Realm:     "pbs",
+			TokenName: "test1",
+		})
+		h.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func TestHandler_NoUpgradeHeaders_Returns501(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), StubStreamHandler())
+	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), StubStreamHandler())
 
-	srv := httptest.NewServer(h)
+	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api2/json/backup?store=default&backup-type=vm&backup-id=1&backup-time=1735000000")
@@ -63,9 +93,9 @@ func TestHandler_NoUpgradeHeaders_Returns501(t *testing.T) {
 
 func TestHandler_InvalidParams_Returns400(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), StubStreamHandler())
+	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), StubStreamHandler())
 
-	srv := httptest.NewServer(h)
+	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
 
 	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/backup?store=default", nil)
@@ -84,9 +114,9 @@ func TestHandler_InvalidParams_Returns400(t *testing.T) {
 
 func TestHandler_DatastoreNotFound_Returns404(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), StubStreamHandler())
+	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), StubStreamHandler())
 
-	srv := httptest.NewServer(h)
+	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
 
 	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/backup?store=nonexistent&backup-type=vm&backup-id=1&backup-time=1735000000", nil)
@@ -109,16 +139,17 @@ func TestHandler_DatastoreNotFound_Returns404(t *testing.T) {
 //  3. Drive HTTP/2 over the same connection
 //  4. Issue an H2 GET request
 //  5. Receive 501 from the stub stream handler
+//  6. Verify session row was created and finalized to 'aborted'
 //
 // This is the moment-of-truth integration test — the same dance that
 // crashed Node in PR #244.
 func TestHandler_FullUpgradeDance(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), StubStreamHandler())
+	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), StubStreamHandler())
 
 	// Use a TLS test server. EnableHTTP2=false so the test server doesn't
 	// negotiate H2 via ALPN — we want to drive the upgrade manually.
-	srv := httptest.NewUnstartedServer(h)
+	srv := httptest.NewUnstartedServer(wrapWithTestIdentity(h))
 	srv.EnableHTTP2 = false
 	srv.StartTLS()
 	defer srv.Close()
@@ -193,5 +224,22 @@ func TestHandler_FullUpgradeDance(t *testing.T) {
 	// Step 5: expect 501 from StubStreamHandler.
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("expected 501 from stub stream handler, got %d", resp.StatusCode)
+	}
+
+	// Close the connection so ServeConn returns and the finalize runs.
+	tlsConn.Close()
+	// Give the server goroutine a moment to finalize the session row.
+	time.Sleep(100 * time.Millisecond)
+
+	// Step 6: verify session row was created and finalized to 'aborted'.
+	var rowCount int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM pbs_active_sessions`).Scan(&rowCount)
+	if rowCount != 1 {
+		t.Errorf("expected 1 session row, got %d", rowCount)
+	}
+	var state string
+	_ = db.QueryRow(`SELECT state FROM pbs_active_sessions LIMIT 1`).Scan(&state)
+	if state != "aborted" {
+		t.Errorf("expected state='aborted' after connection close, got %q", state)
 	}
 }
