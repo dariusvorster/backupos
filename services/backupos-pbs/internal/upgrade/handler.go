@@ -151,11 +151,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userRealm := identity.User + "@" + identity.Realm
-	if err := owner.SetIfAbsent(ds.Path, string(params.BackupType), params.BackupID, userRealm); err != nil {
+	authid := identity.Authid()
+	if err := owner.SetIfAbsent(ds.Path, string(params.BackupType), params.BackupID, authid); err != nil {
 		if errors.Is(err, owner.ErrOwnerMismatch) {
 			slog.Info("upgrade rejected: backup group owner mismatch",
-				"user", userRealm,
+				"user", authid,
 				"datastore_id", ds.ID,
 				"backup_type", params.BackupType,
 				"backup_id", params.BackupID,

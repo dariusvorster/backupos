@@ -152,9 +152,9 @@ func TestReader_OwnerMatches_Allowed(t *testing.T) {
 	makeSnapDir(t, tmp)
 	db := setupTestDB(t, tmp)
 
-	// Write owner file as root@pbs — matches the test token's user@realm.
+	// Write owner file as root@pbs!test1 — exact match for the test token.
 	groupDir := filepath.Join(tmp, "vm", "100")
-	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("root@pbs\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("root@pbs!test1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -315,6 +315,47 @@ func TestHandler_WrongMethod_Returns405(t *testing.T) {
 
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestReader_TokenStored_DifferentToken_Denied(t *testing.T) {
+	tmp := t.TempDir()
+	makeSnapDir(t, tmp)
+	db := setupTestDB(t, tmp)
+
+	// Write owner file as root@pbs!test1 (the standard test token).
+	groupDir := filepath.Join(tmp, "vm", "100")
+	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("root@pbs!test1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a second token for the same user with a different token name.
+	const otherSecret = "other-secret-reader-test"
+	if _, err := db.Exec(
+		`INSERT INTO pbs_tokens (id, user, realm, token_name, secret_hash, permissions)
+		 VALUES ('tok-other', 'root', 'pbs', 'other', ?, '')`,
+		auth.HashSecret(otherSecret),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newTestHandler(db)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/reader"+readerQuerySfx, nil)
+	req.Header.Set("Authorization", "PBSAPIToken=root@pbs!other:"+otherSecret)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", ReaderProtocolID)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for different token same user, got %d", resp.StatusCode)
 	}
 }
 
