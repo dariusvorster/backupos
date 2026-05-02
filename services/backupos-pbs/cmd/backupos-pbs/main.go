@@ -6,14 +6,18 @@
 //   - Reads/writes the same SQLite database as the Node service
 //   - Runs alongside backupos.service as a separate systemd unit
 //
-// In M4b-go-scaffolding, this binary serves only /api2/json/version
-// and returns 501 for /api2/json/backup and /api2/json/reader. The
-// upgrade handshake, auth, and session management land in subsequent PRs.
+// In M4b-go-auth (this PR), endpoints are:
+//   - GET  /api2/json/version    unauthenticated, 200 JSON
+//   - any  /api2/json/backup     401 without valid auth, 501 stub with auth
+//   - any  /api2/json/reader     401 without valid auth, 501 stub with auth
+//
+// The actual backup endpoints + upgrade handshake land in subsequent PRs.
 package main
 
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"flag"
 	"log/slog"
@@ -23,11 +27,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/db"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
 )
 
 // Build-time variables, set via -ldflags during go build.
-// These default to dev-friendly values; production deploys override them.
 var (
 	versionString = "4.0.0"
 	releaseString = "1"
@@ -39,15 +44,12 @@ func main() {
 		bind     = flag.String("bind", "0.0.0.0:8007", "address:port to listen on")
 		certPath = flag.String("cert", "/var/lib/backupos/pbs/cert.pem", "TLS certificate path")
 		keyPath  = flag.String("key", "/var/lib/backupos/pbs/key.pem", "TLS private key path")
-		dbPath   = flag.String("db", "/var/lib/backupos/backupos.db", "SQLite database path (unused in scaffolding)")
-		pbsRoot  = flag.String("pbs-root", "/var/lib/backupos/pbs", "root directory for PBS datastore data (unused in scaffolding)")
+		dbPath   = flag.String("db", "/var/lib/backupos/backupos.db", "SQLite database path")
+		pbsRoot  = flag.String("pbs-root", "/var/lib/backupos/pbs", "root directory for PBS datastore data (unused in this PR)")
 	)
 	flag.Parse()
 
-	// Suppress unused-variable warnings in scaffolding. These flags will be
-	// used by the auth, upgrade, and chunk-store code in subsequent PRs.
-	_ = dbPath
-	_ = pbsRoot
+	_ = pbsRoot // not used in this PR
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -59,6 +61,17 @@ func main() {
 		"release", releaseString,
 		"bind", *bind,
 	)
+
+	// Open the SQLite database (read+write, WAL mode handled by Node side).
+	database, err := db.Open(*dbPath)
+	if err != nil {
+		logger.Error("failed to open database", "error", err, "path", *dbPath)
+		os.Exit(1)
+	}
+	defer func() { _ = database.Close() }()
+	logger.Info("database opened", "path", *dbPath)
+
+	validator := auth.NewValidator(database)
 
 	cert, err := tls.LoadX509KeyPair(*certPath, *keyPath)
 	if err != nil {
@@ -74,8 +87,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
-	mux.HandleFunc("/api2/json/backup", stub501("backup"))
-	mux.HandleFunc("/api2/json/reader", stub501("reader"))
+	mux.HandleFunc("/api2/json/backup", requireAuth(validator, stub501("backup")))
+	mux.HandleFunc("/api2/json/reader", requireAuth(validator, stub501("reader")))
 	mux.HandleFunc("/", notFound)
 
 	server := &http.Server{
@@ -97,7 +110,6 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		sig := <-sigCh
 		logger.Info("received signal, shutting down", "signal", sig)
-
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
@@ -114,6 +126,65 @@ func main() {
 	logger.Info("backupos-pbs stopped")
 }
 
+// requireAuth wraps a handler with PBS token authentication.
+//
+// If the Authorization header is missing or invalid, returns 401.
+// If the token is valid, calls the wrapped handler.
+//
+// On success, the identity is logged but not currently passed to the
+// handler — that becomes important when the upgrade handshake needs
+// the token_id for session creation (M4b-go-session).
+func requireAuth(v *auth.Validator, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			writeAuthError(w, "missing Authorization header")
+			return
+		}
+
+		parsed, err := auth.ParseAuthHeader(authHeader)
+		if err != nil {
+			writeAuthError(w, "malformed Authorization header")
+			return
+		}
+
+		identity, err := v.Validate(parsed)
+		if err != nil {
+			// Log the actual error for diagnostics, but return a generic
+			// 401 to the caller. We don't want to leak whether the
+			// token exists or just had a wrong secret.
+			slog.Info("auth failed",
+				"reason", err.Error(),
+				"user", parsed.User,
+				"realm", parsed.Realm,
+				"token_name", parsed.TokenName,
+				"remote", r.RemoteAddr,
+			)
+			writeAuthError(w, "invalid credentials")
+			return
+		}
+
+		slog.Info("auth ok",
+			"token_id", identity.TokenID,
+			"user", identity.User,
+			"realm", identity.Realm,
+			"token_name", identity.TokenName,
+			"path", r.URL.Path,
+			"method", r.Method,
+		)
+
+		next(w, r)
+	}
+}
+
+func writeAuthError(w http.ResponseWriter, reason string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("WWW-Authenticate", `PBSAPIToken realm="backupos"`)
+	w.WriteHeader(http.StatusUnauthorized)
+	resp := map[string]string{"error": reason}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func stub501(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slog.Info("501 stub hit",
@@ -124,12 +195,16 @@ func stub501(kind string) http.HandlerFunc {
 		)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)
-		_, _ = w.Write([]byte(`{"error":"PBS protocol ` + kind + ` endpoint pending — handler lands in M4b-go-upgrade / M4c-go"}`))
+		resp := map[string]string{
+			"error": "PBS protocol " + kind + " endpoint pending — handler lands in M4b-go-upgrade / M4c-go",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
-	_, _ = w.Write([]byte(`{"error":"not found"}`))
+	resp := map[string]string{"error": "not found"}
+	_ = json.NewEncoder(w).Encode(resp)
 }
