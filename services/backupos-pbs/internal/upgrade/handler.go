@@ -14,6 +14,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/streamctx"
 )
 
 // UpgradeToken is the custom Upgrade header value PVE sends for backup
@@ -28,7 +29,7 @@ const UpgradeToken = "proxmox-backup-protocol-v1"
 //  4. Insert a pbs_active_sessions row (state='backup' or 'reader')
 //  5. Hijack the underlying TCP connection
 //  6. Write 101 Switching Protocols
-//  7. Hand the connection to http2.Server.ServeConn
+//  7. Hand the connection to http2.Server.ServeConn with a per-session router
 //  8. Finalize the session row (state='aborted') when the connection closes
 //
 // Auth must already have passed before this handler is called — the caller
@@ -37,18 +38,25 @@ const UpgradeToken = "proxmox-backup-protocol-v1"
 type Handler struct {
 	datastores    *datastore.Lookup
 	sessions      *session.Store
-	streamHandler http.Handler
+	blobHandler   http.Handler
+	streamHandler http.Handler // fallback 501-stub for unimplemented H2 paths
 }
 
 // NewHandler constructs a new upgrade Handler.
 //
-// streamHandler is the http.Handler invoked for each HTTP/2 stream after the
-// upgrade succeeds. In M4b-go-session this is a 501-stub; M4c-go-* PRs replace
-// it with real backup endpoint handlers.
-func NewHandler(datastores *datastore.Lookup, sessions *session.Store, streamHandler http.Handler) *Handler {
+// blobHandler handles POST /blob on the H2 connection.
+// streamHandler is the fallback invoked for all other H2 paths (501 stub until
+// M4c-go-finish, M4c-go-fixed-index, etc. land).
+func NewHandler(
+	datastores *datastore.Lookup,
+	sessions *session.Store,
+	blobHandler http.Handler,
+	streamHandler http.Handler,
+) *Handler {
 	return &Handler{
 		datastores:    datastores,
 		sessions:      sessions,
+		blobHandler:   blobHandler,
 		streamHandler: streamHandler,
 	}
 }
@@ -163,15 +171,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 7: Hand off to http2.Server.
+	// Step 7: Hand off to http2.Server with a per-session router.
 	//
-	// We construct a per-connection http2.Server. This matches the
-	// pmoxs3backuproxy reference architecture and gives us a clean place
-	// to attach per-session state in subsequent PRs.
-	h2srv := &http2.Server{}
+	// Every H2 stream on this connection shares the same session context
+	// (datastore, backup-type/id/time). We build a per-session router that
+	// attaches that context to each stream's request before dispatching.
+	sessionCtx := &streamctx.SessionContext{
+		SessionID:     sessionID,
+		DatastoreID:   ds.ID,
+		DatastoreRoot: ds.Path,
+		BackupType:    string(params.BackupType),
+		BackupID:      params.BackupID,
+		BackupTime:    params.BackupTime,
+		Namespace:     params.Namespace,
+	}
+	sessionRouter := buildSessionRouter(h.blobHandler, h.streamHandler)
+	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessionRouter.ServeHTTP(w, r.WithContext(streamctx.WithSession(r.Context(), sessionCtx)))
+	})
 
+	h2srv := &http2.Server{}
 	h2srv.ServeConn(conn, &http2.ServeConnOpts{
-		Handler: h.streamHandler,
+		Handler: wrapped,
 		// We intentionally do NOT set UpgradeRequest — that's specifically
 		// for h2c upgrades where the original HTTP/1.1 request becomes the
 		// first H2 stream. PBS doesn't work that way; the upgrade response
@@ -243,6 +264,18 @@ func identifyKind(path string) string {
 		return "reader"
 	}
 	return "backup"
+}
+
+// buildSessionRouter routes H2 streams: POST /blob goes to blobHandler;
+// everything else falls through to the fallback (501-stub until M4c-go-finish etc.).
+func buildSessionRouter(blobHandler http.Handler, fallback http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/blob" {
+			blobHandler.ServeHTTP(w, r)
+			return
+		}
+		fallback.ServeHTTP(w, r)
+	})
 }
 
 // writeStub501 mirrors the existing main.go stub501 for the no-upgrade-headers fallback.

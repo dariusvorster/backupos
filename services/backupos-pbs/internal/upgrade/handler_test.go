@@ -15,6 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/blob"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 )
@@ -75,7 +76,7 @@ func wrapWithTestIdentity(h http.Handler) http.Handler {
 
 func TestHandler_NoUpgradeHeaders_Returns501(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), StubStreamHandler())
+	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), blob.NewHandler(), StubStreamHandler())
 
 	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
@@ -93,7 +94,7 @@ func TestHandler_NoUpgradeHeaders_Returns501(t *testing.T) {
 
 func TestHandler_InvalidParams_Returns400(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), StubStreamHandler())
+	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), blob.NewHandler(), StubStreamHandler())
 
 	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
@@ -114,7 +115,7 @@ func TestHandler_InvalidParams_Returns400(t *testing.T) {
 
 func TestHandler_DatastoreNotFound_Returns404(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), StubStreamHandler())
+	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), blob.NewHandler(), StubStreamHandler())
 
 	srv := httptest.NewServer(wrapWithTestIdentity(h))
 	defer srv.Close()
@@ -145,7 +146,7 @@ func TestHandler_DatastoreNotFound_Returns404(t *testing.T) {
 // crashed Node in PR #244.
 func TestHandler_FullUpgradeDance(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), StubStreamHandler())
+	h := NewHandler(datastore.NewLookup(db), session.NewStore(db), blob.NewHandler(), StubStreamHandler())
 
 	// Use a TLS test server. EnableHTTP2=false so the test server doesn't
 	// negotiate H2 via ALPN — we want to drive the upgrade manually.

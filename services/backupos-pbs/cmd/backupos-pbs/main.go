@@ -6,14 +6,14 @@
 //   - Reads/writes the same SQLite database as the Node service
 //   - Runs alongside backupos.service as a separate systemd unit
 //
-// In M4b-go-session (this PR), endpoints are:
+// In M4c-go-blob (this PR), endpoints are:
 //   - GET  /api2/json/version    unauthenticated, 200 JSON
-//   - any  /api2/json/backup     401 without valid auth; with auth: upgrade handshake → H2 streams (501 stubs)
-//   - any  /api2/json/reader     401 without valid auth; with auth: upgrade handshake → H2 streams (501 stubs)
+//   - any  /api2/json/backup     401 without valid auth; with auth: upgrade handshake → H2 streams
+//   - any  /api2/json/reader     401 without valid auth; with auth: upgrade handshake → H2 streams
 //
-// On upgrade accept: INSERT pbs_active_sessions (state='backup'/'reader').
-// On connection close: UPDATE state='aborted' unless already 'finished'.
-// Real backup endpoint handlers land in M4c-go-*.
+// Over the H2 connection:
+//   - POST /blob    write opaque blob atomically to snapshot directory (200)
+//   - any other     501 stub (M4c-go-finish, M4c-go-fixed-index, etc. follow)
 package main
 
 import (
@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/blob"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/db"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
@@ -79,7 +80,12 @@ func main() {
 	validator := auth.NewValidator(database)
 	datastoreLookup := datastore.NewLookup(database)
 	sessionStore := session.NewStore(database)
-	upgradeHandler := upgrade.NewHandler(datastoreLookup, sessionStore, upgrade.StubStreamHandler())
+	upgradeHandler := upgrade.NewHandler(
+		datastoreLookup,
+		sessionStore,
+		blob.NewHandler(),
+		upgrade.StubStreamHandler(),
+	)
 
 	cert, err := tls.LoadX509KeyPair(*certPath, *keyPath)
 	if err != nil {
