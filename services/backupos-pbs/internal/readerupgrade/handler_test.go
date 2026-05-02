@@ -57,6 +57,7 @@ func setupTestDB(t *testing.T, dsPath string) *sql.DB {
 			created_at        INTEGER NOT NULL,
 			prune_schedule    TEXT,
 			gc_schedule       TEXT,
+			gc_schedule_interval TEXT,
 			last_gc_at        INTEGER,
 			total_size_bytes  INTEGER,
 			unique_size_bytes INTEGER,

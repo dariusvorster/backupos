@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"time"
 )
@@ -19,10 +20,11 @@ import (
 // Datastore is a row from pbs_datastores. We only expose the columns
 // the Go service needs.
 type Datastore struct {
-	ID        string
-	Name      string
-	Path      string
-	CreatedAt time.Time
+	ID                 string
+	Name               string
+	Path               string
+	CreatedAt          time.Time
+	GCScheduleInterval *time.Duration // nil = scheduling disabled
 }
 
 // ErrNotFound indicates no row matched the requested name.
@@ -57,10 +59,44 @@ func NewLookup(db *sql.DB) *Lookup {
 	return &Lookup{db: db}
 }
 
+// scanner abstracts *sql.Row and *sql.Rows for scanDatastore.
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+// scanDatastore scans a single row from a SELECT of id, name, path, created_at,
+// gc_schedule_interval. Parse failures for gc_schedule_interval are non-fatal:
+// the field is set to nil and a warning is logged.
+func scanDatastore(s scanner) (*Datastore, error) {
+	var (
+		ds           Datastore
+		createdMilli int64
+		rawInterval  sql.NullString
+	)
+	if err := s.Scan(&ds.ID, &ds.Name, &ds.Path, &createdMilli, &rawInterval); err != nil {
+		return nil, err
+	}
+	ds.CreatedAt = time.UnixMilli(createdMilli)
+	if rawInterval.Valid && rawInterval.String != "" {
+		d, err := time.ParseDuration(rawInterval.String)
+		if err != nil {
+			slog.Warn("invalid gc_schedule_interval, treating as disabled",
+				"datastore_id", ds.ID, "value", rawInterval.String, "error", err)
+		} else {
+			ds.GCScheduleInterval = &d
+		}
+	}
+	return &ds, nil
+}
+
 // All returns every datastore in the table. Used during startup to build
-// the per-datastore-ID root map for GC tracker hydration.
+// the per-datastore-ID root map for GC tracker hydration, and by the
+// scheduler on each tick.
 func (l *Lookup) All() ([]*Datastore, error) {
-	const query = `SELECT id, name, path, created_at FROM pbs_datastores`
+	const query = `
+		SELECT id, name, path, created_at, gc_schedule_interval
+		FROM pbs_datastores
+	`
 	rows, err := l.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("list datastores: %w", err)
@@ -68,17 +104,11 @@ func (l *Lookup) All() ([]*Datastore, error) {
 	defer rows.Close()
 	var dss []*Datastore
 	for rows.Next() {
-		var id, name, path string
-		var createdMilli int64
-		if err := rows.Scan(&id, &name, &path, &createdMilli); err != nil {
+		ds, err := scanDatastore(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan datastore: %w", err)
 		}
-		dss = append(dss, &Datastore{
-			ID:        id,
-			Name:      name,
-			Path:      path,
-			CreatedAt: time.UnixMilli(createdMilli),
-		})
+		dss = append(dss, ds)
 	}
 	return dss, rows.Err()
 }
@@ -93,29 +123,17 @@ func (l *Lookup) ByName(name string) (*Datastore, error) {
 	}
 
 	const query = `
-		SELECT id, name, path, created_at
+		SELECT id, name, path, created_at, gc_schedule_interval
 		FROM pbs_datastores
 		WHERE name = ?
 		LIMIT 1
 	`
-	var (
-		id           string
-		gotName      string
-		path         string
-		createdMilli int64
-	)
-	err := l.db.QueryRow(query, name).Scan(&id, &gotName, &path, &createdMilli)
+	ds, err := scanDatastore(l.db.QueryRow(query, name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("datastore lookup: %w", err)
 	}
-
-	return &Datastore{
-		ID:        id,
-		Name:      gotName,
-		Path:      path,
-		CreatedAt: time.UnixMilli(createdMilli),
-	}, nil
+	return ds, nil
 }

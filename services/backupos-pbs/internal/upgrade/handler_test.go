@@ -46,7 +46,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			name         TEXT NOT NULL UNIQUE,
 			path         TEXT NOT NULL,
 			created_at   INTEGER NOT NULL,
-			prune_schedule TEXT, gc_schedule TEXT, last_gc_at INTEGER,
+			prune_schedule TEXT, gc_schedule TEXT, gc_schedule_interval TEXT, last_gc_at INTEGER,
 			total_size_bytes INTEGER, unique_size_bytes INTEGER, chunk_count INTEGER
 		);
 		INSERT INTO pbs_datastores (id, name, path, created_at)
@@ -85,7 +85,7 @@ func setupTestDBAtPath(t *testing.T, dsPath string) *sql.DB {
 			name         TEXT NOT NULL UNIQUE,
 			path         TEXT NOT NULL,
 			created_at   INTEGER NOT NULL,
-			prune_schedule TEXT, gc_schedule TEXT, last_gc_at INTEGER,
+			prune_schedule TEXT, gc_schedule TEXT, gc_schedule_interval TEXT, last_gc_at INTEGER,
 			total_size_bytes INTEGER, unique_size_bytes INTEGER, chunk_count INTEGER
 		);
 		CREATE TABLE pbs_active_sessions (

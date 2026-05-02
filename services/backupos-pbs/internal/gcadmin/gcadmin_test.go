@@ -35,10 +35,11 @@ func setupDB(t *testing.T, dsName, dsPath string) *sql.DB {
 
 	_, err = db.Exec(`
 		CREATE TABLE pbs_datastores (
-			id         TEXT PRIMARY KEY,
-			name       TEXT NOT NULL UNIQUE,
-			path       TEXT NOT NULL,
-			created_at INTEGER NOT NULL
+			id                   TEXT PRIMARY KEY,
+			name                 TEXT NOT NULL UNIQUE,
+			path                 TEXT NOT NULL,
+			created_at           INTEGER NOT NULL,
+			gc_schedule_interval TEXT
 		)
 	`)
 	if err != nil {
