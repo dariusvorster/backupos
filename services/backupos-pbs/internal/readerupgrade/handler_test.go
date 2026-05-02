@@ -96,10 +96,14 @@ func makeSnapDir(t *testing.T, root string) string {
 }
 
 func newTestHandler(db *sql.DB) *Handler {
+	stub := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotImplemented)
+	})
 	return NewHandler(
 		auth.NewValidator(db),
 		datastore.NewLookup(db),
-		Stub501Handler(),
+		stub,
+		stub,
 	)
 }
 

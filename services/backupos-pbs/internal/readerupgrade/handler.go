@@ -6,7 +6,6 @@
 //   - Snapshot must already exist (snapshot.ResolveDir, not EnsureDir)
 //   - Acquires shared lock (LOCK_SH) — multiple concurrent readers coexist
 //   - Reader sessions are NOT persisted to pbs_active_sessions
-//   - H2 stream routes stubbed at 501 in M5a; real handlers land in M5b
 //
 // Auth is performed inline (not via requireAuth middleware), so this handler
 // must be registered on the mux directly, not wrapped.
@@ -44,32 +43,27 @@ const (
 
 // Handler handles a PBS reader-protocol upgrade request.
 type Handler struct {
-	validator  *auth.Validator
-	datastores *datastore.Lookup
-	streamH2   http.Handler // 501-stub in M5a; real router in M5b
+	validator       *auth.Validator
+	datastores      *datastore.Lookup
+	downloadHandler http.Handler
+	chunkHandler    http.Handler
 }
 
 // NewHandler constructs a reader upgrade Handler.
 // validator is used for inline auth (no requireAuth middleware needed).
-// streamH2 is the H2 handler after the upgrade (use Stub501Handler() for M5a).
-func NewHandler(validator *auth.Validator, datastores *datastore.Lookup, streamH2 http.Handler) *Handler {
+// downloadHandler serves GET /download; chunkHandler serves GET /chunk.
+func NewHandler(
+	validator *auth.Validator,
+	datastores *datastore.Lookup,
+	downloadHandler http.Handler,
+	chunkHandler http.Handler,
+) *Handler {
 	return &Handler{
-		validator:  validator,
-		datastores: datastores,
-		streamH2:   streamH2,
+		validator:       validator,
+		datastores:      datastores,
+		downloadHandler: downloadHandler,
+		chunkHandler:    chunkHandler,
 	}
-}
-
-// Stub501Handler returns a handler that responds 501 to every H2 stream.
-// Used as the streamH2 handler in M5a; replaced by a real router in M5b.
-func Stub501Handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error": "reader download endpoints not yet implemented (M5b)",
-		})
-	})
 }
 
 // ServeHTTP handles the reader upgrade request.
@@ -230,15 +224,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ReaderState:   rs,
 	}
 
-	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.streamH2.ServeHTTP(w, r.WithContext(streamctx.WithSession(r.Context(), sc)))
+	router := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := streamctx.WithSession(r.Context(), sc)
+		r = r.WithContext(ctx)
+		switch r.URL.Path {
+		case "/download":
+			h.downloadHandler.ServeHTTP(w, r)
+		case "/chunk":
+			h.chunkHandler.ServeHTTP(w, r)
+		case "/speedtest":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotImplemented)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "speedtest not implemented in V1"})
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+		}
 	})
 
 	h2srv := &http2.Server{
 		MaxReadFrameSize: h2MaxFrameSize,
 	}
 	h2srv.ServeConn(conn, &http2.ServeConnOpts{
-		Handler: wrapped,
+		Handler: router,
 	})
 
 	// Connection closed. Release the shared lock.
