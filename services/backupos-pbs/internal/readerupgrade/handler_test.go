@@ -34,6 +34,9 @@ func setupTestDB(t *testing.T, dsPath string) *sql.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	// :memory: gives each pool connection its own empty DB; pin to one connection
+	// so all callers (including concurrent goroutines) share the seeded schema.
+	db.SetMaxOpenConns(1)
 
 	stmts := []string{
 		`CREATE TABLE pbs_tokens (
