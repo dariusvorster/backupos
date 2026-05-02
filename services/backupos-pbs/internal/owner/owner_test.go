@@ -92,19 +92,21 @@ func TestRead_InvalidFormat_ReturnsErrInvalidOwnerFile(t *testing.T) {
 	}
 }
 
-func TestRead_TokenNameInFile_Rejected(t *testing.T) {
+func TestRead_TokenNameInFile_Accepted(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "vm", "400")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// V1 rejects token-suffixed owner file contents.
 	if err := os.WriteFile(filepath.Join(dir, "owner"), []byte("root@pbs!alice\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Read(root, "vm", "400")
-	if !errors.Is(err, ErrInvalidOwnerFile) {
-		t.Errorf("expected ErrInvalidOwnerFile for token-suffix, got %v", err)
+	got, err := Read(root, "vm", "400")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "root@pbs!alice" {
+		t.Errorf("got %q, want %q", got, "root@pbs!alice")
 	}
 }
 
@@ -154,11 +156,62 @@ func TestSetIfAbsent_AtomicWrite_NoOwnerTmpAfterSuccess(t *testing.T) {
 	}
 }
 
-func TestSetIfAbsent_RejectsTokenNameInInput(t *testing.T) {
+func TestSetIfAbsent_AcceptsTokenInInput(t *testing.T) {
 	root := t.TempDir()
-	err := SetIfAbsent(root, "vm", "900", "root@pbs!alice")
-	if !errors.Is(err, ErrInvalidOwnerFile) {
-		t.Errorf("expected ErrInvalidOwnerFile for token-suffix input, got %v", err)
+	if err := SetIfAbsent(root, "vm", "900", "root@pbs!alice"); err != nil {
+		t.Fatalf("SetIfAbsent with token authid: %v", err)
+	}
+	got, err := Read(root, "vm", "900")
+	if err != nil {
+		t.Fatalf("Read after set: %v", err)
+	}
+	if got != "root@pbs!alice" {
+		t.Errorf("owner = %q, want %q", got, "root@pbs!alice")
+	}
+}
+
+func TestSetIfAbsent_TokenStored_UserCaller_Idempotent(t *testing.T) {
+	root := t.TempDir()
+	// Pre-create owner as token authid.
+	if err := SetIfAbsent(root, "vm", "910", "root@pbs!test1"); err != nil {
+		t.Fatalf("first SetIfAbsent: %v", err)
+	}
+	// Same user's bare authid should match via AuthidMatches (token stored, user calling).
+	if err := SetIfAbsent(root, "vm", "910", "root@pbs"); err != nil {
+		t.Errorf("SetIfAbsent for user portion of token owner: %v", err)
+	}
+}
+
+func TestSetIfAbsent_UserStored_TokenCaller_Mismatch(t *testing.T) {
+	root := t.TempDir()
+	// Pre-create owner as bare user.
+	if err := SetIfAbsent(root, "vm", "920", "root@pbs"); err != nil {
+		t.Fatalf("first SetIfAbsent: %v", err)
+	}
+	// Token caller does NOT match bare-user stored owner (asymmetric rule).
+	err := SetIfAbsent(root, "vm", "920", "root@pbs!test1")
+	if !errors.Is(err, ErrOwnerMismatch) {
+		t.Errorf("expected ErrOwnerMismatch for token caller vs user owner, got %v", err)
+	}
+}
+
+func TestAuthidMatches(t *testing.T) {
+	tests := []struct {
+		stored string
+		caller string
+		want   bool
+	}{
+		{"root@pbs!test1", "root@pbs!test1", true},  // exact token match
+		{"root@pbs", "root@pbs", true},               // exact user match
+		{"root@pbs!test1", "root@pbs", true},         // token stored, bare user calling
+		{"root@pbs", "root@pbs!test1", false},        // user stored, token calling — asymmetric
+		{"root@pbs!test1", "root@pbs!other", false},  // different tokens
+		{"root@pbs!test1", "alice@pbs", false},       // different user
+	}
+	for _, tc := range tests {
+		if got := AuthidMatches(tc.stored, tc.caller); got != tc.want {
+			t.Errorf("AuthidMatches(%q, %q) = %v, want %v", tc.stored, tc.caller, got, tc.want)
+		}
 	}
 }
 

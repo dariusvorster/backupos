@@ -180,6 +180,13 @@ func (v *Validator) Validate(parsed *ParsedHeader) (*Identity, error) {
 	}, nil
 }
 
+// Authid returns the full PBS authid string: "user@realm!tokenname".
+// Since ParseAuthHeader always requires a non-empty tokenName, this is
+// always a token authid (never bare user@realm).
+func (id *Identity) Authid() string {
+	return id.User + "@" + id.Realm + "!" + id.TokenName
+}
+
 // identityCtxKey is the context key type for stashing an Identity. Unexported
 // so external packages can only access it via WithIdentity / FromContext.
 type identityCtxKey struct{}

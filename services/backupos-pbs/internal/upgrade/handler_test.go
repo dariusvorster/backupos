@@ -237,20 +237,20 @@ func TestUpgrade_NewGroup_WritesOwnerFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("owner file not written: %v", err)
 	}
-	if got := strings.TrimRight(string(data), "\n"); got != "root@pbs" {
-		t.Errorf("owner file contents: got %q, want %q", got, "root@pbs")
+	if got := strings.TrimRight(string(data), "\n"); got != "root@pbs!test1" {
+		t.Errorf("owner file contents: got %q, want %q", got, "root@pbs!test1")
 	}
 }
 
 func TestUpgrade_SameUserSameGroup_AllowedIdempotent(t *testing.T) {
 	tmp := t.TempDir()
 
-	// Pre-create owner file as root@pbs (same user who will back up).
+	// Pre-create owner file as root@pbs!test1 (same token that will back up).
 	groupDir := filepath.Join(tmp, "vm", "999")
 	if err := os.MkdirAll(groupDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("root@pbs\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("root@pbs!test1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -272,8 +272,51 @@ func TestUpgrade_SameUserSameGroup_AllowedIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("owner file missing: %v", err)
 	}
-	if got := strings.TrimRight(string(data), "\n"); got != "root@pbs" {
-		t.Errorf("owner file changed: got %q, want %q", got, "root@pbs")
+	if got := strings.TrimRight(string(data), "\n"); got != "root@pbs!test1" {
+		t.Errorf("owner file changed: got %q, want %q", got, "root@pbs!test1")
+	}
+}
+
+func TestUpgrade_DifferentTokenSameUser_Returns403(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Pre-create owner as root@pbs!test1 (the standard test token).
+	groupDir := filepath.Join(tmp, "vm", "999")
+	if err := os.MkdirAll(groupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("root@pbs!test1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	db := setupTestDBAtPath(t, tmp)
+	h := newTestHandler(db)
+
+	// Inject a different token of the same user.
+	otherToken := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := auth.WithIdentity(r.Context(), &auth.Identity{
+			TokenID:   "other-token-id",
+			User:      "root",
+			Realm:     "pbs",
+			TokenName: "other",
+		})
+		h.ServeHTTP(w, r.WithContext(ctx))
+	})
+
+	srv := httptest.NewServer(otherToken)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/backup?store=default&backup-type=vm&backup-id=999&backup-time=1735000000", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", UpgradeToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for different token same user, got %d", resp.StatusCode)
 	}
 }
 
@@ -395,7 +438,7 @@ func TestHandler_DatastoreNotFound_Returns404(t *testing.T) {
 // This is the moment-of-truth integration test — the same dance that
 // crashed Node in PR #244.
 func TestHandler_FullUpgradeDance(t *testing.T) {
-	db := setupTestDB(t)
+	db := setupTestDBAtPath(t, t.TempDir())
 	h := newTestHandler(db)
 
 	// Use a TLS test server. EnableHTTP2=false so the test server doesn't

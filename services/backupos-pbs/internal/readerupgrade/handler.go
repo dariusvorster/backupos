@@ -167,12 +167,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Owner check: requesting user must own the backup group (or no owner file exists — V1 backcompat).
-	userRealm := identity.User + "@" + identity.Realm
-	if err := owner.Check(ds.Path, backupType, backupID, userRealm); err != nil {
+	// Owner check: caller must match the stored authid per PBS check_backup_owner semantics.
+	callerAuthid := identity.Authid()
+	if err := owner.Check(ds.Path, backupType, backupID, callerAuthid); err != nil {
 		if errors.Is(err, owner.ErrOwnerMismatch) {
 			slog.Info("reader rejected: backup group owner mismatch",
-				"user", userRealm,
+				"user", callerAuthid,
 				"datastore_id", ds.ID,
 				"backup_type", backupType,
 				"backup_id", backupID,
