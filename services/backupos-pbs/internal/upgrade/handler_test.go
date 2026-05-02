@@ -4,8 +4,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -65,6 +68,87 @@ func setupTestDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	return db
+}
+
+func setupTestDBAtPath(t *testing.T, dsPath string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+
+	_, err = db.Exec(`
+		CREATE TABLE pbs_datastores (
+			id           TEXT PRIMARY KEY,
+			name         TEXT NOT NULL UNIQUE,
+			path         TEXT NOT NULL,
+			created_at   INTEGER NOT NULL,
+			prune_schedule TEXT, gc_schedule TEXT, last_gc_at INTEGER,
+			total_size_bytes INTEGER, unique_size_bytes INTEGER, chunk_count INTEGER
+		);
+		CREATE TABLE pbs_active_sessions (
+			id            TEXT PRIMARY KEY,
+			token_id      TEXT,
+			datastore_id  TEXT,
+			backup_type   TEXT NOT NULL,
+			backup_id     TEXT NOT NULL,
+			backup_time   INTEGER NOT NULL,
+			started_at    INTEGER NOT NULL,
+			state         TEXT NOT NULL,
+			scratch_path  TEXT
+		);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO pbs_datastores (id, name, path, created_at) VALUES ('test-ds-1', 'default', ?, 1735000000000)`,
+		dsPath,
+	); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+// do101 sends a raw HTTP/1.1 upgrade request to addr and reads until it
+// receives the complete 101 response header block. Returns the header text.
+func do101(t *testing.T, addr, host, query string) string {
+	t.Helper()
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	req := "GET " + query + " HTTP/1.1\r\n" +
+		"Host: " + host + "\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Upgrade: " + UpgradeToken + "\r\n" +
+		"\r\n"
+	if _, err := conn.Write([]byte(req)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	buf := make([]byte, 4096)
+	got := []byte{}
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(string(got), "\r\n\r\n") {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out reading response; got: %q", got)
+		}
+		n, readErr := conn.Read(buf)
+		if n > 0 {
+			got = append(got, buf[:n]...)
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	headers, _, _ := strings.Cut(string(got), "\r\n\r\n")
+	return headers
 }
 
 // wrapWithTestIdentity injects a synthetic auth.Identity into the request
@@ -130,6 +214,113 @@ func TestHandler_WrongDatastore_Returns403(t *testing.T) {
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestUpgrade_NewGroup_WritesOwnerFile(t *testing.T) {
+	tmp := t.TempDir()
+	db := setupTestDBAtPath(t, tmp)
+	h := newTestHandler(db)
+
+	srv := httptest.NewServer(wrapWithTestIdentity(h))
+	defer srv.Close()
+
+	host := strings.TrimPrefix(srv.URL, "http://")
+	headers := do101(t, host, host, "/api2/json/backup?store=default&backup-type=vm&backup-id=999&backup-time=1735000000")
+
+	if !strings.HasPrefix(headers, "HTTP/1.1 101") {
+		t.Fatalf("expected 101, got:\n%s", headers)
+	}
+
+	ownerPath := filepath.Join(tmp, "vm", "999", "owner")
+	data, err := os.ReadFile(ownerPath)
+	if err != nil {
+		t.Fatalf("owner file not written: %v", err)
+	}
+	if got := strings.TrimRight(string(data), "\n"); got != "root@pbs" {
+		t.Errorf("owner file contents: got %q, want %q", got, "root@pbs")
+	}
+}
+
+func TestUpgrade_SameUserSameGroup_AllowedIdempotent(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Pre-create owner file as root@pbs (same user who will back up).
+	groupDir := filepath.Join(tmp, "vm", "999")
+	if err := os.MkdirAll(groupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("root@pbs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	db := setupTestDBAtPath(t, tmp)
+	h := newTestHandler(db)
+
+	srv := httptest.NewServer(wrapWithTestIdentity(h))
+	defer srv.Close()
+
+	host := strings.TrimPrefix(srv.URL, "http://")
+	headers := do101(t, host, host, "/api2/json/backup?store=default&backup-type=vm&backup-id=999&backup-time=1735000000")
+
+	if !strings.HasPrefix(headers, "HTTP/1.1 101") {
+		t.Errorf("expected 101 for same-owner re-backup, got:\n%s", headers)
+	}
+
+	// Owner file must be unchanged.
+	data, err := os.ReadFile(filepath.Join(groupDir, "owner"))
+	if err != nil {
+		t.Fatalf("owner file missing: %v", err)
+	}
+	if got := strings.TrimRight(string(data), "\n"); got != "root@pbs" {
+		t.Errorf("owner file changed: got %q, want %q", got, "root@pbs")
+	}
+}
+
+func TestUpgrade_DifferentUser_Returns403(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Pre-create owner file as alice@pbs (different from root@pbs who will attempt backup).
+	groupDir := filepath.Join(tmp, "vm", "999")
+	if err := os.MkdirAll(groupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(groupDir, "owner"), []byte("alice@pbs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	db := setupTestDBAtPath(t, tmp)
+	h := newTestHandler(db)
+
+	srv := httptest.NewServer(wrapWithTestIdentity(h)) // wrapWithTestIdentity uses root@pbs
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/backup?store=default&backup-type=vm&backup-id=999&backup-time=1735000000", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", UpgradeToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for owner mismatch, got %d", resp.StatusCode)
+	}
+
+	// No session row should have been inserted.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pbs_active_sessions`).Scan(&count); err != nil {
+		t.Fatalf("session count query: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected no session rows, got %d", count)
+	}
+
+	// Owner file must be unchanged.
+	data, _ := os.ReadFile(filepath.Join(groupDir, "owner"))
+	if got := strings.TrimRight(string(data), "\n"); got != "alice@pbs" {
+		t.Errorf("owner file was modified: got %q", got)
 	}
 }
 
