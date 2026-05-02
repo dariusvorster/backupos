@@ -1,11 +1,14 @@
 package incremental
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/didx"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fidx"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/wstate"
 )
@@ -77,6 +80,37 @@ func TestRegister_FileMissing_ReturnsErr(t *testing.T) {
 	}
 }
 
+// buildDidxFile creates a .didx file at path with the given entries and returns
+// the index_csum (SHA256 over (end_le || digest) pairs).
+func buildDidxFile(t *testing.T, path string, entries []didx.ChunkRef) [32]byte {
+	t.Helper()
+	h := sha256.New()
+	for _, e := range entries {
+		var end [8]byte
+		binary.LittleEndian.PutUint64(end[:], e.End)
+		h.Write(end[:])
+		h.Write(e.Digest[:])
+	}
+	var csum [32]byte
+	copy(csum[:], h.Sum(nil))
+
+	hdr := make([]byte, 4096)
+	copy(hdr[0:8], didx.Magic[:])
+	copy(hdr[32:64], csum[:])
+
+	body := make([]byte, len(entries)*40)
+	for i, e := range entries {
+		binary.LittleEndian.PutUint64(body[i*40:], e.End)
+		copy(body[i*40+8:], e.Digest[:])
+	}
+
+	data := append(hdr, body...)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return csum
+}
+
 func TestRegister_PopulatesKnownChunks(t *testing.T) {
 	dir := t.TempDir()
 	d1 := [32]byte{0: 0xBB}
@@ -96,5 +130,97 @@ func TestRegister_PopulatesKnownChunks(t *testing.T) {
 		} else if size != chunkSize {
 			t.Errorf("digest %x: size=%d, want %d", d[:2], size, chunkSize)
 		}
+	}
+}
+
+func TestRegisterDynamic_Success(t *testing.T) {
+	dir := t.TempDir()
+	entries := []didx.ChunkRef{
+		{End: 1048576, Digest: [32]byte{0: 0x11}},
+		{End: 3145728, Digest: [32]byte{0: 0x22}},
+		{End: 7340032, Digest: [32]byte{0: 0x33}},
+	}
+	path := filepath.Join(dir, "pxar.didx")
+	csum := buildDidxFile(t, path, entries)
+
+	s := wstate.New()
+	n, err := RegisterFromPreviousDynamicIndex(s, path, csum)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != len(entries) {
+		t.Errorf("registered %d chunks, want %d", n, len(entries))
+	}
+}
+
+func TestRegisterDynamic_CsumMismatch_ReturnsErr(t *testing.T) {
+	dir := t.TempDir()
+	entries := []didx.ChunkRef{{End: 1048576, Digest: [32]byte{0: 0xAA}}}
+	path := filepath.Join(dir, "pxar.didx")
+	buildDidxFile(t, path, entries)
+
+	var wrongCsum [32]byte
+	wrongCsum[0] = 0xFF
+
+	s := wstate.New()
+	_, err := RegisterFromPreviousDynamicIndex(s, path, wrongCsum)
+	if !errors.Is(err, ErrCsumMismatch) {
+		t.Errorf("expected ErrCsumMismatch, got %v", err)
+	}
+}
+
+func TestRegisterDynamic_FileMissing_ReturnsErr(t *testing.T) {
+	s := wstate.New()
+	_, err := RegisterFromPreviousDynamicIndex(s, "/no/such/file.didx", [32]byte{})
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("expected os.ErrNotExist (wrapped), got %v", err)
+	}
+}
+
+func TestRegisterDynamic_PopulatesKnownChunksWithCorrectSizes(t *testing.T) {
+	dir := t.TempDir()
+	entries := []didx.ChunkRef{
+		{End: 1048576, Digest: [32]byte{0: 0xAA}}, // size = 1048576
+		{End: 3145728, Digest: [32]byte{0: 0xBB}}, // size = 2097152
+		{End: 7340032, Digest: [32]byte{0: 0xCC}}, // size = 4194304
+	}
+	path := filepath.Join(dir, "pxar.didx")
+	csum := buildDidxFile(t, path, entries)
+
+	s := wstate.New()
+	if _, err := RegisterFromPreviousDynamicIndex(s, path, csum); err != nil {
+		t.Fatal(err)
+	}
+
+	wantSizes := []uint32{1048576, 2097152, 4194304}
+	for i, e := range entries {
+		size, ok := s.LookupChunk(e.Digest)
+		if !ok {
+			t.Errorf("entry[%d] digest not in knownChunks", i)
+			continue
+		}
+		if size != wantSizes[i] {
+			t.Errorf("entry[%d] size: got %d, want %d", i, size, wantSizes[i])
+		}
+	}
+}
+
+func TestRegisterDynamic_FirstChunkSize(t *testing.T) {
+	dir := t.TempDir()
+	d := [32]byte{0: 0xDD}
+	entries := []didx.ChunkRef{{End: 4194304, Digest: d}}
+	path := filepath.Join(dir, "pxar.didx")
+	csum := buildDidxFile(t, path, entries)
+
+	s := wstate.New()
+	if _, err := RegisterFromPreviousDynamicIndex(s, path, csum); err != nil {
+		t.Fatal(err)
+	}
+	size, ok := s.LookupChunk(d)
+	if !ok {
+		t.Fatal("digest not in knownChunks")
+	}
+	if size != 4194304 {
+		t.Errorf("first chunk size: got %d, want 4194304", size)
 	}
 }

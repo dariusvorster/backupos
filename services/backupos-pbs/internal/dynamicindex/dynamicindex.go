@@ -7,13 +7,18 @@
 package dynamicindex
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/didx"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/incremental"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/snapshot"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/streamctx"
 )
@@ -42,7 +47,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	archiveName, err := parseQuery(r.URL.Query())
+	archiveName, reuseCsumStr, err := parseQuery(r.URL.Query())
 	if err != nil {
 		slog.Info("dynamic_index rejected", "reason", err.Error(), "session_id", sc.SessionID)
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -66,6 +71,39 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if reuseCsumStr != "" {
+		if sc.PreviousBackup == nil {
+			dw.Drop()
+			writeError(w, http.StatusBadRequest, "no previous successful backup exists")
+			return
+		}
+		csumBytes, hexErr := hex.DecodeString(reuseCsumStr)
+		if hexErr != nil || len(csumBytes) != 32 {
+			dw.Drop()
+			writeError(w, http.StatusBadRequest, "reuse-csum: invalid hex (must be 64 hex chars)")
+			return
+		}
+		var expectedCsum [32]byte
+		copy(expectedCsum[:], csumBytes)
+		prevIndexPath := filepath.Join(sc.PreviousBackup.Path, archiveName)
+		if _, regErr := incremental.RegisterFromPreviousDynamicIndex(sc.WriterState, prevIndexPath, expectedCsum); regErr != nil {
+			dw.Drop()
+			if errors.Is(regErr, incremental.ErrCsumMismatch) {
+				writeError(w, http.StatusBadRequest, regErr.Error())
+				return
+			}
+			if errors.Is(regErr, os.ErrNotExist) {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("previous archive %q not found", archiveName))
+				return
+			}
+			slog.Error("incremental dynamic register failed",
+				"error", regErr, "session_id", sc.SessionID, "archive_name", archiveName)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		slog.Info("incremental dynamic backup", "session_id", sc.SessionID, "archive_name", archiveName)
+	}
+
 	wid, err := sc.WriterState.RegisterDynamicWriter(archiveName, dw)
 	if err != nil {
 		dw.Drop()
@@ -86,8 +124,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]int{"data": wid})
 }
 
-// parseQuery validates and extracts the archive-name query parameter.
-func parseQuery(q map[string][]string) (archiveName string, err error) {
+// parseQuery validates and extracts query parameters.
+func parseQuery(q map[string][]string) (archiveName string, reuseCsumStr string, err error) {
 	get := func(k string) string {
 		if v := q[k]; len(v) > 0 {
 			return v[0]
@@ -95,17 +133,19 @@ func parseQuery(q map[string][]string) (archiveName string, err error) {
 		return ""
 	}
 
+	reuseCsumStr = get("reuse-csum")
+
 	archiveName = get("archive-name")
 	if archiveName == "" {
-		return "", fmt.Errorf("missing required parameter \"archive-name\"")
+		return "", "", fmt.Errorf("missing required parameter \"archive-name\"")
 	}
 	if len(archiveName) > 64 {
-		return "", fmt.Errorf("\"archive-name\" too long (max 64 chars)")
+		return "", "", fmt.Errorf("\"archive-name\" too long (max 64 chars)")
 	}
 	if !archiveNameRegex.MatchString(archiveName) {
-		return "", fmt.Errorf("invalid \"archive-name\": must match [A-Za-z0-9_.-]+\\.didx")
+		return "", "", fmt.Errorf("invalid \"archive-name\": must match [A-Za-z0-9_.-]+\\.didx")
 	}
-	return archiveName, nil
+	return archiveName, reuseCsumStr, nil
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
