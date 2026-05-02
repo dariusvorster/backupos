@@ -81,11 +81,14 @@ func Mark(ctx context.Context, datastoreRoot string) (*Stats, error) {
 
 		for _, digest := range digests {
 			chunkPath := store.Path(digest)
-			if err := gcatime.TouchChunk(chunkPath); err != nil {
+			touched, err := gcatime.TouchChunk(chunkPath)
+			if err != nil {
 				stats.Errors = append(stats.Errors, fmt.Errorf("touch %x: %w", digest, err))
 				continue
 			}
-			stats.DigestsTouched++
+			if touched {
+				stats.DigestsTouched++
+			}
 		}
 
 		stats.IndexFilesProcessed++

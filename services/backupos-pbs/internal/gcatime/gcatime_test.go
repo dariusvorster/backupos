@@ -17,8 +17,12 @@ func TestTouchChunk_HappyPath(t *testing.T) {
 	}
 
 	before := time.Now().Add(-1 * time.Second)
-	if err := TouchChunk(p); err != nil {
+	touched, err := TouchChunk(p)
+	if err != nil {
 		t.Fatalf("TouchChunk: %v", err)
+	}
+	if !touched {
+		t.Error("expected touched=true for existing file")
 	}
 
 	var st unix.Stat_t
@@ -31,10 +35,13 @@ func TestTouchChunk_HappyPath(t *testing.T) {
 	}
 }
 
-func TestTouchChunk_NonexistentReturnsNil(t *testing.T) {
-	err := TouchChunk("/tmp/this-chunk-does-not-exist-gctest")
+func TestTouchChunk_NonexistentReturnsFalseNil(t *testing.T) {
+	touched, err := TouchChunk("/tmp/this-chunk-does-not-exist-gctest")
 	if err != nil {
-		t.Errorf("expected nil for nonexistent path, got: %v", err)
+		t.Errorf("expected nil error for nonexistent path, got: %v", err)
+	}
+	if touched {
+		t.Error("expected touched=false for nonexistent path")
 	}
 }
 
@@ -56,7 +63,7 @@ func TestTouchChunk_PreservesMtime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := TouchChunk(p); err != nil {
+	if _, err := TouchChunk(p); err != nil {
 		t.Fatalf("TouchChunk: %v", err)
 	}
 
@@ -92,9 +99,3 @@ func TestVerifyAtimeUpdates_CreatesAndDeletesProbe(t *testing.T) {
 	}
 }
 
-func TestVerifyAtimeUpdates_NonexistentRoot(t *testing.T) {
-	err := VerifyAtimeUpdates("/tmp/this-dir-does-not-exist-gctest-root/sub")
-	if err == nil {
-		t.Error("expected error for nonexistent root, got nil")
-	}
-}

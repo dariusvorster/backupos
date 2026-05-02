@@ -13,9 +13,11 @@ import (
 )
 
 // TouchChunk sets the chunk file's atime to NOW. Mtime is preserved.
-// Returns nil if the chunk file doesn't exist — sweep phase will handle
-// that case. Returns error for other I/O failures.
-func TouchChunk(path string) error {
+// Returns (true, nil) when the chunk existed and atime was updated.
+// Returns (false, nil) if the chunk file doesn't exist — sweep phase
+// will handle that case.
+// Returns (false, err) for other I/O failures.
+func TouchChunk(path string) (bool, error) {
 	times := []unix.Timespec{
 		{Sec: 0, Nsec: unix.UTIME_NOW},  // atime → NOW
 		{Sec: 0, Nsec: unix.UTIME_OMIT}, // mtime → unchanged
@@ -23,11 +25,11 @@ func TouchChunk(path string) error {
 	err := unix.UtimesNanoAt(unix.AT_FDCWD, path, times, unix.AT_SYMLINK_NOFOLLOW)
 	if err != nil {
 		if errors.Is(err, unix.ENOENT) {
-			return nil // chunk gone — fine, sweep will not see it either
+			return false, nil // chunk gone — fine, sweep will not see it either
 		}
-		return fmt.Errorf("touch chunk atime: %w", err)
+		return false, fmt.Errorf("touch chunk atime: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 // VerifyAtimeUpdates writes a probe file under <chunkStoreRoot>/.gc-probe,
