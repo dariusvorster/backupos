@@ -88,7 +88,7 @@ func TestHandler_InvalidFileName_Returns400(t *testing.T) {
 	srv := httptest.NewServer(withSession(NewHandler(), sc))
 	defer srv.Close()
 
-	cases := []string{"../escape", "with/slash", "with space", "a\x00b"}
+	cases := []string{"../escape", "with/slash", "with space", "has@symbol"}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			resp, err := http.Get(srv.URL + "/download?file-name=" + name)
