@@ -45,15 +45,18 @@ go run ./cmd/backupos-pbs \
 go test ./...
 ```
 
-## Endpoints (M4b-go-upgrade)
+## Endpoints (M4b-go-session)
 
-| Method | Path | Behavior |
-|--------|------|----------|
-| GET | /api2/json/version | 200 JSON, unauthenticated (PVE liveness probe) |
-| GET | /api2/json/backup | 401 without auth; with `Upgrade: proxmox-backup-protocol-v1` → 101, H2 streams (501 stubs) |
-| GET | /api2/json/reader | 401 without auth; with `Upgrade: proxmox-backup-protocol-v1` → 101, H2 streams (501 stubs) |
-| GET | /api2/json/backup (no upgrade headers) | 501 — caller missing Upgrade headers |
-| any | (other) | 404 |
+| Method | Path | Auth | Upgrade | Result |
+|--------|------|------|---------|--------|
+| GET | /api2/json/version | No | n/a | 200 JSON |
+| any | /api2/json/backup | No | n/a | 401 |
+| any | /api2/json/backup | Yes | No | 501 stub |
+| GET | /api2/json/backup | Yes | Yes (valid params) | 101 → HTTP/2 → all streams 501 |
+| GET | /api2/json/backup | Yes | Yes (invalid params) | 400 |
+| GET | /api2/json/backup | Yes | Yes (datastore not found) | 404 |
+| same shape | /api2/json/reader | | | same as backup |
+| any | (other) | | | 404 |
 
 Authentication uses PBS token format:
 `Authorization: PBSAPIToken=user@realm!tokenname:secret`
@@ -61,6 +64,13 @@ Authentication uses PBS token format:
 The secret is hashed with SHA-256 (no salt) and compared against the
 `secret_hash` column in `pbs_tokens`. This matches the M3b Node
 implementation, so existing tokens validate.
+
+### Session lifecycle
+
+When an upgrade is accepted, a row is inserted into `pbs_active_sessions`
+with `state='backup'` or `state='reader'` BEFORE the 101 response is written.
+When the HTTP/2 connection closes, the row's state is updated to `'aborted'`
+unless M4c-go-finish has already set `state='finished'`.
 
 ## Roadmap
 

@@ -7,6 +7,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
@@ -165,4 +166,21 @@ func (v *Validator) Validate(parsed *ParsedHeader) (*Identity, error) {
 		TokenName:   parsed.TokenName,
 		Permissions: permissions,
 	}, nil
+}
+
+// identityCtxKey is the context key type for stashing an Identity. Unexported
+// so external packages can only access it via WithIdentity / FromContext.
+type identityCtxKey struct{}
+
+// WithIdentity returns a child context that carries the given Identity.
+// The upgrade handler reads this via FromContext to record the token_id
+// on session rows.
+func WithIdentity(ctx context.Context, id *Identity) context.Context {
+	return context.WithValue(ctx, identityCtxKey{}, id)
+}
+
+// FromContext returns the Identity attached by WithIdentity, or nil if none.
+func FromContext(ctx context.Context) *Identity {
+	id, _ := ctx.Value(identityCtxKey{}).(*Identity)
+	return id
 }
