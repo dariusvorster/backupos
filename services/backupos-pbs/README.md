@@ -45,7 +45,7 @@ go run ./cmd/backupos-pbs \
 go test ./...
 ```
 
-## Endpoints (M4c-go-finish)
+## Endpoints (M4c-go-fixed-index)
 
 ### HTTP/1.1 surface (upgrade handshake)
 
@@ -66,7 +66,11 @@ go test ./...
 |--------|------|-------------|--------|
 | POST | /blob | `file-name=X.blob&encoded-size=N` | 200, blob written atomically to snapshot dir |
 | POST | /finish | (none) | 200, session state→finished, snapshot dir fsynced |
-| any other | (any) | | 501 stub (M4c-go-fixed-index, dynamic-index, chunk-upload follow) |
+| POST | /fixed_index | `archive-name=X.fidx&size=N` | 200, creates .fidx writer, returns wid |
+| PUT | /fixed_index | JSON `{wid, digest-list, offset-list}` | 200, batch-associate digests with positions |
+| POST | /fixed_chunk | `wid=N&digest=H&size=N&encoded-size=N` body=DataBlob | 200, chunk stored, registered in known_chunks |
+| POST | /fixed_close | `wid=N&chunk-count=N&size=N&csum=H` | 200, validates and finalises .fidx file |
+| any other | (any) | | 501 stub (M4c-go-dynamic-index follows) |
 
 Session lifecycle: a clean session ends with `POST /finish`, which transitions
 state from `backup`/`reader` to `finished`. If the connection closes without
