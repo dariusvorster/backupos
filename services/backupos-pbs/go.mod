@@ -2,7 +2,10 @@ module github.com/dariusvorster/backupos/services/backupos-pbs
 
 go 1.26
 
-require modernc.org/sqlite v1.34.1
+require (
+	golang.org/x/net v0.27.0
+	modernc.org/sqlite v1.34.1
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

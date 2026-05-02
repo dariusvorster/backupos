@@ -45,13 +45,14 @@ go run ./cmd/backupos-pbs \
 go test ./...
 ```
 
-## Endpoints (M4b-go-auth)
+## Endpoints (M4b-go-upgrade)
 
 | Method | Path | Behavior |
 |--------|------|----------|
 | GET | /api2/json/version | 200 JSON, unauthenticated (PVE liveness probe) |
-| any | /api2/json/backup | 401 without auth, 501 stub with auth |
-| any | /api2/json/reader | 401 without auth, 501 stub with auth |
+| GET | /api2/json/backup | 401 without auth; with `Upgrade: proxmox-backup-protocol-v1` → 101, H2 streams (501 stubs) |
+| GET | /api2/json/reader | 401 without auth; with `Upgrade: proxmox-backup-protocol-v1` → 101, H2 streams (501 stubs) |
+| GET | /api2/json/backup (no upgrade headers) | 501 — caller missing Upgrade headers |
 | any | (other) | 404 |
 
 Authentication uses PBS token format:
