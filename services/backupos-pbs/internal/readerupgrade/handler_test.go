@@ -35,8 +35,8 @@ func setupTestDB(t *testing.T, dsPath string) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	_, err = db.Exec(`
-		CREATE TABLE pbs_tokens (
+	stmts := []string{
+		`CREATE TABLE pbs_tokens (
 			id          TEXT PRIMARY KEY,
 			user        TEXT NOT NULL,
 			realm       TEXT NOT NULL,
@@ -44,28 +44,42 @@ func setupTestDB(t *testing.T, dsPath string) *sql.DB {
 			secret_hash TEXT NOT NULL,
 			permissions TEXT NOT NULL DEFAULT '',
 			expires_at  INTEGER
-		);
-		INSERT INTO pbs_tokens (id, user, realm, token_name, secret_hash, permissions)
-		VALUES ('tok-1', 'root', 'pbs', 'test1', ?, '');
+		)`,
+		`CREATE TABLE pbs_datastores (
+			id                TEXT PRIMARY KEY,
+			name              TEXT NOT NULL UNIQUE,
+			path              TEXT NOT NULL,
+			created_at        INTEGER NOT NULL,
+			prune_schedule    TEXT,
+			gc_schedule       TEXT,
+			last_gc_at        INTEGER,
+			total_size_bytes  INTEGER,
+			unique_size_bytes INTEGER,
+			chunk_count       INTEGER
+		)`,
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatal(err)
+		}
+	}
 
-		CREATE TABLE pbs_datastores (
-			id                 TEXT PRIMARY KEY,
-			name               TEXT NOT NULL UNIQUE,
-			path               TEXT NOT NULL,
-			created_at         INTEGER NOT NULL,
-			prune_schedule     TEXT,
-			gc_schedule        TEXT,
-			last_gc_at         INTEGER,
-			total_size_bytes   INTEGER,
-			unique_size_bytes  INTEGER,
-			chunk_count        INTEGER
-		);
-		INSERT INTO pbs_datastores (id, name, path, created_at)
-		VALUES ('ds-1', 'default', ?, 1735000000000);
-	`, auth.HashSecret(testSecret), dsPath)
-	if err != nil {
+	if _, err := db.Exec(
+		`INSERT INTO pbs_tokens (id, user, realm, token_name, secret_hash, permissions)
+		 VALUES ('tok-1', 'root', 'pbs', 'test1', ?, '')`,
+		auth.HashSecret(testSecret),
+	); err != nil {
 		t.Fatal(err)
 	}
+
+	if _, err := db.Exec(
+		`INSERT INTO pbs_datastores (id, name, path, created_at)
+		 VALUES ('ds-1', 'default', ?, 1735000000000)`,
+		dsPath,
+	); err != nil {
+		t.Fatal(err)
+	}
+
 	return db
 }
 
