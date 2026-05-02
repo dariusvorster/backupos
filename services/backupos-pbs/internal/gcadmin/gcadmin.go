@@ -106,12 +106,12 @@ func (h *Handler) startGC(w http.ResponseWriter, ds *datastore.Datastore) {
 			if errors.Is(runErr, dslock.ErrGCBusy) {
 				slog.Warn("gc raced with external dslock holder", "task_id", taskID, "datastore_id", dsID)
 			}
-			h.tracker.Fail(taskID, runErr)
+			h.tracker.Fail(dsID, dsRoot, taskID, runErr)
 			slog.Info("gc failed", "task_id", taskID, "datastore_id", dsID, "error", runErr.Error())
 			return
 		}
 
-		h.tracker.Succeed(taskID, status, nil)
+		h.tracker.Succeed(dsID, dsRoot, taskID, status)
 		slog.Info("gc succeeded",
 			"task_id", taskID,
 			"datastore_id", dsID,
