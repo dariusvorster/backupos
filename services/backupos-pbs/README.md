@@ -45,14 +45,21 @@ go run ./cmd/backupos-pbs \
 go test ./...
 ```
 
-## Endpoints (M4b-go-scaffolding)
+## Endpoints (M4b-go-auth)
 
 | Method | Path | Behavior |
 |--------|------|----------|
 | GET | /api2/json/version | 200 JSON, unauthenticated (PVE liveness probe) |
-| any | /api2/json/backup | 501 stub (M4b-go-upgrade adds upgrade handler) |
-| any | /api2/json/reader | 501 stub (M5-go adds reader protocol) |
+| any | /api2/json/backup | 401 without auth, 501 stub with auth |
+| any | /api2/json/reader | 401 without auth, 501 stub with auth |
 | any | (other) | 404 |
+
+Authentication uses PBS token format:
+`Authorization: PBSAPIToken=user@realm!tokenname:secret`
+
+The secret is hashed with SHA-256 (no salt) and compared against the
+`secret_hash` column in `pbs_tokens`. This matches the M3b Node
+implementation, so existing tokens validate.
 
 ## Roadmap
 
