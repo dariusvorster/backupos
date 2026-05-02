@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 )
 
 func TestWithSession_RoundTrip(t *testing.T) {
@@ -15,7 +17,7 @@ func TestWithSession_RoundTrip(t *testing.T) {
 		BackupType:    "vm",
 		BackupID:      "100",
 		BackupTime:    time.Unix(1735000000, 0),
-		Namespace:     "",
+		Namespace:     namespace.Root(),
 	}
 	ctx := WithSession(context.Background(), want)
 	got := FromContext(ctx)

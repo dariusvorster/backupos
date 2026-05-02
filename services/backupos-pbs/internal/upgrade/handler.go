@@ -13,6 +13,7 @@ import (
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/owner"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/streamctx"
@@ -113,6 +114,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ns, err := namespace.Parse(params.Namespace)
+	if err != nil {
+		writeUpgradeError(w, http.StatusBadRequest, fmt.Sprintf("invalid namespace: %s", err))
+		return
+	}
+
 	// Step 3: Datastore lookup.
 	ds, err := h.datastores.ByName(params.Store)
 	if errors.Is(err, datastore.ErrNotFound) {
@@ -152,7 +159,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authid := identity.Authid()
-	if err := owner.SetIfAbsent(ds.Path, string(params.BackupType), params.BackupID, authid); err != nil {
+	if err := owner.SetIfAbsent(ds.Path, ns, string(params.BackupType), params.BackupID, authid); err != nil {
 		if errors.Is(err, owner.ErrOwnerMismatch) {
 			slog.Info("upgrade rejected: backup group owner mismatch",
 				"user", authid,
@@ -181,6 +188,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		BackupID:    params.BackupID,
 		BackupTime:  params.BackupTime,
 		Kind:        kind,
+		Namespace:   params.Namespace,
 	})
 	if err != nil {
 		slog.Error("session begin failed", "error", err, "datastore_id", ds.ID)
@@ -239,7 +247,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		BackupType:    string(params.BackupType),
 		BackupID:      params.BackupID,
 		BackupTime:    params.BackupTime,
-		Namespace:     params.Namespace,
+		Namespace:     ns,
 		WriterState:   ws,
 	}
 	sessionRouter := buildSessionRouter(

@@ -68,7 +68,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Best-effort durability: fsync the snapshot directory.
-	snapDir, pathErr := snapshot.Path(sc.DatastoreRoot, sc.BackupType, sc.BackupID, sc.BackupTime)
+	snapDir, pathErr := snapshot.Path(sc.DatastoreRoot, sc.Namespace, sc.BackupType, sc.BackupID, sc.BackupTime)
 	if pathErr != nil {
 		// Path validation failure here is unexpected — upgrade.ParseParams
 		// already validated the same fields. Log and continue.

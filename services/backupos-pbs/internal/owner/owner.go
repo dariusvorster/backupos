@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 )
 
 // ErrOwnerMismatch is returned when the requested operation's caller
@@ -26,16 +28,16 @@ var ErrInvalidOwnerFile = errors.New("invalid owner file format")
 
 // Path returns the absolute path to the owner file for a backup group.
 //
-// Layout: <datastoreRoot>/<backupType>/<backupID>/owner
-func Path(datastoreRoot, backupType, backupID string) string {
-	return filepath.Join(datastoreRoot, backupType, backupID, "owner")
+// Layout: <ns-path>/<backupType>/<backupID>/owner
+func Path(datastoreRoot string, ns namespace.Namespace, backupType, backupID string) string {
+	return filepath.Join(ns.JoinPath(datastoreRoot), backupType, backupID, "owner")
 }
 
 // Read returns the authid string stored in the owner file for the given group.
 // Returns os.ErrNotExist (wrapped) if the owner file doesn't exist.
 // Returns ErrInvalidOwnerFile if the file exists but can't be parsed.
-func Read(datastoreRoot, backupType, backupID string) (string, error) {
-	path := Path(datastoreRoot, backupType, backupID)
+func Read(datastoreRoot string, ns namespace.Namespace, backupType, backupID string) (string, error) {
+	path := Path(datastoreRoot, ns, backupType, backupID)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err // includes wrapped os.ErrNotExist
@@ -56,12 +58,12 @@ func Read(datastoreRoot, backupType, backupID string) (string, error) {
 // The atomic write is: create owner.tmp, write contents+newline, fsync,
 // rename to owner. A crash mid-write leaves owner.tmp orphaned but no
 // corrupt owner file.
-func SetIfAbsent(datastoreRoot, backupType, backupID, authid string) error {
+func SetIfAbsent(datastoreRoot string, ns namespace.Namespace, backupType, backupID, authid string) error {
 	if !strings.Contains(authid, "@") {
 		return fmt.Errorf("%w: %q is not a valid authid", ErrInvalidOwnerFile, authid)
 	}
 
-	groupDir := filepath.Join(datastoreRoot, backupType, backupID)
+	groupDir := filepath.Join(ns.JoinPath(datastoreRoot), backupType, backupID)
 	if err := os.MkdirAll(groupDir, 0o755); err != nil {
 		return fmt.Errorf("create group dir: %w", err)
 	}
@@ -69,7 +71,7 @@ func SetIfAbsent(datastoreRoot, backupType, backupID, authid string) error {
 	ownerPath := filepath.Join(groupDir, "owner")
 
 	// Try to read existing owner; if it matches, we're idempotent.
-	if existing, err := Read(datastoreRoot, backupType, backupID); err == nil {
+	if existing, err := Read(datastoreRoot, ns, backupType, backupID); err == nil {
 		if AuthidMatches(existing, authid) {
 			return nil // already ours, nothing to do
 		}
@@ -110,8 +112,8 @@ func SetIfAbsent(datastoreRoot, backupType, backupID, authid string) error {
 // if the authids don't match.
 //
 // V1 backwards-compat: if the owner file doesn't exist, returns nil (allow).
-func Check(datastoreRoot, backupType, backupID, callerAuthid string) error {
-	existing, err := Read(datastoreRoot, backupType, backupID)
+func Check(datastoreRoot string, ns namespace.Namespace, backupType, backupID, callerAuthid string) error {
+	existing, err := Read(datastoreRoot, ns, backupType, backupID)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil // V1: legacy groups without owner files are allowed

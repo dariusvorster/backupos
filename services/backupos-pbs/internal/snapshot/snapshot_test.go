@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 )
 
 func TestPath_Valid(t *testing.T) {
-	p, err := Path("/data", "vm", "100", time.Unix(1735000000, 0))
+	p, err := Path("/data", namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +24,7 @@ func TestPath_Valid(t *testing.T) {
 func TestPath_NormalizesToUTC(t *testing.T) {
 	loc, _ := time.LoadLocation("America/New_York")
 	t1 := time.Unix(1735000000, 0).In(loc)
-	p, err := Path("/data", "vm", "100", t1)
+	p, err := Path("/data", namespace.Root(), "vm", "100", t1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +35,7 @@ func TestPath_NormalizesToUTC(t *testing.T) {
 }
 
 func TestPath_RejectsInvalidBackupType(t *testing.T) {
-	_, err := Path("/data", "tape", "100", time.Unix(1735000000, 0))
+	_, err := Path("/data", namespace.Root(), "tape", "100", time.Unix(1735000000, 0))
 	var e *ErrInvalidBackupParams
 	if !errors.As(err, &e) {
 		t.Errorf("expected ErrInvalidBackupParams, got %v", err)
@@ -44,7 +46,7 @@ func TestPath_RejectsTraversal(t *testing.T) {
 	cases := []string{"../escape", "../../root", "with/slash", "with space", ""}
 	for _, bid := range cases {
 		t.Run(bid, func(t *testing.T) {
-			_, err := Path("/data", "vm", bid, time.Unix(1735000000, 0))
+			_, err := Path("/data", namespace.Root(), "vm", bid, time.Unix(1735000000, 0))
 			var e *ErrInvalidBackupParams
 			if !errors.As(err, &e) {
 				t.Errorf("expected ErrInvalidBackupParams, got %v", err)
@@ -55,7 +57,7 @@ func TestPath_RejectsTraversal(t *testing.T) {
 
 func TestEnsureDir_CreatesDirs(t *testing.T) {
 	tmp := t.TempDir()
-	p, err := EnsureDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	p, err := EnsureDir(tmp, namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,11 +76,11 @@ func TestEnsureDir_CreatesDirs(t *testing.T) {
 
 func TestEnsureDir_Idempotent(t *testing.T) {
 	tmp := t.TempDir()
-	p1, err := EnsureDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	p1, err := EnsureDir(tmp, namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	p2, err := EnsureDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	p2, err := EnsureDir(tmp, namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,11 +92,11 @@ func TestEnsureDir_Idempotent(t *testing.T) {
 func TestResolveDir_ExistingSnapshot_ReturnsPath(t *testing.T) {
 	tmp := t.TempDir()
 	// Pre-create the snapshot dir.
-	p, err := EnsureDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	p, err := EnsureDir(tmp, namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := ResolveDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	got, err := ResolveDir(tmp, namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err != nil {
 		t.Fatalf("ResolveDir: %v", err)
 	}
@@ -105,7 +107,7 @@ func TestResolveDir_ExistingSnapshot_ReturnsPath(t *testing.T) {
 
 func TestResolveDir_NonexistentSnapshot_ReturnsError(t *testing.T) {
 	tmp := t.TempDir()
-	_, err := ResolveDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	_, err := ResolveDir(tmp, namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err == nil {
 		t.Error("expected error for nonexistent snapshot, got nil")
 	}
@@ -114,7 +116,7 @@ func TestResolveDir_NonexistentSnapshot_ReturnsError(t *testing.T) {
 func TestResolveDir_NonDirectoryPath_ReturnsError(t *testing.T) {
 	tmp := t.TempDir()
 	// Create a file where the snapshot dir would be.
-	p, _ := Path(tmp, "vm", "100", time.Unix(1735000000, 0))
+	p, _ := Path(tmp, namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +126,7 @@ func TestResolveDir_NonDirectoryPath_ReturnsError(t *testing.T) {
 	}
 	f.Close()
 
-	_, err = ResolveDir(tmp, "vm", "100", time.Unix(1735000000, 0))
+	_, err = ResolveDir(tmp, namespace.Root(), "vm", "100", time.Unix(1735000000, 0))
 	if err == nil {
 		t.Error("expected error for non-directory path, got nil")
 	}

@@ -44,6 +44,7 @@ type BeginParams struct {
 	BackupID    string
 	BackupTime  time.Time
 	Kind        Kind
+	Namespace   string // "" for root namespace
 }
 
 // Store provides session lifecycle operations against pbs_active_sessions.
@@ -64,8 +65,8 @@ func (s *Store) Begin(p BeginParams) (string, error) {
 	const query = `
 		INSERT INTO pbs_active_sessions (
 			id, token_id, datastore_id, backup_type, backup_id, backup_time,
-			started_at, state, scratch_path
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+			started_at, state, scratch_path, namespace
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
 	`
 	_, err := s.db.Exec(query,
 		id,
@@ -76,6 +77,7 @@ func (s *Store) Begin(p BeginParams) (string, error) {
 		p.BackupTime.UnixMilli(),
 		now,
 		string(p.Kind),
+		p.Namespace,
 	)
 	if err != nil {
 		return "", fmt.Errorf("insert session: %w", err)

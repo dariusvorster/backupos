@@ -699,6 +699,7 @@ export const pbsActiveSessions = sqliteTable('pbs_active_sessions', {
   startedAt:    integer('started_at', { mode: 'timestamp_ms' }).notNull(),
   state:        text('state').notNull(),
   scratchPath:  text('scratch_path'),
+  namespace:    text('namespace').default(''),
 })
 
 export const pbsActiveWrites = sqliteTable('pbs_active_writes', {
