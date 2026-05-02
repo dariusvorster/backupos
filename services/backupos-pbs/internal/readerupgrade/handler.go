@@ -156,6 +156,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// AuthorizeDatastore: token must be unrestricted or scoped to this datastore.
+	if err := auth.AuthorizeDatastore(identity, ds.ID); err != nil {
+		writeJSONError(w, http.StatusForbidden, "token not authorized for this datastore")
+		return
+	}
+
 	// Step 6: Resolve snapshot (must exist) and acquire shared lock.
 	snapDir, err := snapshot.ResolveDir(ds.Path, backupType, backupID, backupTime)
 	if err != nil {

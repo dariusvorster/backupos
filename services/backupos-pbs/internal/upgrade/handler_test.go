@@ -100,6 +100,39 @@ func newTestHandler(db *sql.DB) *Handler {
 	)
 }
 
+func TestHandler_WrongDatastore_Returns403(t *testing.T) {
+	db := setupTestDB(t)
+	h := newTestHandler(db)
+
+	// Token scoped to a different datastore — test-ds-1 is the real one.
+	scoped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := auth.WithIdentity(r.Context(), &auth.Identity{
+			TokenID:          "test-token-id",
+			User:             "root",
+			Realm:            "pbs",
+			TokenName:        "test1",
+			TokenDatastoreID: "different-ds-id",
+		})
+		h.ServeHTTP(w, r.WithContext(ctx))
+	})
+
+	srv := httptest.NewServer(scoped)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/api2/json/backup?store=default&backup-type=vm&backup-id=1&backup-time=1735000000", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", UpgradeToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
 func TestHandler_NoUpgradeHeaders_Returns501(t *testing.T) {
 	db := setupTestDB(t)
 	h := newTestHandler(db)

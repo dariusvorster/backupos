@@ -140,6 +140,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := auth.AuthorizeDatastore(identity, ds.ID); err != nil {
+		writeUpgradeError(w, http.StatusForbidden, "token not authorized for this datastore")
+		slog.Info("upgrade rejected: datastore not authorized",
+			"token_datastore_id", identity.TokenDatastoreID,
+			"datastore_id", ds.ID,
+			"remote", r.RemoteAddr,
+		)
+		return
+	}
+
 	kind := session.KindBackup
 	if identifyKind(r.URL.Path) == "reader" {
 		kind = session.KindReader
