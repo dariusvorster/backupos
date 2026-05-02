@@ -258,3 +258,177 @@ func TestCleanup_RejectsSubsequentRegistration(t *testing.T) {
 		t.Error("expected error registering after Cleanup, got nil")
 	}
 }
+
+// ---- Dynamic writer stubs ----
+
+type fakeDynIdx struct {
+	chunks      []dynChunkEntry
+	dropCalled  bool
+	closeReturn [32]byte
+	closeErr    error
+}
+
+type dynChunkEntry struct {
+	offset uint64
+	digest [32]byte
+}
+
+func (f *fakeDynIdx) AddChunk(offset uint64, digest [32]byte) error {
+	f.chunks = append(f.chunks, dynChunkEntry{offset, digest})
+	return nil
+}
+func (f *fakeDynIdx) IndexLength() uint64      { return uint64(len(f.chunks)) }
+func (f *fakeDynIdx) Close() ([32]byte, error) { return f.closeReturn, f.closeErr }
+func (f *fakeDynIdx) UUID() [16]byte           { return [16]byte{} }
+func (f *fakeDynIdx) Drop()                    { f.dropCalled = true }
+
+// ---- RegisterDynamicWriter ----
+
+func TestRegisterDynamicWriter_AssignsMonotonicWids(t *testing.T) {
+	ws := New()
+	wid1, err := ws.RegisterDynamicWriter("a.didx", &fakeDynIdx{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wid2, err := ws.RegisterDynamicWriter("b.didx", &fakeDynIdx{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wid1 != 1 {
+		t.Errorf("first wid: got %d, want 1", wid1)
+	}
+	if wid2 != 2 {
+		t.Errorf("second wid: got %d, want 2", wid2)
+	}
+}
+
+func TestRegisterDynamicWriter_SharedWidCounterWithFixed(t *testing.T) {
+	ws := New()
+	wid1, _ := ws.RegisterFixedWriter("a.fidx", &fakeFidx{}, ptrU64(4194304), 4194304, false)
+	wid2, _ := ws.RegisterDynamicWriter("b.didx", &fakeDynIdx{})
+	if wid1 != 1 {
+		t.Errorf("fixed wid: got %d, want 1", wid1)
+	}
+	if wid2 != 2 {
+		t.Errorf("dynamic wid: got %d, want 2", wid2)
+	}
+}
+
+// ---- RegisterDynamicChunk ----
+
+func TestRegisterDynamicChunk_AddsToKnownChunks(t *testing.T) {
+	ws := New()
+	wid, _ := ws.RegisterDynamicWriter("a.didx", &fakeDynIdx{})
+	var digest [32]byte
+	digest[0] = 0xCD
+	if err := ws.RegisterDynamicChunk(wid, digest, 8192, false); err != nil {
+		t.Fatal(err)
+	}
+	size, ok := ws.LookupChunk(digest)
+	if !ok {
+		t.Fatal("chunk not found in knownChunks")
+	}
+	if size != 8192 {
+		t.Errorf("size: got %d, want 8192", size)
+	}
+}
+
+func TestRegisterDynamicChunk_UnknownWid_ReturnsError(t *testing.T) {
+	ws := New()
+	var digest [32]byte
+	err := ws.RegisterDynamicChunk(99, digest, 4096, false)
+	if err == nil {
+		t.Error("expected error for unknown wid, got nil")
+	}
+}
+
+// ---- DynamicWriterAppendChunk ----
+
+func TestDynamicWriterAppendChunk_IncrementsChunkCount(t *testing.T) {
+	ws := New()
+	fi := &fakeDynIdx{}
+	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
+
+	var digest [32]byte
+	if err := ws.DynamicWriterAppendChunk(wid, 65536, digest); err != nil {
+		t.Fatal(err)
+	}
+	if len(fi.chunks) != 1 {
+		t.Errorf("expected 1 chunk in fakeDynIdx, got %d", len(fi.chunks))
+	}
+	if fi.chunks[0].offset != 65536 {
+		t.Errorf("offset: got %d, want 65536", fi.chunks[0].offset)
+	}
+}
+
+// ---- DynamicWriterClose ----
+
+func TestDynamicWriterClose_HappyPath(t *testing.T) {
+	ws := New()
+	var expectedCsum [32]byte
+	expectedCsum[0] = 0x42
+	fi := &fakeDynIdx{closeReturn: expectedCsum}
+	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
+
+	var d [32]byte
+	_ = ws.DynamicWriterAppendChunk(wid, 65536, d)
+
+	got, err := ws.DynamicWriterClose(wid, 1, expectedCsum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != expectedCsum {
+		t.Errorf("csum mismatch")
+	}
+}
+
+func TestDynamicWriterClose_ChunkCountMismatch_ReturnsError(t *testing.T) {
+	ws := New()
+	fi := &fakeDynIdx{}
+	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
+	// No AppendChunk calls; server count=0, client claims 1.
+	_, err := ws.DynamicWriterClose(wid, 1, [32]byte{})
+	if err == nil {
+		t.Error("expected error for count mismatch, got nil")
+	}
+}
+
+func TestDynamicWriterClose_CsumMismatch_ReturnsError(t *testing.T) {
+	ws := New()
+	var serverCsum [32]byte
+	serverCsum[0] = 0xAA
+	fi := &fakeDynIdx{closeReturn: serverCsum}
+	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
+
+	var wrongCsum [32]byte
+	wrongCsum[0] = 0xBB
+	_, err := ws.DynamicWriterClose(wid, 0, wrongCsum)
+	if err == nil {
+		t.Error("expected error for csum mismatch, got nil")
+	}
+}
+
+// ---- Cleanup with dynamic writers ----
+
+func TestCleanup_DropsOpenDynamicWriters(t *testing.T) {
+	ws := New()
+	fi := &fakeDynIdx{}
+	_, _ = ws.RegisterDynamicWriter("open.didx", fi)
+	ws.Cleanup()
+	if !fi.dropCalled {
+		t.Error("Drop not called on open dynamic writer during Cleanup")
+	}
+}
+
+func TestCleanup_SkipsClosedDynamicWriters(t *testing.T) {
+	ws := New()
+	fi := &fakeDynIdx{}
+	wid, _ := ws.RegisterDynamicWriter("closed.didx", fi)
+	if _, err := ws.DynamicWriterClose(wid, 0, [32]byte{}); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	ws.Cleanup()
+	if fi.dropCalled {
+		t.Error("Drop called on already-closed dynamic writer during Cleanup")
+	}
+}

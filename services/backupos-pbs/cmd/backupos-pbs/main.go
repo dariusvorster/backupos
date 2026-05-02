@@ -34,6 +34,10 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/blob"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/db"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/dynamicappend"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/dynamicchunk"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/dynamicclose"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/dynamicindex"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/finish"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedappend"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedchunk"
@@ -95,6 +99,10 @@ func main() {
 		fixedchunk.NewHandler(),
 		fixedappend.NewHandler(),
 		fixedclose.NewHandler(),
+		dynamicindex.NewHandler(),
+		dynamicchunk.NewHandler(),
+		dynamicappend.NewHandler(),
+		dynamicclose.NewHandler(),
 		upgrade.StubStreamHandler(),
 	)
 

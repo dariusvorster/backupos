@@ -40,8 +40,23 @@ type FixedWriter struct {
 	Closed          bool
 }
 
-// DynamicWriter is a placeholder for future dynamic-index support.
-type DynamicWriter struct{}
+// DynamicIndexWriter is the contract wstate needs from a didx writer.
+// Concrete implementation lives in internal/didx.
+type DynamicIndexWriter interface {
+	AddChunk(offset uint64, digest [32]byte) error
+	IndexLength() uint64
+	Close() ([32]byte, error)
+	UUID() [16]byte
+	Drop()
+}
+
+// DynamicWriter holds mutable state for one open .didx writer.
+type DynamicWriter struct {
+	Name       string
+	Index      DynamicIndexWriter
+	ChunkCount uint64
+	Closed     bool
+}
 
 // State is the per-session shared writer state.
 type State struct {
@@ -204,12 +219,112 @@ func (s *State) FixedWriterClose(wid int, chunkCount uint64, size uint64, csum [
 	return gotCsum, nil
 }
 
+// RegisterDynamicWriter inserts a new DynamicWriter and returns its wid.
+func (s *State) RegisterDynamicWriter(name string, index DynamicIndexWriter) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.EnsureUnfinished(); err != nil {
+		return 0, err
+	}
+	wid, err := s.nextWid()
+	if err != nil {
+		return 0, err
+	}
+	s.dynamicWriters[wid] = &DynamicWriter{
+		Name:  name,
+		Index: index,
+	}
+	return wid, nil
+}
+
+// RegisterDynamicChunk records a successfully uploaded chunk in known_chunks.
+// Unlike fixed chunks, there is no chunk-size constraint for dynamic writers.
+func (s *State) RegisterDynamicChunk(wid int, digest [32]byte, size uint32, isDuplicate bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.EnsureUnfinished(); err != nil {
+		return err
+	}
+	w, ok := s.dynamicWriters[wid]
+	if !ok {
+		return fmt.Errorf("dynamic writer %d not registered", wid)
+	}
+	if w.Closed {
+		return fmt.Errorf("dynamic writer %q already closed", w.Name)
+	}
+	s.knownChunks[digest] = size
+	_ = isDuplicate
+	return nil
+}
+
+// DynamicWriterAppendChunk associates an uploaded chunk with a position in the
+// .didx index. The digest must already be in known_chunks (checked by caller).
+// No size is passed — dynamic index entries carry only (offset, digest).
+func (s *State) DynamicWriterAppendChunk(wid int, offset uint64, digest [32]byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.EnsureUnfinished(); err != nil {
+		return err
+	}
+	w, ok := s.dynamicWriters[wid]
+	if !ok {
+		return fmt.Errorf("dynamic writer %d not registered", wid)
+	}
+	if w.Closed {
+		return fmt.Errorf("dynamic writer %q already closed", w.Name)
+	}
+	if err := w.Index.AddChunk(offset, digest); err != nil {
+		return fmt.Errorf("dynamic writer %q add_chunk failed: %w", w.Name, err)
+	}
+	w.ChunkCount++
+	return nil
+}
+
+// DynamicWriterClose finalises a writer, verifying chunk count and checksum.
+// No size validation — dynamic index size is not known upfront.
+func (s *State) DynamicWriterClose(wid int, chunkCount uint64, csum [32]byte) ([32]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.EnsureUnfinished(); err != nil {
+		return [32]byte{}, err
+	}
+	w, ok := s.dynamicWriters[wid]
+	if !ok {
+		return [32]byte{}, fmt.Errorf("dynamic writer %d not registered", wid)
+	}
+	if w.Closed {
+		return [32]byte{}, fmt.Errorf("dynamic writer %q already closed", w.Name)
+	}
+	if w.ChunkCount != chunkCount {
+		return [32]byte{}, fmt.Errorf("dynamic writer %q close: server saw %d chunks, client expected %d",
+			w.Name, w.ChunkCount, chunkCount)
+	}
+	if w.Index.IndexLength() != chunkCount {
+		return [32]byte{}, fmt.Errorf("dynamic writer %q close: index_length=%d, chunk_count=%d",
+			w.Name, w.Index.IndexLength(), chunkCount)
+	}
+	gotCsum, err := w.Index.Close()
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("dynamic writer %q close failed: %w", w.Name, err)
+	}
+	if gotCsum != csum {
+		return [32]byte{}, fmt.Errorf("dynamic writer %q close: server csum != client csum", w.Name)
+	}
+	w.Closed = true
+	return gotCsum, nil
+}
+
 // Cleanup drops any open writers (frees mmap/tmpfile) and marks the session
 // finished. Called from the upgrade handler after ServeConn returns.
 func (s *State) Cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, w := range s.fixedWriters {
+		if !w.Closed {
+			w.Index.Drop()
+		}
+	}
+	for _, w := range s.dynamicWriters {
 		if !w.Closed {
 			w.Index.Drop()
 		}
