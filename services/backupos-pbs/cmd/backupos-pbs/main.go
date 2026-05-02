@@ -47,6 +47,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/download"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcadmin"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcrun"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcsched"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gctask"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/handlers"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readchunk"
@@ -146,6 +147,7 @@ func main() {
 		return sessionStore.OldestActiveStartedAt(ctx)
 	})
 	gcAdminHandler := gcadmin.NewHandler(datastoreLookup, gcTracker, oldestActiveWriter)
+	gcScheduler := gcsched.New(datastoreLookup, gcTracker, oldestActiveWriter, 0)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
@@ -169,6 +171,7 @@ func main() {
 
 	reaper := sessionreaper.New(database, 0, 0)
 	go reaper.Run(serverCtx)
+	go gcScheduler.Run(serverCtx)
 
 	server := &http.Server{
 		Addr:    *bind,
