@@ -67,7 +67,7 @@ func noWriter(_ context.Context) (time.Time, error) { return time.Time{}, nil }
 
 func newHandler(t *testing.T, db *sql.DB, runFn func(context.Context, string, gcrun.OldestActiveWriterFunc) (*gcstatus.Status, error)) *Handler {
 	t.Helper()
-	h := NewHandler(datastore.NewLookup(db), gctask.NewTracker(), noWriter)
+	h := NewHandler(datastore.NewLookup(db), gctask.NewTracker(nil, nil), noWriter)
 	if runFn != nil {
 		h.runFn = runFn
 	}
@@ -288,6 +288,63 @@ func TestInvalidPath_Returns400(t *testing.T) {
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("path %q: got %d, want 400", path, resp.StatusCode)
 		}
+	}
+}
+
+// signalPersister wraps a Persister and closes saveDone when Save is called.
+type signalPersister struct {
+	inner    gctask.Persister
+	saveDone chan struct{}
+}
+
+func (s *signalPersister) Save(datastoreID, datastoreRoot string, task *gctask.Task) error {
+	err := s.inner.Save(datastoreID, datastoreRoot, task)
+	select {
+	case <-s.saveDone:
+	default:
+		close(s.saveDone)
+	}
+	return err
+}
+
+func (s *signalPersister) Load(datastoreID, datastoreRoot string) (*gctask.Task, error) {
+	return s.inner.Load(datastoreID, datastoreRoot)
+}
+
+func TestPOST_Persists_GETAfterRestart_ReturnsLastResult(t *testing.T) {
+	root := makeDSRoot(t)
+	db := setupDB(t, "mystore", root)
+
+	saveDone := make(chan struct{})
+	persister := &signalPersister{
+		inner:    gctask.FilePersister{},
+		saveDone: saveDone,
+	}
+
+	h := newHandler(t, db, func(_ context.Context, _ string, _ gcrun.OldestActiveWriterFunc) (*gcstatus.Status, error) {
+		return &gcstatus.Status{DiskChunks: 3, RemovedChunks: 1}, nil
+	})
+	h.tracker = gctask.NewTracker(persister, nil)
+
+	doRequest(t, h, http.MethodPost, "/api2/json/admin/datastore/mystore/gc")
+	select {
+	case <-saveDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for GC persist")
+	}
+
+	// Simulate restart: new tracker hydrates from the .gc-status file.
+	restarted := gctask.NewTracker(gctask.FilePersister{}, map[string]string{"ds-test-id": root})
+	h.tracker = restarted
+
+	resp := doRequest(t, h, http.MethodGet, "/api2/json/admin/datastore/mystore/gc")
+	body := readBody(t, resp)
+	data, ok := body["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object after restart, got %v", body["data"])
+	}
+	if data["state"] != "succeeded" {
+		t.Errorf("state after restart: got %v, want succeeded", data["state"])
 	}
 }
 

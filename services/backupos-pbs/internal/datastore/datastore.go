@@ -57,6 +57,32 @@ func NewLookup(db *sql.DB) *Lookup {
 	return &Lookup{db: db}
 }
 
+// All returns every datastore in the table. Used during startup to build
+// the per-datastore-ID root map for GC tracker hydration.
+func (l *Lookup) All() ([]*Datastore, error) {
+	const query = `SELECT id, name, path, created_at FROM pbs_datastores`
+	rows, err := l.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("list datastores: %w", err)
+	}
+	defer rows.Close()
+	var dss []*Datastore
+	for rows.Next() {
+		var id, name, path string
+		var createdMilli int64
+		if err := rows.Scan(&id, &name, &path, &createdMilli); err != nil {
+			return nil, fmt.Errorf("scan datastore: %w", err)
+		}
+		dss = append(dss, &Datastore{
+			ID:        id,
+			Name:      name,
+			Path:      path,
+			CreatedAt: time.UnixMilli(createdMilli),
+		})
+	}
+	return dss, rows.Err()
+}
+
 // ByName returns the datastore matching the given name.
 //
 // Returns ErrInvalidName if the name doesn't match the expected format,

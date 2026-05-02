@@ -133,7 +133,15 @@ func main() {
 		readchunk.NewHandler(),
 	)
 
-	gcTracker := gctask.NewTracker()
+	datastoreRoots := make(map[string]string)
+	if allDS, err := datastoreLookup.All(); err != nil {
+		logger.Warn("could not load datastores for GC tracker hydration", "error", err)
+	} else {
+		for _, ds := range allDS {
+			datastoreRoots[ds.ID] = ds.Path
+		}
+	}
+	gcTracker := gctask.NewTracker(gctask.FilePersister{}, datastoreRoots)
 	oldestActiveWriter := gcrun.OldestActiveWriterFunc(func(ctx context.Context) (time.Time, error) {
 		return sessionStore.OldestActiveStartedAt(ctx)
 	})
