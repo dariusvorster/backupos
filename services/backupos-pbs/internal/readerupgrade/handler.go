@@ -44,26 +44,30 @@ const (
 
 // Handler handles a PBS reader-protocol upgrade request.
 type Handler struct {
-	validator       *auth.Validator
-	datastores      *datastore.Lookup
-	downloadHandler http.Handler
-	chunkHandler    http.Handler
+	validator        *auth.Validator
+	datastores       *datastore.Lookup
+	downloadHandler  http.Handler
+	chunkHandler     http.Handler
+	speedtestHandler http.Handler
 }
 
 // NewHandler constructs a reader upgrade Handler.
 // validator is used for inline auth (no requireAuth middleware needed).
-// downloadHandler serves GET /download; chunkHandler serves GET /chunk.
+// downloadHandler serves GET /download; chunkHandler serves GET /chunk;
+// speedtestHandler serves GET /speedtest.
 func NewHandler(
 	validator *auth.Validator,
 	datastores *datastore.Lookup,
 	downloadHandler http.Handler,
 	chunkHandler http.Handler,
+	speedtestHandler http.Handler,
 ) *Handler {
 	return &Handler{
-		validator:       validator,
-		datastores:      datastores,
-		downloadHandler: downloadHandler,
-		chunkHandler:    chunkHandler,
+		validator:        validator,
+		datastores:       datastores,
+		downloadHandler:  downloadHandler,
+		chunkHandler:     chunkHandler,
+		speedtestHandler: speedtestHandler,
 	}
 }
 
@@ -259,9 +263,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "/chunk":
 			h.chunkHandler.ServeHTTP(w, r)
 		case "/speedtest":
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotImplemented)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "speedtest not implemented in V1"})
+			h.speedtestHandler.ServeHTTP(w, r)
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)

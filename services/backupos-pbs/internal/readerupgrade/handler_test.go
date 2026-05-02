@@ -107,6 +107,7 @@ func newTestHandler(db *sql.DB) *Handler {
 		datastore.NewLookup(db),
 		stub,
 		stub,
+		stub,
 	)
 }
 
