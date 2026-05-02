@@ -38,14 +38,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wid, chunkCount, csum, err := parseQuery(r.URL.Query())
+	wid, chunkCount, size, csum, err := parseQuery(r.URL.Query())
 	if err != nil {
 		slog.Info("dynamic_close rejected: bad params", "reason", err.Error(), "session_id", sc.SessionID)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	_, err = sc.WriterState.DynamicWriterClose(wid, chunkCount, csum)
+	_, err = sc.WriterState.DynamicWriterClose(wid, chunkCount, size, csum)
 	if err != nil {
 		slog.Info("dynamic_close failed",
 			"reason", err.Error(), "session_id", sc.SessionID, "wid", wid)
@@ -57,6 +57,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"session_id", sc.SessionID,
 		"wid", wid,
 		"chunk_count", chunkCount,
+		"size", size,
 	)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -65,8 +66,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseQuery validates and extracts query parameters.
-// Note: no "size" parameter — dynamic archives have unknown total size.
-func parseQuery(q map[string][]string) (wid int, chunkCount uint64, csum [32]byte, err error) {
+func parseQuery(q map[string][]string) (wid int, chunkCount uint64, size uint64, csum [32]byte, err error) {
 	get := func(k string) string {
 		if v := q[k]; len(v) > 0 {
 			return v[0]
@@ -76,34 +76,43 @@ func parseQuery(q map[string][]string) (wid int, chunkCount uint64, csum [32]byt
 
 	widRaw := get("wid")
 	if widRaw == "" {
-		return 0, 0, [32]byte{}, fmt.Errorf("missing required parameter \"wid\"")
+		return 0, 0, 0, [32]byte{}, fmt.Errorf("missing required parameter \"wid\"")
 	}
 	widI, e := strconv.Atoi(widRaw)
 	if e != nil || widI < 1 || widI > 256 {
-		return 0, 0, [32]byte{}, fmt.Errorf("invalid \"wid\": must be 1..256")
+		return 0, 0, 0, [32]byte{}, fmt.Errorf("invalid \"wid\": must be 1..256")
 	}
 
 	ccRaw := get("chunk-count")
 	if ccRaw == "" {
-		return 0, 0, [32]byte{}, fmt.Errorf("missing required parameter \"chunk-count\"")
+		return 0, 0, 0, [32]byte{}, fmt.Errorf("missing required parameter \"chunk-count\"")
 	}
 	ccI, e := strconv.ParseUint(ccRaw, 10, 64)
 	if e != nil {
-		return 0, 0, [32]byte{}, fmt.Errorf("invalid \"chunk-count\"")
+		return 0, 0, 0, [32]byte{}, fmt.Errorf("invalid \"chunk-count\"")
+	}
+
+	sizeRaw := get("size")
+	if sizeRaw == "" {
+		return 0, 0, 0, [32]byte{}, fmt.Errorf("missing required parameter \"size\"")
+	}
+	sizeI, e := strconv.ParseUint(sizeRaw, 10, 64)
+	if e != nil {
+		return 0, 0, 0, [32]byte{}, fmt.Errorf("invalid \"size\"")
 	}
 
 	csumHex := get("csum")
 	if len(csumHex) != 64 {
-		return 0, 0, [32]byte{}, fmt.Errorf("invalid \"csum\": must be 64 hex chars")
+		return 0, 0, 0, [32]byte{}, fmt.Errorf("invalid \"csum\": must be 64 hex chars")
 	}
 	csumBytes, e := hex.DecodeString(csumHex)
 	if e != nil {
-		return 0, 0, [32]byte{}, fmt.Errorf("invalid \"csum\": not valid hex")
+		return 0, 0, 0, [32]byte{}, fmt.Errorf("invalid \"csum\": not valid hex")
 	}
 	var c [32]byte
 	copy(c[:], csumBytes)
 
-	return widI, ccI, c, nil
+	return widI, ccI, sizeI, c, nil
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

@@ -71,7 +71,7 @@ func TestHandler_MissingWid_Returns400(t *testing.T) {
 	ws, _, _ := makeState(t)
 	h := injectCtx(makeSessionCtx(ws))(NewHandler())
 
-	req := httptest.NewRequest(http.MethodPost, "/dynamic_close?chunk-count=0&csum="+strings.Repeat("00", 32), nil)
+	req := httptest.NewRequest(http.MethodPost, "/dynamic_close?chunk-count=0&size=0&csum="+strings.Repeat("00", 32), nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
@@ -80,15 +80,28 @@ func TestHandler_MissingWid_Returns400(t *testing.T) {
 	}
 }
 
+func TestHandler_MissingSize_Returns400(t *testing.T) {
+	ws, _, _ := makeState(t)
+	h := injectCtx(makeSessionCtx(ws))(NewHandler())
+
+	req := httptest.NewRequest(http.MethodPost, "/dynamic_close?wid=1&chunk-count=0&csum="+strings.Repeat("00", 32), nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing size, got %d", rr.Code)
+	}
+}
+
 func TestHandler_HappyPath_Returns200(t *testing.T) {
 	ws, wid, fi := makeState(t)
-	// Compute the expected csum (zero because fakeDynIdx.closeReturn is zero).
 	var expectedCsum [32]byte
 	fi.closeReturn = expectedCsum
 	h := injectCtx(makeSessionCtx(ws))(NewHandler())
 
 	csumHex := hex.EncodeToString(expectedCsum[:])
-	url := "/dynamic_close?wid=1&chunk-count=0&csum=" + csumHex
+	// No chunks appended → size=0, chunk-count=0, offset=0.
+	url := "/dynamic_close?wid=1&chunk-count=0&size=0&csum=" + csumHex
 	_ = wid
 	req := httptest.NewRequest(http.MethodPost, url, nil)
 	rr := httptest.NewRecorder()
@@ -101,14 +114,13 @@ func TestHandler_HappyPath_Returns200(t *testing.T) {
 
 func TestHandler_ChunkCountMismatch_Returns400(t *testing.T) {
 	ws, wid, _ := makeState(t)
-	// Append one chunk so server count = 1, but send chunk-count=0.
 	var d [32]byte
 	_ = ws.RegisterDynamicChunk(wid, d, 4096, false)
 	_ = ws.DynamicWriterAppendChunk(wid, 4096, d)
 	h := injectCtx(makeSessionCtx(ws))(NewHandler())
 
 	csumHex := strings.Repeat("00", 32)
-	url := "/dynamic_close?wid=1&chunk-count=0&csum=" + csumHex
+	url := "/dynamic_close?wid=1&chunk-count=0&size=4096&csum=" + csumHex
 	req := httptest.NewRequest(http.MethodPost, url, nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -120,11 +132,12 @@ func TestHandler_ChunkCountMismatch_Returns400(t *testing.T) {
 
 func TestHandler_CsumMismatch_Returns400(t *testing.T) {
 	ws, _, fi := makeState(t)
-	fi.closeReturn[0] = 0xAA // server returns non-zero csum
+	fi.closeReturn[0] = 0xAA
 	h := injectCtx(makeSessionCtx(ws))(NewHandler())
 
-	wrongCsum := strings.Repeat("00", 32) // client sends all-zeros
-	url := "/dynamic_close?wid=1&chunk-count=0&csum=" + wrongCsum
+	wrongCsum := strings.Repeat("00", 32)
+	// size=0 matches Offset=0 (no chunks appended)
+	url := "/dynamic_close?wid=1&chunk-count=0&size=0&csum=" + wrongCsum
 	req := httptest.NewRequest(http.MethodPost, url, nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

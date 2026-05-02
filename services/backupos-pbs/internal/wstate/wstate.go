@@ -55,6 +55,7 @@ type DynamicWriter struct {
 	Name       string
 	Index      DynamicIndexWriter
 	ChunkCount uint64
+	Offset     uint64 // cumulative end offset after last AppendChunk; equals total data size at close
 	Closed     bool
 }
 
@@ -277,12 +278,14 @@ func (s *State) DynamicWriterAppendChunk(wid int, offset uint64, digest [32]byte
 		return fmt.Errorf("dynamic writer %q add_chunk failed: %w", w.Name, err)
 	}
 	w.ChunkCount++
+	w.Offset = offset
 	return nil
 }
 
-// DynamicWriterClose finalises a writer, verifying chunk count and checksum.
-// No size validation — dynamic index size is not known upfront.
-func (s *State) DynamicWriterClose(wid int, chunkCount uint64, csum [32]byte) ([32]byte, error) {
+// DynamicWriterClose finalises a writer, verifying chunk count, total data size,
+// and index checksum. size must equal the cumulative end offset of the last chunk
+// (matches environment.rs: data.offset == size check in dynamic_writer_close).
+func (s *State) DynamicWriterClose(wid int, chunkCount uint64, size uint64, csum [32]byte) ([32]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.EnsureUnfinished(); err != nil {
@@ -302,6 +305,10 @@ func (s *State) DynamicWriterClose(wid int, chunkCount uint64, csum [32]byte) ([
 	if w.Index.IndexLength() != chunkCount {
 		return [32]byte{}, fmt.Errorf("dynamic writer %q close: index_length=%d, chunk_count=%d",
 			w.Name, w.Index.IndexLength(), chunkCount)
+	}
+	if w.Offset != size {
+		return [32]byte{}, fmt.Errorf("dynamic writer %q close: data offset %d != size %d",
+			w.Name, w.Offset, size)
 	}
 	gotCsum, err := w.Index.Close()
 	if err != nil {

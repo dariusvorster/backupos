@@ -373,7 +373,7 @@ func TestDynamicWriterClose_HappyPath(t *testing.T) {
 	var d [32]byte
 	_ = ws.DynamicWriterAppendChunk(wid, 65536, d)
 
-	got, err := ws.DynamicWriterClose(wid, 1, expectedCsum)
+	got, err := ws.DynamicWriterClose(wid, 1, 65536, expectedCsum)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,9 +387,24 @@ func TestDynamicWriterClose_ChunkCountMismatch_ReturnsError(t *testing.T) {
 	fi := &fakeDynIdx{}
 	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
 	// No AppendChunk calls; server count=0, client claims 1.
-	_, err := ws.DynamicWriterClose(wid, 1, [32]byte{})
+	_, err := ws.DynamicWriterClose(wid, 1, 0, [32]byte{})
 	if err == nil {
 		t.Error("expected error for count mismatch, got nil")
+	}
+}
+
+func TestDynamicWriterClose_SizeMismatch_ReturnsError(t *testing.T) {
+	ws := New()
+	fi := &fakeDynIdx{}
+	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
+
+	var d [32]byte
+	_ = ws.DynamicWriterAppendChunk(wid, 65536, d) // Offset becomes 65536
+
+	// client claims size=99999, server tracked 65536
+	_, err := ws.DynamicWriterClose(wid, 1, 99999, [32]byte{})
+	if err == nil {
+		t.Error("expected error for size mismatch, got nil")
 	}
 }
 
@@ -402,7 +417,8 @@ func TestDynamicWriterClose_CsumMismatch_ReturnsError(t *testing.T) {
 
 	var wrongCsum [32]byte
 	wrongCsum[0] = 0xBB
-	_, err := ws.DynamicWriterClose(wid, 0, wrongCsum)
+	// size=0 matches Offset=0 (no chunks appended)
+	_, err := ws.DynamicWriterClose(wid, 0, 0, wrongCsum)
 	if err == nil {
 		t.Error("expected error for csum mismatch, got nil")
 	}
@@ -424,7 +440,7 @@ func TestCleanup_SkipsClosedDynamicWriters(t *testing.T) {
 	ws := New()
 	fi := &fakeDynIdx{}
 	wid, _ := ws.RegisterDynamicWriter("closed.didx", fi)
-	if _, err := ws.DynamicWriterClose(wid, 0, [32]byte{}); err != nil {
+	if _, err := ws.DynamicWriterClose(wid, 0, 0, [32]byte{}); err != nil {
 		t.Fatalf("close: %v", err)
 	}
 	ws.Cleanup()
