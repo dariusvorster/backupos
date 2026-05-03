@@ -17,18 +17,13 @@ import (
 )
 
 const (
-	headerSize = 4096
-	entrySize  = 40
+	entrySize = 40
 
 	// MaxChunkSize sanity-bounds per-chunk size during reuse registration.
 	// PBS's dynamic chunker typically produces chunks in the 1–8 MiB range;
 	// 64 MiB is a generous ceiling that catches corrupt/malicious indexes.
 	MaxChunkSize uint64 = 64 * 1024 * 1024
 )
-
-// Magic is the didx file magic.
-// Mirrors pbs-datastore/src/file_formats.rs:DYNAMIC_INDEX_MAGIC_2.
-var Magic = [8]byte{28, 145, 78, 165, 25, 186, 179, 205}
 
 // Header contains metadata decoded from a .didx file header.
 type Header struct {
