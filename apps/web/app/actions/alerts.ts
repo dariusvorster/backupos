@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { getDb, alerts, alertChannels, eq } from '@backupos/db'
 import { requireAdmin } from '@/lib/user'
-import { dispatchToChannel } from '@/lib/alerts'
+import { dispatchToChannel, ALL_ALERT_TYPES, type AlertType } from '@/lib/alerts'
 
 const VALID_CHANNEL_TYPES = [
   'discord', 'slack', 'webhook',
@@ -164,6 +164,21 @@ export async function testAlertChannel(input: TestAlertChannelInput): Promise<Te
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+export async function updateChannelSubscriptions(channelId: string, events: AlertType[]): Promise<void> {
+  await requireAdmin()
+  if (!channelId) return
+  const db = getDb()
+  await db.update(alertChannels)
+    .set({ subscribedEvents: JSON.stringify(events) })
+    .where(eq(alertChannels.id, channelId))
+  revalidatePath('/settings/alerts')
+}
+
+export async function saveChannelSubscriptions(channelId: string, formData: FormData): Promise<void> {
+  const events = ALL_ALERT_TYPES.filter(t => formData.get(`event_${t}`) === 'on')
+  await updateChannelSubscriptions(channelId, events)
 }
 
 export async function sendTestAlert(channelId: string): Promise<{ ok: boolean; error?: string }> {
