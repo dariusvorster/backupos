@@ -208,7 +208,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    *bind,
-		Handler: mux,
+		Handler: normalizeLeadingSlashes(mux),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
@@ -324,6 +324,35 @@ func writeAuthError(w http.ResponseWriter, r *http.Request, reason string) {
 	w.WriteHeader(http.StatusUnauthorized)
 	resp := map[string]string{"error": reason}
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// normalizeLeadingSlashes collapses runs of leading slashes in r.URL.Path
+// to a single slash before dispatching. proxmox-backup-client 4.1.5
+// constructs upgrade URLs as "//api2/json/backup?..." (a known quirk in
+// its build_uri helper). Without this normalisation, Go's net/http.ServeMux
+// 307-redirects to the canonical "/api2/json/backup" form and the client
+// — which does not follow redirects on the upgrade endpoint — bails with
+// the redirect HTML body as its error message.
+func normalizeLeadingSlashes(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.URL.Path) >= 2 && r.URL.Path[0] == '/' && r.URL.Path[1] == '/' {
+			// Collapse leading run of '/' to a single '/'.
+			i := 0
+			for i < len(r.URL.Path) && r.URL.Path[i] == '/' {
+				i++
+			}
+			cleaned := "/" + r.URL.Path[i:]
+			slog.Info("normalised duplicate leading slashes",
+				"original_path", r.URL.Path,
+				"cleaned_path",  cleaned,
+				"method",        r.Method,
+				"remote",        r.RemoteAddr,
+			)
+			r.URL.Path = cleaned
+			r.URL.RawPath = "" // force re-encode on read
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {
