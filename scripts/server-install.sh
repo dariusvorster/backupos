@@ -319,6 +319,17 @@ else
   ok "Environment file already exists (keeping existing secrets)"
 fi
 
+# Generate internal API secret for cross-process auth (web ↔ pbs)
+if ! grep -q '^BACKUPOS_INTERNAL_SECRET=' "$ENV_FILE" 2>/dev/null; then
+  SECRET=$(openssl rand -hex 32)
+  echo "BACKUPOS_INTERNAL_SECRET=${SECRET}" >> "$ENV_FILE"
+  echo "[backupos] Generated BACKUPOS_INTERNAL_SECRET"
+fi
+if ! grep -q '^BACKUPOS_INTERNAL_URL=' "$ENV_FILE" 2>/dev/null; then
+  echo "BACKUPOS_INTERNAL_URL=http://127.0.0.1:3093" >> "$ENV_FILE"
+  echo "[backupos] Set BACKUPOS_INTERNAL_URL"
+fi
+
 # ── 7. Log rotation ───────────────────────────────────────────────────────────
 cat > /etc/logrotate.d/$SERVICE_NAME <<LREOF
 $LOG_DIR/*.log {
@@ -383,6 +394,7 @@ Wants=network-online.target
 Type=simple
 User=$SVC_USER
 Group=$SVC_USER
+EnvironmentFile=$ENV_FILE
 ExecStart=$INSTALL_DIR/bin/backupos-pbs \\
   --bind $PBS_BIND \\
   --cert $DATA_DIR/pbs/cert.pem \\

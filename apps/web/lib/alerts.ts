@@ -436,3 +436,21 @@ export async function fireRestoreFailed(runId: string, error: string): Promise<v
     error,
   })
 }
+
+export async function fireBackupFailed(runId: string, error: string): Promise<void> {
+  const db = getDb()
+  const [row] = await db.select({
+    jobId:   backupRuns.jobId,
+    jobName: backupJobs.name,
+  })
+    .from(backupRuns)
+    .leftJoin(backupJobs, eq(backupRuns.jobId, backupJobs.id))
+    .where(eq(backupRuns.id, runId))
+    .limit(1)
+  if (!row?.jobId) return
+  await sendAlert('backup_failed', {
+    jobId:   row.jobId,
+    jobName: row.jobName ?? 'unknown',
+    error,
+  })
+}

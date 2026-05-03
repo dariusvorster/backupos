@@ -2,6 +2,11 @@ package jobsync
 
 import (
 	"database/sql"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -227,4 +232,107 @@ func TestFinishRun_DurationCalculation(t *testing.T) {
 	if duration != 90 {
 		t.Errorf("duration: got %d, want 90", duration)
 	}
+}
+
+// ── webhook tests ─────────────────────────────────────────────────────────────
+
+func resetWebhookConfig(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		internalURL = ""
+		internalSecret = ""
+	})
+}
+
+func TestFireWebhook_SuccessStatus(t *testing.T) {
+	resetWebhookConfig(t)
+
+	var received atomic.Int32
+	var gotBody map[string]string
+	var gotAuth string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.Add(1)
+		gotAuth = r.Header.Get("Authorization")
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	SetWebhookConfig(srv.URL, "test-secret")
+	fireWebhook("run-1", "success", nil)
+
+	if received.Load() != 1 {
+		t.Fatalf("expected 1 request, got %d", received.Load())
+	}
+	if gotAuth != "Bearer test-secret" {
+		t.Errorf("auth header: got %q, want %q", gotAuth, "Bearer test-secret")
+	}
+	if gotBody["event"] != "backup_succeeded" {
+		t.Errorf("event: got %q, want backup_succeeded", gotBody["event"])
+	}
+	if gotBody["runId"] != "run-1" {
+		t.Errorf("runId: got %q, want run-1", gotBody["runId"])
+	}
+}
+
+func TestFireWebhook_FailedStatus(t *testing.T) {
+	resetWebhookConfig(t)
+
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	SetWebhookConfig(srv.URL, "test-secret")
+	errMsg := "disk full"
+	fireWebhook("run-2", "failed", &errMsg)
+
+	if gotBody["event"] != "backup_failed" {
+		t.Errorf("event: got %q, want backup_failed", gotBody["event"])
+	}
+	if gotBody["error"] != "disk full" {
+		t.Errorf("error: got %q, want disk full", gotBody["error"])
+	}
+}
+
+func TestFireWebhook_UnknownStatus_NoOp(t *testing.T) {
+	resetWebhookConfig(t)
+
+	var received atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	SetWebhookConfig(srv.URL, "test-secret")
+	fireWebhook("run-3", "cancelled", nil)
+
+	if received.Load() != 0 {
+		t.Errorf("expected 0 requests for cancelled status, got %d", received.Load())
+	}
+}
+
+func TestFireWebhook_NoConfig_NoOp(t *testing.T) {
+	resetWebhookConfig(t)
+	// internalURL and internalSecret are empty — must not panic
+	fireWebhook("run-4", "success", nil)
+}
+
+func TestFireWebhook_AuthFailure_LogsButDoesntPanic(t *testing.T) {
+	resetWebhookConfig(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	SetWebhookConfig(srv.URL, "wrong-secret")
+	// Must not panic; non-2xx is logged and swallowed
+	fireWebhook("run-5", "success", nil)
 }

@@ -8,15 +8,30 @@
 package jobsync
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 )
+
+var (
+	internalURL    string
+	internalSecret string
+)
+
+// SetWebhookConfig configures the internal webhook target.
+// Called once at startup from main.go. Empty url disables webhook.
+func SetWebhookConfig(url, secret string) {
+	internalURL = url
+	internalSecret = secret
+}
 
 // JobID returns the deterministic synthetic Job ID for a backup tuple.
 // Format: pbs_<datastoreID>_<namespace_or_root>_<backupType>_<backupID>
@@ -106,7 +121,64 @@ func FinishRun(db *sql.DB, runID, jobID, status string, snapshotID, errorMessage
 	if _, err := db.Exec(updateJob, completedAt.UnixMilli(), status, jobID); err != nil {
 		return fmt.Errorf("update job: %w", err)
 	}
+	fireWebhook(runID, status, errorMessage)
 	return nil
+}
+
+// fireWebhook is best-effort: never blocks the FinishRun success path,
+// even on network/auth errors. Logged loudly so deployment misconfigs
+// are visible. No retries — alerts are nice-to-have, not critical path.
+func fireWebhook(runID, status string, errMsg *string) {
+	if internalURL == "" || internalSecret == "" {
+		return // not configured; e.g. test environment
+	}
+
+	var event string
+	switch status {
+	case "success":
+		event = "backup_succeeded"
+	case "failed":
+		event = "backup_failed"
+	default:
+		return // running, cancelled, etc.
+	}
+
+	body := map[string]string{
+		"event": event,
+		"runId": runID,
+	}
+	if errMsg != nil {
+		body["error"] = *errMsg
+	}
+
+	payload, err := json.Marshal(body)
+	if err != nil {
+		slog.Error("jobsync: webhook marshal failed", "error", err)
+		return
+	}
+
+	req, err := http.NewRequest(http.MethodPost,
+		internalURL+"/api/internal/alerts",
+		bytes.NewReader(payload))
+	if err != nil {
+		slog.Error("jobsync: webhook request build failed", "error", err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+internalSecret)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("jobsync: webhook delivery failed", "error", err, "url", internalURL)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		slog.Error("jobsync: webhook returned non-2xx",
+			"status", resp.StatusCode, "run_id", runID)
+	}
 }
 
 func nullableString(s *string) sql.NullString {
