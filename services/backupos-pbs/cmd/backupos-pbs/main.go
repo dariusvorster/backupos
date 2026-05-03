@@ -57,6 +57,9 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/speedtest"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastorelist"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastorestatus"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/files"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/snapshotnotes"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/uploadbackuplog"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/selftest"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/sessionreaper"
@@ -160,6 +163,9 @@ func main() {
 	selfTestHandler        := selftest.NewHandler(database, datastoreLookup, versionString)
 	datastoreListHandler   := datastorelist.NewHandler(database)
 	datastoreStatusHandler := datastorestatus.NewHandler(datastoreLookup)
+	filesHandler           := files.NewHandler(datastoreLookup)
+	notesHandler           := snapshotnotes.NewHandler(datastoreLookup, database)
+	uploadLogHandler       := uploadbackuplog.NewHandler(datastoreLookup)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
@@ -183,6 +189,12 @@ func main() {
 				gcAdminHandler.ServeHTTP(w, r)
 			case strings.HasSuffix(r.URL.Path, "/status"):
 				datastoreStatusHandler.ServeHTTP(w, r)
+			case strings.HasSuffix(r.URL.Path, "/files"):
+				filesHandler.ServeHTTP(w, r)
+			case strings.HasSuffix(r.URL.Path, "/notes"):
+				notesHandler.ServeHTTP(w, r)
+			case strings.HasSuffix(r.URL.Path, "/upload-backup-log"):
+				uploadLogHandler.ServeHTTP(w, r)
 			default:
 				slog.Info("404 (admin/datastore subtree)",
 					"method", r.Method,
