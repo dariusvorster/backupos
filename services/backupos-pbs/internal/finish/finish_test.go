@@ -71,6 +71,17 @@ func openTestDB(t *testing.T) *sql.DB {
 			datastore_id TEXT,
 			name TEXT
 		);
+		CREATE TABLE backup_jobs (
+			id TEXT PRIMARY KEY,
+			name TEXT, source_type TEXT, source_config TEXT,
+			schedule TEXT, enabled INTEGER, preflight_enabled INTEGER, created_at INTEGER,
+			last_run_at INTEGER, last_run_status TEXT
+		);
+		CREATE TABLE backup_runs (
+			id TEXT PRIMARY KEY, job_id TEXT, status TEXT, trigger TEXT,
+			started_at INTEGER, run_type TEXT,
+			completed_at INTEGER, duration INTEGER, snapshot_id TEXT, error_message TEXT
+		);
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -389,6 +400,63 @@ func TestFinish_DBInsertFailureStillReturns200(t *testing.T) {
 	}
 	if v, ok := resp["data"]; !ok || v != nil {
 		t.Errorf(`expected {"data":null}, got %v`, resp)
+	}
+}
+
+func TestFinish_FinalizesSyntheticRun(t *testing.T) {
+	tmp := t.TempDir()
+	_, snapDB, store := setupFull(t)
+	h := NewHandler(store, snapDB)
+
+	jobID := "pbs:ds-1::vm:100"
+	runID := "test-run-uuid"
+	startedAt := time.Unix(1735000000, 0)
+	backupTime := time.Unix(1735000100, 0)
+
+	if _, err := snapDB.Exec(
+		`INSERT INTO backup_jobs (id, name, source_type, source_config, schedule, enabled, preflight_enabled, created_at) VALUES (?, 'test', 'proxmox_vm', '{}', '', 0, 0, 1735000000000)`,
+		jobID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := snapDB.Exec(
+		`INSERT INTO backup_runs (id, job_id, status, trigger, started_at, run_type) VALUES (?, ?, 'running', 'api', 1735000000000, 'backup')`,
+		runID, jobID,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	id, err := store.Begin(session.BeginParams{
+		TokenID: "tok-1", DatastoreID: "ds-1",
+		BackupType: "vm", BackupID: "100",
+		BackupTime: backupTime, Kind: session.KindBackup,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sc := &streamctx.SessionContext{
+		SessionID: id, DatastoreID: "ds-1", DatastoreRoot: tmp,
+		BackupType: "vm", BackupID: "100", BackupTime: backupTime,
+		JobID: jobID, RunID: runID, SessionStartedAt: startedAt,
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, makeReq(t, sc))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var runStatus string
+	_ = snapDB.QueryRow(`SELECT status FROM backup_runs WHERE id = ?`, runID).Scan(&runStatus)
+	if runStatus != "ok" {
+		t.Errorf("run status: got %q, want 'ok'", runStatus)
+	}
+
+	var lastRunStatus string
+	_ = snapDB.QueryRow(`SELECT last_run_status FROM backup_jobs WHERE id = ?`, jobID).Scan(&lastRunStatus)
+	if lastRunStatus != "ok" {
+		t.Errorf("job last_run_status: got %q, want 'ok'", lastRunStatus)
 	}
 }
 

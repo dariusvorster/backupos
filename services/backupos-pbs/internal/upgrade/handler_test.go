@@ -64,6 +64,18 @@ func setupTestDB(t *testing.T) *sql.DB {
 			scratch_path  TEXT,
 			namespace      TEXT NOT NULL DEFAULT ''
 		);
+
+		CREATE TABLE backup_jobs (
+			id TEXT PRIMARY KEY,
+			name TEXT, source_type TEXT, source_config TEXT,
+			schedule TEXT, enabled INTEGER, preflight_enabled INTEGER, created_at INTEGER,
+			last_run_at INTEGER, last_run_status TEXT
+		);
+		CREATE TABLE backup_runs (
+			id TEXT PRIMARY KEY, job_id TEXT, status TEXT, trigger TEXT,
+			started_at INTEGER, run_type TEXT,
+			completed_at INTEGER, duration INTEGER, snapshot_id TEXT, error_message TEXT
+		);
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -100,6 +112,18 @@ func setupTestDBAtPath(t *testing.T, dsPath string) *sql.DB {
 			state         TEXT NOT NULL,
 			scratch_path  TEXT,
 			namespace      TEXT NOT NULL DEFAULT ''
+		);
+
+		CREATE TABLE backup_jobs (
+			id TEXT PRIMARY KEY,
+			name TEXT, source_type TEXT, source_config TEXT,
+			schedule TEXT, enabled INTEGER, preflight_enabled INTEGER, created_at INTEGER,
+			last_run_at INTEGER, last_run_status TEXT
+		);
+		CREATE TABLE backup_runs (
+			id TEXT PRIMARY KEY, job_id TEXT, status TEXT, trigger TEXT,
+			started_at INTEGER, run_type TEXT,
+			completed_at INTEGER, duration INTEGER, snapshot_id TEXT, error_message TEXT
 		);
 	`)
 	if err != nil {
@@ -172,8 +196,9 @@ func newTestHandler(db *sql.DB) *Handler {
 	return NewHandler(
 		datastore.NewLookup(db),
 		session.NewStore(db),
+		db,
 		blob.NewHandler(),
-		finish.NewHandler(session.NewStore(db)),
+		finish.NewHandler(session.NewStore(db), db),
 		fixedindex.NewHandler(),
 		fixedchunk.NewHandler(),
 		fixedappend.NewHandler(),
@@ -539,5 +564,37 @@ func TestHandler_FullUpgradeDance(t *testing.T) {
 	_ = db.QueryRow(`SELECT state FROM pbs_active_sessions LIMIT 1`).Scan(&state)
 	if state != "aborted" {
 		t.Errorf("expected state='aborted' after connection close, got %q", state)
+	}
+}
+
+// TestUpgrade_InsertsSyntheticJobAndRun verifies that a successful upgrade
+// inserts backup_jobs and backup_runs rows before the H2 session starts.
+func TestUpgrade_InsertsSyntheticJobAndRun(t *testing.T) {
+	tmp := t.TempDir()
+	db := setupTestDBAtPath(t, tmp)
+	h := newTestHandler(db)
+
+	srv := httptest.NewServer(wrapWithTestIdentity(h))
+	defer srv.Close()
+
+	host := strings.TrimPrefix(srv.URL, "http://")
+	headers := do101(t, host, host, "/api2/json/backup?store=default&backup-type=vm&backup-id=100&backup-time=1735000000")
+
+	if !strings.HasPrefix(headers, "HTTP/1.1 101") {
+		t.Fatalf("expected 101, got:\n%s", headers)
+	}
+
+	// Job row must exist.
+	var jobCount int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM backup_jobs`).Scan(&jobCount)
+	if jobCount != 1 {
+		t.Errorf("expected 1 backup_jobs row, got %d", jobCount)
+	}
+
+	// Run row must exist with status='running'.
+	var runStatus string
+	_ = db.QueryRow(`SELECT status FROM backup_runs LIMIT 1`).Scan(&runStatus)
+	if runStatus != "running" {
+		t.Errorf("expected run status='running', got %q", runStatus)
 	}
 }

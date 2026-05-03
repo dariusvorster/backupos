@@ -111,6 +111,7 @@ func main() {
 	upgradeHandler := upgrade.NewHandler(
 		datastoreLookup,
 		sessionStore,
+		database,
 		blob.NewHandler(),
 		finish.NewHandler(sessionStore, database),
 		fixedindex.NewHandler(),
