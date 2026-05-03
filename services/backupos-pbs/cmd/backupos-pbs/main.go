@@ -112,7 +112,7 @@ func main() {
 		datastoreLookup,
 		sessionStore,
 		blob.NewHandler(),
-		finish.NewHandler(sessionStore),
+		finish.NewHandler(sessionStore, database),
 		fixedindex.NewHandler(),
 		fixedchunk.NewHandler(),
 		fixedappend.NewHandler(),
