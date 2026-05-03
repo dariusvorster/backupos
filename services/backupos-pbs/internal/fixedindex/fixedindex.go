@@ -7,14 +7,19 @@
 package fixedindex
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fidx"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/incremental"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/snapshot"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/streamctx"
 )
@@ -47,7 +52,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	archiveName, size, err := parseQuery(r.URL.Query())
+	archiveName, size, reuseCsumStr, err := parseQuery(r.URL.Query())
 	if err != nil {
 		slog.Info("fixed_index rejected", "reason", err.Error(), "session_id", sc.SessionID)
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -71,8 +76,40 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isIncremental := reuseCsumStr != ""
+	if isIncremental && sc.PreviousBackup != nil {
+		csumBytes, hexErr := hex.DecodeString(reuseCsumStr)
+		if hexErr != nil || len(csumBytes) != 32 {
+			fw.Drop()
+			writeError(w, http.StatusBadRequest, "reuse-csum: invalid hex")
+			return
+		}
+		var expectedCsum [32]byte
+		copy(expectedCsum[:], csumBytes)
+		prevIndexPath := filepath.Join(sc.PreviousBackup.Path, archiveName)
+		if _, regErr := incremental.RegisterFromPreviousIndex(sc.WriterState, prevIndexPath, expectedCsum); regErr != nil {
+			if errors.Is(regErr, incremental.ErrCsumMismatch) {
+				fw.Drop()
+				writeError(w, http.StatusBadRequest, regErr.Error())
+				return
+			}
+			if !errors.Is(regErr, os.ErrNotExist) {
+				fw.Drop()
+				slog.Error("incremental register failed",
+					"error", regErr, "session_id", sc.SessionID, "archive_name", archiveName)
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			slog.Warn("previous index not found, proceeding non-incrementally",
+				"session_id", sc.SessionID, "archive_name", archiveName)
+			isIncremental = false
+		}
+	} else if isIncremental {
+		isIncremental = false
+	}
+
 	sizeVal := size
-	wid, err := sc.WriterState.RegisterFixedWriter(archiveName, fw, &sizeVal, chunkSize, false)
+	wid, err := sc.WriterState.RegisterFixedWriter(archiveName, fw, &sizeVal, chunkSize, isIncremental)
 	if err != nil {
 		fw.Drop()
 		slog.Error("register fixed writer failed",
@@ -94,7 +131,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseQuery validates and extracts query parameters.
-func parseQuery(q map[string][]string) (archiveName string, size uint64, err error) {
+func parseQuery(q map[string][]string) (archiveName string, size uint64, reuseCsumStr string, err error) {
 	get := func(k string) string {
 		if v := q[k]; len(v) > 0 {
 			return v[0]
@@ -102,30 +139,28 @@ func parseQuery(q map[string][]string) (archiveName string, size uint64, err err
 		return ""
 	}
 
-	if get("reuse-csum") != "" {
-		return "", 0, fmt.Errorf("incremental backups (reuse-csum) not supported in V1")
-	}
+	reuseCsumStr = get("reuse-csum")
 
 	archiveName = get("archive-name")
 	if archiveName == "" {
-		return "", 0, fmt.Errorf("missing required parameter \"archive-name\"")
+		return "", 0, "", fmt.Errorf("missing required parameter \"archive-name\"")
 	}
 	if len(archiveName) > 64 {
-		return "", 0, fmt.Errorf("\"archive-name\" too long (max 64 chars)")
+		return "", 0, "", fmt.Errorf("\"archive-name\" too long (max 64 chars)")
 	}
 	if !archiveNameRegex.MatchString(archiveName) {
-		return "", 0, fmt.Errorf("invalid \"archive-name\": must match [A-Za-z0-9_.-]+\\.fidx")
+		return "", 0, "", fmt.Errorf("invalid \"archive-name\": must match [A-Za-z0-9_.-]+\\.fidx")
 	}
 
 	sizeRaw := get("size")
 	if sizeRaw == "" {
-		return "", 0, fmt.Errorf("missing required parameter \"size\" (growable .fidx not supported in V1)")
+		return "", 0, "", fmt.Errorf("missing required parameter \"size\" (growable .fidx not supported in V1)")
 	}
 	sizeI, err2 := strconv.ParseUint(sizeRaw, 10, 64)
 	if err2 != nil || sizeI == 0 {
-		return "", 0, fmt.Errorf("invalid \"size\": must be a positive integer")
+		return "", 0, "", fmt.Errorf("invalid \"size\": must be a positive integer")
 	}
-	return archiveName, sizeI, nil
+	return archiveName, sizeI, reuseCsumStr, nil
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

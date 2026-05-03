@@ -71,6 +71,22 @@ func TestRegisterFixedWriter_RejectsAfterCleanup(t *testing.T) {
 	}
 }
 
+// ---- RegisterKnownChunk ----
+
+func TestRegisterKnownChunk_AddsToMap(t *testing.T) {
+	ws := New()
+	var d [32]byte
+	d[0] = 0xDE
+	ws.RegisterKnownChunk(d, 4194304)
+	size, ok := ws.LookupChunk(d)
+	if !ok {
+		t.Fatal("chunk not found after RegisterKnownChunk")
+	}
+	if size != 4194304 {
+		t.Errorf("size: got %d, want 4194304", size)
+	}
+}
+
 // ---- RegisterFixedChunk ----
 
 func TestRegisterFixedChunk_AddsToKnownChunks(t *testing.T) {

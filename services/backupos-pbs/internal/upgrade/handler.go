@@ -15,6 +15,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/owner"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/previous"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/streamctx"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/wstate"
@@ -47,11 +48,13 @@ type Handler struct {
 	fixedChunkHandler   http.Handler
 	fixedAppendHandler  http.Handler
 	fixedCloseHandler   http.Handler
-	dynamicIndexHandler  http.Handler
-	dynamicChunkHandler  http.Handler
-	dynamicAppendHandler http.Handler
-	dynamicCloseHandler  http.Handler
-	streamHandler       http.Handler // fallback 501-stub for unimplemented H2 paths
+	dynamicIndexHandler    http.Handler
+	dynamicChunkHandler    http.Handler
+	dynamicAppendHandler   http.Handler
+	dynamicCloseHandler    http.Handler
+	previousArchiveHandler http.Handler
+	previousTimeHandler    http.Handler
+	streamHandler          http.Handler // fallback 501-stub for unimplemented H2 paths
 }
 
 // NewHandler constructs a new upgrade Handler.
@@ -73,22 +76,26 @@ func NewHandler(
 	dynamicChunkHandler http.Handler,
 	dynamicAppendHandler http.Handler,
 	dynamicCloseHandler http.Handler,
+	previousArchiveHandler http.Handler,
+	previousTimeHandler http.Handler,
 	streamHandler http.Handler,
 ) *Handler {
 	return &Handler{
-		datastores:           datastores,
-		sessions:             sessions,
-		blobHandler:          blobHandler,
-		finishHandler:        finishHandler,
-		fixedIndexHandler:    fixedIndexHandler,
-		fixedChunkHandler:    fixedChunkHandler,
-		fixedAppendHandler:   fixedAppendHandler,
-		fixedCloseHandler:    fixedCloseHandler,
-		dynamicIndexHandler:  dynamicIndexHandler,
-		dynamicChunkHandler:  dynamicChunkHandler,
-		dynamicAppendHandler: dynamicAppendHandler,
-		dynamicCloseHandler:  dynamicCloseHandler,
-		streamHandler:        streamHandler,
+		datastores:             datastores,
+		sessions:               sessions,
+		blobHandler:            blobHandler,
+		finishHandler:          finishHandler,
+		fixedIndexHandler:      fixedIndexHandler,
+		fixedChunkHandler:      fixedChunkHandler,
+		fixedAppendHandler:     fixedAppendHandler,
+		fixedCloseHandler:      fixedCloseHandler,
+		dynamicIndexHandler:    dynamicIndexHandler,
+		dynamicChunkHandler:    dynamicChunkHandler,
+		dynamicAppendHandler:   dynamicAppendHandler,
+		dynamicCloseHandler:    dynamicCloseHandler,
+		previousArchiveHandler: previousArchiveHandler,
+		previousTimeHandler:    previousTimeHandler,
+		streamHandler:          streamHandler,
 	}
 }
 
@@ -196,6 +203,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Look up the most recent previous successful backup for this group.
+	// Used by stream handlers to support incremental (reuse-csum) sessions.
+	var prev *previous.Snapshot
+	if kind == session.KindBackup {
+		p, findErr := previous.Find(ds.Path, ns, string(params.BackupType), params.BackupID, params.BackupTime)
+		if findErr == nil {
+			prev = p
+			slog.Info("previous backup found",
+				"session_id", sessionID,
+				"previous_path", p.Path,
+				"previous_time", p.Time,
+			)
+		} else if !errors.Is(findErr, previous.ErrNoPrevious) {
+			slog.Warn("previous backup lookup failed", "error", findErr, "session_id", sessionID)
+		}
+	}
+
 	// Step 5: Hijack the connection.
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -241,14 +265,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer ws.Cleanup()
 
 	sessionCtx := &streamctx.SessionContext{
-		SessionID:     sessionID,
-		DatastoreID:   ds.ID,
-		DatastoreRoot: ds.Path,
-		BackupType:    string(params.BackupType),
-		BackupID:      params.BackupID,
-		BackupTime:    params.BackupTime,
-		Namespace:     ns,
-		WriterState:   ws,
+		SessionID:      sessionID,
+		DatastoreID:    ds.ID,
+		DatastoreRoot:  ds.Path,
+		BackupType:     string(params.BackupType),
+		BackupID:       params.BackupID,
+		BackupTime:     params.BackupTime,
+		Namespace:      ns,
+		WriterState:    ws,
+		PreviousBackup: prev,
 	}
 	sessionRouter := buildSessionRouter(
 		h.blobHandler, h.finishHandler,
@@ -256,6 +281,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fixedAppendHandler, h.fixedCloseHandler,
 		h.dynamicIndexHandler, h.dynamicChunkHandler,
 		h.dynamicAppendHandler, h.dynamicCloseHandler,
+		h.previousArchiveHandler, h.previousTimeHandler,
 		h.streamHandler,
 	)
 	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -338,6 +364,7 @@ func buildSessionRouter(
 	blobHandler, finishHandler,
 	fixedIndexHandler, fixedChunkHandler, fixedAppendHandler, fixedCloseHandler,
 	dynamicIndexHandler, dynamicChunkHandler, dynamicAppendHandler, dynamicCloseHandler,
+	previousArchiveHandler, previousTimeHandler,
 	fallback http.Handler,
 ) http.Handler {
 	methodNotAllowed := func(w http.ResponseWriter, allow string) {
@@ -378,6 +405,10 @@ func buildSessionRouter(
 			dynamicChunkHandler.ServeHTTP(w, r)
 		case "/dynamic_close":
 			dynamicCloseHandler.ServeHTTP(w, r)
+		case "/previous":
+			previousArchiveHandler.ServeHTTP(w, r)
+		case "/previous_backup_time":
+			previousTimeHandler.ServeHTTP(w, r)
 		default:
 			fallback.ServeHTTP(w, r)
 		}

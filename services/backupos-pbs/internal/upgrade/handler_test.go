@@ -182,6 +182,8 @@ func newTestHandler(db *sql.DB) *Handler {
 		dynamicchunk.NewHandler(),
 		dynamicappend.NewHandler(),
 		dynamicclose.NewHandler(),
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
 		StubStreamHandler(),
 	)
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/previous"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/rstate"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/wstate"
 )
@@ -30,8 +31,9 @@ type SessionContext struct {
 	BackupID      string       // e.g. "100"
 	BackupTime    time.Time    // backup-time
 	Namespace     namespace.Namespace // root if no ?ns= provided
-	WriterState   *wstate.State // per-session writer state (fixed/dynamic index maps); nil for reader sessions
-	ReaderState   *rstate.State // per-session reader state (allowed_chunks set); nil for backup sessions
+	WriterState    *wstate.State      // per-session writer state (fixed/dynamic index maps); nil for reader sessions
+	ReaderState    *rstate.State      // per-session reader state (allowed_chunks set); nil for backup sessions
+	PreviousBackup *previous.Snapshot // most recent prior snapshot for this group, nil if none
 }
 
 type ctxKey struct{}

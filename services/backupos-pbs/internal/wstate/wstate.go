@@ -127,6 +127,14 @@ func (s *State) LookupChunk(digest [32]byte) (uint32, bool) {
 	return size, ok
 }
 
+// RegisterKnownChunk pre-populates knownChunks from a previous backup index
+// without going through a writer. Used for incremental (reuse-csum) sessions.
+func (s *State) RegisterKnownChunk(digest [32]byte, size uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.knownChunks[digest] = size
+}
+
 // RegisterFixedChunk records a successfully uploaded chunk in the known_chunks
 // map and validates size constraints for the associated writer.
 func (s *State) RegisterFixedChunk(wid int, digest [32]byte, size uint32, isDuplicate bool) error {

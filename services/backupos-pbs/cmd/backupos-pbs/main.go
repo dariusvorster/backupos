@@ -44,6 +44,8 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedchunk"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedclose"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fixedindex"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/previousarchive"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/previoustime"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/download"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcadmin"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/gcrun"
@@ -113,6 +115,8 @@ func main() {
 		dynamicchunk.NewHandler(),
 		dynamicappend.NewHandler(),
 		dynamicclose.NewHandler(),
+		previousarchive.NewHandler(),
+		previoustime.NewHandler(),
 		upgrade.StubStreamHandler(),
 	)
 
