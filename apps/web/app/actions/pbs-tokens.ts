@@ -2,17 +2,20 @@
 
 import { revalidatePath }                          from 'next/cache'
 import { randomBytes }                             from 'crypto'
-import { getDb, pbsTokens, eq }                    from '@backupos/db'
+import { getDb, pbsTokens, eq, and }               from '@backupos/db'
 import { requireAdmin }                            from '@/lib/user'
-import { generatePbsSecret, hashPbsSecret, formatPbsToken } from '@/lib/pbs-tokens'
+import { generatePbsSecret, hashPbsSecret }        from '@/lib/pbs-tokens'
 import { appendAuditEntry }                        from '@/lib/audit'
 import { headers }                                 from 'next/headers'
 import { auth }                                    from '@/lib/auth'
 
+const VALID_PERMISSIONS = new Set(['read', 'write', 'full'])
+
 export async function createPbsToken(formData: FormData): Promise<{
-  token?: string
-  id?: string
-  error?: string
+  authId?:  string
+  secret?:  string
+  id?:      string
+  error?:   string
 }> {
   await requireAdmin()
   const { api } = auth
@@ -28,12 +31,28 @@ export async function createPbsToken(formData: FormData): Promise<{
   if (!user)      return { error: 'User is required' }
   if (!realm)     return { error: 'Realm is required' }
   if (!tokenName) return { error: 'Token name is required' }
+  if (!VALID_PERMISSIONS.has(perms)) return { error: 'Permissions must be read, write, or full' }
+
+  const db = getDb()
+
+  const existing = await db
+    .select({ id: pbsTokens.id })
+    .from(pbsTokens)
+    .where(and(
+      eq(pbsTokens.user,      user),
+      eq(pbsTokens.realm,     realm),
+      eq(pbsTokens.tokenName, tokenName),
+    ))
+    .limit(1)
+  if (existing.length > 0) {
+    return { error: `Token ${user}@${realm}!${tokenName} already exists` }
+  }
 
   const secret = generatePbsSecret()
   const hash   = hashPbsSecret(secret)
   const id     = randomBytes(8).toString('hex')
+  const authId = `${user}@${realm}!${tokenName}`
 
-  const db = getDb()
   await db.insert(pbsTokens).values({
     id,
     user,
@@ -49,12 +68,12 @@ export async function createPbsToken(formData: FormData): Promise<{
     action:       'pbs_token.created',
     resourceType: 'pbs_token',
     resourceId:   id,
-    resourceName: `${user}@${realm}!${tokenName}`,
+    resourceName: authId,
     actor:        session.user.id,
   })
 
   revalidatePath('/pbs/tokens')
-  return { token: formatPbsToken({ user, realm, tokenName, secret }), id }
+  return { authId, secret, id }
 }
 
 export async function revokePbsToken(id: string): Promise<void> {

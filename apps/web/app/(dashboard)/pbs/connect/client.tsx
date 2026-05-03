@@ -3,6 +3,7 @@
 import { useState, useTransition }              from 'react'
 import { testPbsConnection, TestConnectionResult } from '@/app/actions/pbs-connect'
 import { Button }                                from '@/components/ui/button'
+import { CopyButton }                            from '@/components/copy-button'
 
 interface TokenOption     { id: string; authId: string; permissions: string }
 interface DatastoreOption { id: string; name: string }
@@ -43,28 +44,11 @@ const selectStyle: React.CSSProperties = {
   outline: 'none',
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <button
-      type="button"
-      onClick={() => { navigator.clipboard.writeText(text).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-      style={{
-        fontSize: 11, padding: '2px 8px', cursor: 'pointer',
-        border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-        backgroundColor: 'var(--surf2)', color: 'var(--fg-dim)',
-      }}
-    >
-      {copied ? 'Copied' : 'Copy'}
-    </button>
-  )
-}
-
 function InfoRow({ label: lbl, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, minWidth: 0 }}>
       <span style={{ fontSize: 12, color: 'var(--fg-faint)', width: 100, flexShrink: 0 }}>{lbl}</span>
-      <span style={{ ...mono, color: 'var(--fg)', flex: 1, wordBreak: 'break-all' }}>{value}</span>
+      <span style={{ ...mono, color: 'var(--fg)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
       <CopyButton text={value} />
     </div>
   )
