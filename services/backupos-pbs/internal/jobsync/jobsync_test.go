@@ -1,0 +1,230 @@
+package jobsync
+
+import (
+	"database/sql"
+	"testing"
+	"time"
+
+	_ "modernc.org/sqlite"
+
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
+)
+
+func openDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec(`
+		CREATE TABLE backup_jobs (
+			id TEXT PRIMARY KEY,
+			name TEXT, source_type TEXT, source_config TEXT,
+			schedule TEXT, enabled INTEGER, preflight_enabled INTEGER, created_at INTEGER,
+			last_run_at INTEGER, last_run_status TEXT
+		);
+		CREATE TABLE backup_runs (
+			id TEXT PRIMARY KEY, job_id TEXT, status TEXT, trigger TEXT,
+			started_at INTEGER, run_type TEXT,
+			completed_at INTEGER, duration INTEGER, snapshot_id TEXT, error_message TEXT
+		);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+func TestJobID_RootNamespace(t *testing.T) {
+	got := JobID("ds-1", namespace.Root(), "vm", "100")
+	want := "pbs:ds-1::vm:100"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestJobID_NonRootNamespace(t *testing.T) {
+	ns, err := namespace.Parse("tenant-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := JobID("ds-1", ns, "vm", "100")
+	want := "pbs:ds-1:tenant-a:vm:100"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestJobName_RootVsNonRoot(t *testing.T) {
+	if got := JobName(namespace.Root(), "vm", "100"); got != "PVE: vm/100" {
+		t.Errorf("root: got %q", got)
+	}
+	ns, _ := namespace.Parse("tenant-a")
+	if got := JobName(ns, "vm", "100"); got != "PVE: tenant-a/vm/100" {
+		t.Errorf("non-root: got %q", got)
+	}
+}
+
+func TestUpsertJob_InsertsRow(t *testing.T) {
+	db := openDB(t)
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+
+	var id, name, sourceType string
+	err := db.QueryRow(`SELECT id, name, source_type FROM backup_jobs WHERE id = ?`, "pbs:ds-1::vm:100").
+		Scan(&id, &name, &sourceType)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if id != "pbs:ds-1::vm:100" {
+		t.Errorf("id: got %q", id)
+	}
+	if name != "PVE: vm/100" {
+		t.Errorf("name: got %q", name)
+	}
+	if sourceType != "proxmox_vm" {
+		t.Errorf("source_type: got %q", sourceType)
+	}
+}
+
+func TestUpsertJob_DoesNotUpdateExisting(t *testing.T) {
+	db := openDB(t)
+
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+	// Manually tweak the row to verify it's left unchanged.
+	if _, err := db.Exec(`UPDATE backup_jobs SET name = 'custom' WHERE id = ?`, "pbs:ds-1::vm:100"); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+
+	var name string
+	_ = db.QueryRow(`SELECT name FROM backup_jobs WHERE id = ?`, "pbs:ds-1::vm:100").Scan(&name)
+	if name != "custom" {
+		t.Errorf("expected row unchanged (name='custom'), got %q", name)
+	}
+}
+
+func TestInsertRunningRun_InsertsRow(t *testing.T) {
+	db := openDB(t)
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+
+	jobID := JobID("ds-1", namespace.Root(), "vm", "100")
+	startedAt := time.Unix(1735000000, 0)
+	runID, err := InsertRunningRun(db, jobID, startedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runID == "" {
+		t.Fatal("expected non-empty runID")
+	}
+
+	var status, trigger, runType string
+	var gotStartedAt int64
+	err = db.QueryRow(`SELECT status, trigger, started_at, run_type FROM backup_runs WHERE id = ?`, runID).
+		Scan(&status, &trigger, &gotStartedAt, &runType)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if status != "running" {
+		t.Errorf("status: got %q", status)
+	}
+	if trigger != "api" {
+		t.Errorf("trigger: got %q", trigger)
+	}
+	if runType != "backup" {
+		t.Errorf("run_type: got %q", runType)
+	}
+	if gotStartedAt != startedAt.UnixMilli() {
+		t.Errorf("started_at: got %d, want %d", gotStartedAt, startedAt.UnixMilli())
+	}
+}
+
+func TestFinishRun_Success(t *testing.T) {
+	db := openDB(t)
+	jobID := JobID("ds-1", namespace.Root(), "vm", "100")
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Unix(1735000000, 0)
+	runID, _ := InsertRunningRun(db, jobID, startedAt)
+
+	snapID := "snap-abc"
+	completedAt := time.Unix(1735000060, 0)
+	if err := FinishRun(db, runID, jobID, "success", &snapID, nil, startedAt, completedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	var status string
+	var snapshotID sql.NullString
+	_ = db.QueryRow(`SELECT status, snapshot_id FROM backup_runs WHERE id = ?`, runID).
+		Scan(&status, &snapshotID)
+	if status != "success" {
+		t.Errorf("status: got %q", status)
+	}
+	if !snapshotID.Valid || snapshotID.String != "snap-abc" {
+		t.Errorf("snapshot_id: got %v", snapshotID)
+	}
+
+	var lastRunStatus string
+	_ = db.QueryRow(`SELECT last_run_status FROM backup_jobs WHERE id = ?`, jobID).Scan(&lastRunStatus)
+	if lastRunStatus != "success" {
+		t.Errorf("last_run_status: got %q", lastRunStatus)
+	}
+}
+
+func TestFinishRun_Failed(t *testing.T) {
+	db := openDB(t)
+	jobID := JobID("ds-1", namespace.Root(), "vm", "100")
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Unix(1735000000, 0)
+	runID, _ := InsertRunningRun(db, jobID, startedAt)
+
+	errMsg := "connection closed without /finish"
+	completedAt := time.Unix(1735000030, 0)
+	if err := FinishRun(db, runID, jobID, "failed", nil, &errMsg, startedAt, completedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	var status string
+	var errorMessage sql.NullString
+	_ = db.QueryRow(`SELECT status, error_message FROM backup_runs WHERE id = ?`, runID).
+		Scan(&status, &errorMessage)
+	if status != "failed" {
+		t.Errorf("status: got %q", status)
+	}
+	if !errorMessage.Valid || errorMessage.String != errMsg {
+		t.Errorf("error_message: got %v", errorMessage)
+	}
+}
+
+func TestFinishRun_DurationCalculation(t *testing.T) {
+	db := openDB(t)
+	jobID := JobID("ds-1", namespace.Root(), "vm", "100")
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Unix(1735000000, 0)
+	completedAt := startedAt.Add(90 * time.Second)
+	runID, _ := InsertRunningRun(db, jobID, startedAt)
+
+	if err := FinishRun(db, runID, jobID, "success", nil, nil, startedAt, completedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	var duration int64
+	_ = db.QueryRow(`SELECT duration FROM backup_runs WHERE id = ?`, runID).Scan(&duration)
+	if duration != 90 {
+		t.Errorf("duration: got %d, want 90", duration)
+	}
+}

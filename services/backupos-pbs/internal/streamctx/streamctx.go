@@ -34,6 +34,10 @@ type SessionContext struct {
 	WriterState    *wstate.State      // per-session writer state (fixed/dynamic index maps); nil for reader sessions
 	ReaderState    *rstate.State      // per-session reader state (allowed_chunks set); nil for backup sessions
 	PreviousBackup *previous.Snapshot // most recent prior snapshot for this group, nil if none
+	// Synthetic job/run IDs for the web UI. Empty string means no row was inserted.
+	JobID            string
+	RunID            string
+	SessionStartedAt time.Time
 }
 
 type ctxKey struct{}

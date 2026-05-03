@@ -20,6 +20,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/jobsync"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/snapshot"
@@ -75,6 +76,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Insert / upsert the pbs_snapshots row. This is best-effort: if the
 	// DB write fails the files are still on disk and can be re-indexed later.
 	h.insertSnapshot(sc)
+
+	// Finalize the synthetic run row if one was created at upgrade time.
+	if sc.RunID != "" {
+		snapshotID := buildSnapshotID(sc.DatastoreID, sc.Namespace, sc.BackupType, sc.BackupID, sc.BackupTime)
+		if err := jobsync.FinishRun(h.db, sc.RunID, sc.JobID, "success",
+			&snapshotID, nil, sc.SessionStartedAt, time.Now()); err != nil {
+			slog.Error("finish: FinishRun failed (backup still saved)",
+				"error", err, "run_id", sc.RunID)
+		}
+	}
 
 	// Best-effort durability: fsync the snapshot directory.
 	snapDir, pathErr := snapshot.Path(sc.DatastoreRoot, sc.Namespace, sc.BackupType, sc.BackupID, sc.BackupTime)

@@ -2,17 +2,20 @@ package upgrade
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/net/http2"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/jobsync"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/owner"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/previous"
@@ -42,6 +45,7 @@ const UpgradeToken = "proxmox-backup-protocol-v1"
 type Handler struct {
 	datastores          *datastore.Lookup
 	sessions            *session.Store
+	db                  *sql.DB
 	blobHandler         http.Handler
 	finishHandler       http.Handler
 	fixedIndexHandler   http.Handler
@@ -66,6 +70,7 @@ type Handler struct {
 func NewHandler(
 	datastores *datastore.Lookup,
 	sessions *session.Store,
+	db *sql.DB,
 	blobHandler http.Handler,
 	finishHandler http.Handler,
 	fixedIndexHandler http.Handler,
@@ -83,6 +88,7 @@ func NewHandler(
 	return &Handler{
 		datastores:             datastores,
 		sessions:               sessions,
+		db:                     db,
 		blobHandler:            blobHandler,
 		finishHandler:          finishHandler,
 		fixedIndexHandler:      fixedIndexHandler,
@@ -265,16 +271,37 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer ws.Cleanup()
 
 	sessionCtx := &streamctx.SessionContext{
-		SessionID:      sessionID,
-		DatastoreID:    ds.ID,
-		DatastoreRoot:  ds.Path,
-		BackupType:     string(params.BackupType),
-		BackupID:       params.BackupID,
-		BackupTime:     params.BackupTime,
-		Namespace:      ns,
-		WriterState:    ws,
-		PreviousBackup: prev,
+		SessionID:        sessionID,
+		DatastoreID:      ds.ID,
+		DatastoreRoot:    ds.Path,
+		BackupType:       string(params.BackupType),
+		BackupID:         params.BackupID,
+		BackupTime:       params.BackupTime,
+		Namespace:        ns,
+		WriterState:      ws,
+		PreviousBackup:   prev,
+		SessionStartedAt: time.Now(),
 	}
+
+	// Insert synthetic job + run rows so this PBS backup appears in the web UI.
+	// Best-effort: failures are logged but do not abort the backup.
+	if h.db != nil && kind == session.KindBackup {
+		jobID := jobsync.JobID(ds.ID, ns, string(params.BackupType), params.BackupID)
+		if err := jobsync.UpsertJob(h.db, ds.ID, ns, string(params.BackupType), params.BackupID); err != nil {
+			slog.Error("upgrade: failed to upsert synthetic job",
+				"error", err, "session_id", sessionID, "job_id", jobID)
+		} else {
+			sessionCtx.JobID = jobID
+			runID, runErr := jobsync.InsertRunningRun(h.db, jobID, sessionCtx.SessionStartedAt)
+			if runErr != nil {
+				slog.Error("upgrade: failed to insert synthetic run",
+					"error", runErr, "session_id", sessionID, "job_id", jobID)
+			} else {
+				sessionCtx.RunID = runID
+			}
+		}
+	}
+
 	sessionRouter := buildSessionRouter(
 		h.blobHandler, h.finishHandler,
 		h.fixedIndexHandler, h.fixedChunkHandler,
@@ -297,6 +324,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	updated, finErr := h.sessions.Finalize(sessionID)
 	if finErr != nil {
 		slog.Error("session finalize failed", "error", finErr, "session_id", sessionID)
+	}
+	// If the session transitioned to aborted (no /finish received), mark the run failed.
+	if updated && sessionCtx.RunID != "" {
+		errMsg := "connection closed without /finish"
+		if err := jobsync.FinishRun(h.db, sessionCtx.RunID, sessionCtx.JobID, "failed",
+			nil, &errMsg, sessionCtx.SessionStartedAt, time.Now()); err != nil {
+			slog.Error("upgrade: abort path FinishRun failed",
+				"error", err, "run_id", sessionCtx.RunID)
+		}
 	}
 	slog.Info("upgrade connection closed",
 		"path", r.URL.Path,
