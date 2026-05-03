@@ -55,6 +55,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readchunk"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readerupgrade"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/speedtest"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastorelist"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/selftest"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/sessionreaper"
@@ -155,12 +156,24 @@ func main() {
 	})
 	gcAdminHandler := gcadmin.NewHandler(datastoreLookup, gcTracker, oldestActiveWriter)
 	gcScheduler := gcsched.New(datastoreLookup, gcTracker, oldestActiveWriter, 0)
-	selfTestHandler := selftest.NewHandler(database, datastoreLookup, versionString)
+	selfTestHandler      := selftest.NewHandler(database, datastoreLookup, versionString)
+	datastoreListHandler := datastorelist.NewHandler(database)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
 	mux.HandleFunc("/api2/json/backup", requireAuth(validator, upgradeHandler.ServeHTTP))
 	mux.HandleFunc("/api2/json/reader", readerHandler.ServeHTTP)
+	// Route precedence note:
+	//   /api2/json/admin/datastore     → exact match, list endpoint (PVE enumeration)
+	//   /api2/json/admin/datastore/    → subtree match, per-datastore subroutes
+	// Go's net/http mux serves the more specific exact match first, so the
+	// list endpoint wins for the bare path and the subtree handles everything
+	// from /api2/json/admin/datastore/<name>/... onward.
+	mux.HandleFunc("/api2/json/admin/datastore", requireAuth(validator,
+		func(w http.ResponseWriter, r *http.Request) {
+			datastoreListHandler.ServeHTTP(w, r)
+		},
+	))
 	mux.HandleFunc("/api2/json/admin/datastore/", requireAuth(validator,
 		func(w http.ResponseWriter, r *http.Request) {
 			if !strings.HasSuffix(r.URL.Path, "/gc") {
