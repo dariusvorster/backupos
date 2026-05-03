@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Activity, PlayCircle, Clock, Camera,
   Server, Database, Radar, RotateCcw, ListRestart,
   TriangleAlert, FileClock, Settings, BookOpen, FileTerminal, ShieldCheck,
+  KeyRound, HardDrive,
 } from 'lucide-react'
 import { ProfilePopover } from './profile-popover'
 
@@ -38,6 +39,13 @@ const NAV: NavGroup[] = [
       { href: '/agents',       label: 'Agents',       icon: <Server size={15} /> },
       { href: '/repositories', label: 'Repositories', icon: <Database size={15} /> },
       { href: '/monitors',     label: 'Monitors',     icon: <Radar size={15} /> },
+    ],
+  },
+  {
+    label: 'PBS',
+    items: [
+      { href: '/pbs/tokens',         label: 'Tokens',     icon: <KeyRound  size={15} /> },
+      { href: '/pbs/datastores/new', label: 'Datastores', icon: <HardDrive size={15} /> },
     ],
   },
   {
