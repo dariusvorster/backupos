@@ -29,9 +29,9 @@ interface CreatedSecret { authId: string; secret: string }
 
 function CredentialRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, minWidth: 0 }}>
-      <span style={{ fontSize: 12, color: 'var(--fg-dim)', width: 80, flexShrink: 0 }}>{label}</span>
-      <code style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--fg)' }}>{value}</code>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6, minWidth: 0 }}>
+      <span style={{ fontSize: 12, color: 'var(--fg-dim)', width: 80, flexShrink: 0, paddingTop: 2 }}>{label}</span>
+      <code style={{ fontSize: 12, flex: 1, minWidth: 0, wordBreak: 'break-all', fontFamily: 'IBM Plex Mono, monospace', color: 'var(--fg)' }}>{value}</code>
       <CopyButton text={value} />
     </div>
   )
