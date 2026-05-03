@@ -46,9 +46,9 @@ const selectStyle: React.CSSProperties = {
 
 function InfoRow({ label: lbl, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, minWidth: 0 }}>
-      <span style={{ fontSize: 12, color: 'var(--fg-faint)', width: 100, flexShrink: 0 }}>{lbl}</span>
-      <span style={{ ...mono, color: 'var(--fg)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8, minWidth: 0 }}>
+      <span style={{ fontSize: 12, color: 'var(--fg-faint)', width: 100, flexShrink: 0, paddingTop: 2 }}>{lbl}</span>
+      <span style={{ ...mono, color: 'var(--fg)', flex: 1, minWidth: 0, wordBreak: 'break-all' }}>{value}</span>
       <CopyButton text={value} />
     </div>
   )
