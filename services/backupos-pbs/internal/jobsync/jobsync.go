@@ -19,14 +19,15 @@ import (
 )
 
 // JobID returns the deterministic synthetic Job ID for a backup tuple.
-// Format: pbs:<datastoreID>:<namespace>:<backupType>:<backupID>
-// Root namespace produces an empty string between the two colons.
+// Format: pbs_<datastoreID>_<namespace_or_root>_<backupType>_<backupID>
+// Uses underscore instead of colon to avoid URL-routing edge cases when
+// the ID becomes a dynamic route segment in the web UI.
 func JobID(datastoreID string, ns namespace.Namespace, backupType, backupID string) string {
-	nsPart := ""
+	nsPart := "root"
 	if !ns.IsRoot() {
 		nsPart = ns.String()
 	}
-	return fmt.Sprintf("pbs:%s:%s:%s:%s", datastoreID, nsPart, backupType, backupID)
+	return fmt.Sprintf("pbs_%s_%s_%s_%s", datastoreID, nsPart, backupType, backupID)
 }
 
 // JobName returns the human-friendly display name.
