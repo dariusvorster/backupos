@@ -77,35 +77,36 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isIncremental := reuseCsumStr != ""
-	if isIncremental && sc.PreviousBackup != nil {
+	if isIncremental {
+		if sc.PreviousBackup == nil {
+			fw.Drop()
+			writeError(w, http.StatusBadRequest, "no previous successful backup exists")
+			return
+		}
 		csumBytes, hexErr := hex.DecodeString(reuseCsumStr)
 		if hexErr != nil || len(csumBytes) != 32 {
 			fw.Drop()
-			writeError(w, http.StatusBadRequest, "reuse-csum: invalid hex")
+			writeError(w, http.StatusBadRequest, "reuse-csum: invalid hex (must be 64 hex chars)")
 			return
 		}
 		var expectedCsum [32]byte
 		copy(expectedCsum[:], csumBytes)
 		prevIndexPath := filepath.Join(sc.PreviousBackup.Path, archiveName)
 		if _, regErr := incremental.RegisterFromPreviousIndex(sc.WriterState, prevIndexPath, expectedCsum); regErr != nil {
+			fw.Drop()
 			if errors.Is(regErr, incremental.ErrCsumMismatch) {
-				fw.Drop()
 				writeError(w, http.StatusBadRequest, regErr.Error())
 				return
 			}
-			if !errors.Is(regErr, os.ErrNotExist) {
-				fw.Drop()
-				slog.Error("incremental register failed",
-					"error", regErr, "session_id", sc.SessionID, "archive_name", archiveName)
-				writeError(w, http.StatusInternalServerError, "internal error")
+			if errors.Is(regErr, os.ErrNotExist) {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("previous archive %q not found", archiveName))
 				return
 			}
-			slog.Warn("previous index not found, proceeding non-incrementally",
-				"session_id", sc.SessionID, "archive_name", archiveName)
-			isIncremental = false
+			slog.Error("incremental register failed",
+				"error", regErr, "session_id", sc.SessionID, "archive_name", archiveName)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
-	} else if isIncremental {
-		isIncremental = false
 	}
 
 	sizeVal := size
