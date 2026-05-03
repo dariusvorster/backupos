@@ -1,6 +1,7 @@
 // Package auth implements PBS token validation.
 //
-// Wire format: Authorization: PBSAPIToken=user@realm!tokenname:secret
+// Wire formats: "PBSAPIToken=user@realm!tokenname:secret" (proxmox-backup-client)
+//               "PBSAPIToken user@realm!tokenname:secret" (pveproxy / RFC 7235)
 //
 // Hash format: sha256(secret) as lowercase hex. No salt. Matches the
 // M3b Node implementation exactly so existing tokens validate.
@@ -53,13 +54,23 @@ var ErrTokenExpired = errors.New("token expired")
 // Authorization header value. Returns ErrMalformed if the header doesn't
 // match the expected format.
 //
-// Format: PBSAPIToken=user@realm!tokenname:secret
+// Accepts both formats real PBS accepts:
+//
+//	"PBSAPIToken=user@realm!tokenname:secret"  (proxmox-backup-client)
+//	"PBSAPIToken user@realm!tokenname:secret"  (RFC 7235, pveproxy)
 func ParseAuthHeader(header string) (*ParsedHeader, error) {
-	const prefix = "PBSAPIToken="
-	if !strings.HasPrefix(header, prefix) {
+	const scheme = "PBSAPIToken"
+	if !strings.HasPrefix(header, scheme) {
 		return nil, ErrMalformed
 	}
-	raw := header[len(prefix):]
+	if len(header) <= len(scheme) {
+		return nil, ErrMalformed
+	}
+	sep := header[len(scheme)]
+	if sep != '=' && sep != ' ' {
+		return nil, ErrMalformed
+	}
+	raw := header[len(scheme)+1:]
 
 	colonIdx := strings.Index(raw, ":")
 	if colonIdx == -1 {
