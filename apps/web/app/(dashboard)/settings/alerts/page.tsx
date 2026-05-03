@@ -3,6 +3,7 @@ import { deleteAlertChannel, saveChannelSubscriptions } from '@/app/actions/aler
 import { ALL_ALERT_TYPES, ALERT_TYPE_LABELS } from '@/lib/alerts'
 import { AddChannelForm } from './AddChannelForm'
 import { TestChannelButton } from './TestChannelButton'
+import { SaveSubscriptionsButton } from './SaveSubscriptionsButton'
 
 const TYPE_LABELS: Record<string, string> = {
   discord:   'Discord',
@@ -108,16 +109,7 @@ export default async function AlertChannelsPage({ searchParams }: { searchParams
                       </label>
                     ))}
                   </div>
-                  <button
-                    type="submit"
-                    style={{
-                      padding: '4px 12px', fontSize: 12, cursor: 'pointer',
-                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                      background: 'var(--surf2)', color: 'var(--fg)',
-                    }}
-                  >
-                    Save
-                  </button>
+                  <SaveSubscriptionsButton />
                 </form>
               </div>
             )
