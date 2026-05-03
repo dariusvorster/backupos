@@ -121,7 +121,7 @@ func main() {
 		dynamicchunk.NewHandler(),
 		dynamicappend.NewHandler(),
 		dynamicclose.NewHandler(),
-		previousarchive.NewHandler(),
+		previousarchive.NewHandler(nil),
 		previoustime.NewHandler(),
 		upgrade.StubStreamHandler(),
 	)
