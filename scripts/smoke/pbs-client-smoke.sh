@@ -42,23 +42,42 @@ FAIL=0
 # --- Helpers ---------------------------------------------------------------
 
 # Run proxmox-backup-client against backupos-pbs.
-# Captures combined stdout+stderr to the given file.
-# Returns the exit code of proxmox-backup-client.
+# Captures combined stdout+stderr to the given log file.
+# Use this for status, backup, snapshot list — anything where stdout is logs.
 pbc_backupos() {
-  local outfile="$1"; shift
+  local logfile="$1"; shift
   PBS_REPOSITORY="$backupos_repo" \
   PBS_FINGERPRINT="$FP_BACKUPOS" \
   PBS_PASSWORD="$SMOKE_TOKEN_BACKUPOS" \
-    proxmox-backup-client "$@" >"$outfile" 2>&1
+    proxmox-backup-client "$@" >"$logfile" 2>&1
 }
 
 # Run proxmox-backup-client against real PBS (control).
 pbc_real_pbs() {
-  local outfile="$1"; shift
+  local logfile="$1"; shift
   PBS_REPOSITORY="$real_pbs_repo" \
   PBS_FINGERPRINT="$FP_REAL_PBS" \
   PBS_PASSWORD="$SMOKE_TOKEN_REAL_PBS" \
-    proxmox-backup-client "$@" >"$outfile" 2>&1
+    proxmox-backup-client "$@" >"$logfile" 2>&1
+}
+
+# Restore variants: stderr goes to the logfile, stdout is left alone so the
+# client can write archive bytes to its destination argument without our
+# wrapper interfering.
+pbc_backupos_restore() {
+  local logfile="$1"; shift
+  PBS_REPOSITORY="$backupos_repo" \
+  PBS_FINGERPRINT="$FP_BACKUPOS" \
+  PBS_PASSWORD="$SMOKE_TOKEN_BACKUPOS" \
+    proxmox-backup-client restore "$@" 2>"$logfile"
+}
+
+pbc_real_pbs_restore() {
+  local logfile="$1"; shift
+  PBS_REPOSITORY="$real_pbs_repo" \
+  PBS_FINGERPRINT="$FP_REAL_PBS" \
+  PBS_PASSWORD="$SMOKE_TOKEN_REAL_PBS" \
+    proxmox-backup-client restore "$@" 2>"$logfile"
 }
 
 # Normalise a text file: strip timestamps, snapshot date suffixes, version
@@ -112,19 +131,50 @@ pbc_real_pbs "$SMOKE_OUT/real-pbs/01-status.txt" status || rc=$?
 record "step-1 status" "real-pbs" "$rc"
 
 # ---------------------------------------------------------------------------
+# Fixture setup: deterministic .pxar source
+# ---------------------------------------------------------------------------
+echo "==> Preparing .pxar source fixture"
+
+PXAR_SRC="/tmp/smoke-pxar-src"
+rm -rf "$PXAR_SRC"
+mkdir -p "$PXAR_SRC/subdir-a" "$PXAR_SRC/subdir-b"
+
+# Deterministic text files
+echo "smoke test fixture line 1" > "$PXAR_SRC/file1.txt"
+echo "smoke test fixture line 2" > "$PXAR_SRC/file2.txt"
+printf 'multiline\ncontent\nwith trailing newline\n' > "$PXAR_SRC/subdir-a/notes.txt"
+
+# Deterministic binary blob (1 MiB of zeroes — predictable, dedup-friendly)
+dd if=/dev/zero of="$PXAR_SRC/subdir-a/blob.bin" bs=1M count=1 status=none
+
+# Fixed-pattern binary blob so re-runs are bit-identical
+python3 -c "import sys; sys.stdout.buffer.write(bytes(range(256)) * 1024)" \
+  > "$PXAR_SRC/subdir-b/pattern.bin"
+
+# A symlink (tests pxar symlink handling)
+ln -s file1.txt "$PXAR_SRC/link-to-file1"
+
+# Capture original tree state for later diff
+( cd "$PXAR_SRC" && find . -type f -exec sha256sum {} \; | sort ) \
+  > "$SMOKE_OUT/pxar-src.sha256"
+
+echo "  Fixture written to $PXAR_SRC"
+echo "  $(wc -l < "$SMOKE_OUT/pxar-src.sha256") files captured in pxar-src.sha256"
+
+# ---------------------------------------------------------------------------
 # Step 2: backup .pxar (didx path)
 # ---------------------------------------------------------------------------
 echo "==> Step 2: backup .pxar (didx)"
 
 rc=0
 pbc_backupos "$SMOKE_OUT/backupos/02-backup-pxar.txt" backup \
-  "smoke-etc.pxar:/etc" \
+  "smoke-fixture.pxar:/tmp/smoke-pxar-src" \
   --backup-id pbs-smoke-pxar || rc=$?
 record "step-2 backup-pxar" "backupos" "$rc"
 
 rc=0
 pbc_real_pbs "$SMOKE_OUT/real-pbs/02-backup-pxar.txt" backup \
-  "smoke-etc.pxar:/etc" \
+  "smoke-fixture.pxar:/tmp/smoke-pxar-src" \
   --backup-id pbs-smoke-pxar || rc=$?
 record "step-2 backup-pxar" "real-pbs" "$rc"
 
@@ -195,11 +245,11 @@ backupos_pxar_snap=""
 backupos_pxar_snap=$(latest_snap "$SMOKE_OUT/backupos/04-snapshots.json" "pbs-smoke-pxar") || FAIL=$((FAIL + 1))
 
 if [[ -n "$backupos_pxar_snap" ]]; then
-  mkdir -p "$SMOKE_OUT/restore-backupos/etc"
+  mkdir -p "$SMOKE_OUT/restore-backupos/fixture"
   rc=0
-  pbc_backupos "$SMOKE_OUT/backupos/05-restore-pxar.txt" restore \
-    "$backupos_pxar_snap" smoke-etc.pxar \
-    "$SMOKE_OUT/restore-backupos/etc" || rc=$?
+  pbc_backupos_restore "$SMOKE_OUT/backupos/05-restore-pxar.txt" \
+    "$backupos_pxar_snap" smoke-fixture.pxar \
+    "$SMOKE_OUT/restore-backupos/fixture" || rc=$?
   record "step-5 restore-pxar" "backupos" "$rc"
 fi
 
@@ -208,11 +258,11 @@ real_pbs_pxar_snap=""
 real_pbs_pxar_snap=$(latest_snap "$SMOKE_OUT/real-pbs/04-snapshots.json" "pbs-smoke-pxar") || true
 
 if [[ -n "$real_pbs_pxar_snap" ]]; then
-  mkdir -p "$SMOKE_OUT/restore-real-pbs/etc"
+  mkdir -p "$SMOKE_OUT/restore-real-pbs/fixture"
   rc=0
-  pbc_real_pbs "$SMOKE_OUT/real-pbs/05-restore-pxar.txt" restore \
-    "$real_pbs_pxar_snap" smoke-etc.pxar \
-    "$SMOKE_OUT/restore-real-pbs/etc" || rc=$?
+  pbc_real_pbs_restore "$SMOKE_OUT/real-pbs/05-restore-pxar.txt" \
+    "$real_pbs_pxar_snap" smoke-fixture.pxar \
+    "$SMOKE_OUT/restore-real-pbs/fixture" || rc=$?
   record "step-5 restore-pxar" "real-pbs" "$rc"
 fi
 
@@ -222,7 +272,7 @@ backupos_img_snap=$(latest_snap "$SMOKE_OUT/backupos/04-snapshots.json" "pbs-smo
 
 if [[ -n "$backupos_img_snap" ]]; then
   rc=0
-  pbc_backupos "$SMOKE_OUT/backupos/05-restore-img.txt" restore \
+  pbc_backupos_restore "$SMOKE_OUT/backupos/05-restore-img.txt" \
     "$backupos_img_snap" smoke.img \
     "$SMOKE_OUT/restore-backupos/smoke.img" || rc=$?
   record "step-5 restore-img" "backupos" "$rc"
@@ -231,10 +281,10 @@ if [[ -n "$backupos_img_snap" ]]; then
     restored_hash=$(sha256sum "$SMOKE_OUT/restore-backupos/smoke.img" | awk '{print $1}')
     original_hash=$(awk '{print $1}' "$SMOKE_OUT/smoke-img.sha256")
     if [[ "$restored_hash" == "$original_hash" ]]; then
-      echo "  PASS: step-5 .img byte-match (backupos)"
+      echo "  PASS: step-5 .img byte-match assertion (backupos)"
       PASS=$((PASS + 1))
     else
-      echo "  FAIL: step-5 .img byte-mismatch (backupos)" >&2
+      echo "  FAIL: step-5 .img byte-mismatch assertion (backupos)" >&2
       echo "    original:  $original_hash" >&2
       echo "    restored:  $restored_hash" >&2
       FAIL=$((FAIL + 1))
@@ -248,7 +298,7 @@ real_pbs_img_snap=$(latest_snap "$SMOKE_OUT/real-pbs/04-snapshots.json" "pbs-smo
 
 if [[ -n "$real_pbs_img_snap" ]]; then
   rc=0
-  pbc_real_pbs "$SMOKE_OUT/real-pbs/05-restore-img.txt" restore \
+  pbc_real_pbs_restore "$SMOKE_OUT/real-pbs/05-restore-img.txt" \
     "$real_pbs_img_snap" smoke.img \
     "$SMOKE_OUT/restore-real-pbs/smoke.img" || rc=$?
   record "step-5 restore-img" "real-pbs" "$rc"
@@ -265,18 +315,20 @@ if [[ -n "$real_pbs_img_snap" ]]; then
 fi
 
 # --- .pxar content comparison (backupos) ---
-# Allowlisted divergences: /etc/mtab (symlink to /proc/mounts),
-# /etc/resolv.conf (managed symlink), /etc/hostname (CT-specific).
-if [[ -d "$SMOKE_OUT/restore-backupos/etc" ]]; then
-  diff_pxar=0
-  diff -r --exclude=mtab --exclude=resolv.conf --exclude=hostname \
-    /etc "$SMOKE_OUT/restore-backupos/etc" \
-    > "$SMOKE_OUT/diff/05-pxar-vs-source.diff" 2>&1 || diff_pxar=$?
-  if [[ "$diff_pxar" -eq 0 ]]; then
-    echo "  PASS: step-5 .pxar content matches /etc (backupos)"
+# The fixture is deterministic, so the restored tree's sha256 manifest must
+# match the original byte-for-byte. No allowlist needed.
+if [[ -d "$SMOKE_OUT/restore-backupos/fixture" ]]; then
+  ( cd "$SMOKE_OUT/restore-backupos/fixture" \
+      && find . -type f -exec sha256sum {} \; | sort ) \
+    > "$SMOKE_OUT/restore-backupos/pxar-restored.sha256"
+
+  if diff -u "$SMOKE_OUT/pxar-src.sha256" \
+            "$SMOKE_OUT/restore-backupos/pxar-restored.sha256" \
+            > "$SMOKE_OUT/diff/05-pxar-vs-source.diff" 2>&1; then
+    echo "  PASS: step-5 .pxar content-match assertion (backupos)"
     PASS=$((PASS + 1))
   else
-    echo "  FAIL: step-5 .pxar content differs from /etc (backupos)" >&2
+    echo "  FAIL: step-5 .pxar content differs from fixture (backupos)" >&2
     echo "    See $SMOKE_OUT/diff/05-pxar-vs-source.diff" >&2
     FAIL=$((FAIL + 1))
   fi
@@ -319,6 +371,10 @@ echo
 echo "=== Smoke test complete ==="
 echo "  Passed (backupos): $PASS"
 echo "  Failed (backupos): $FAIL"
+echo
+echo "  Note: each logical assertion counts once. Restore-exit-code and"
+echo "  content/hash-match are tracked as separate assertions."
+echo
 echo "  Output:  $SMOKE_OUT"
 echo "  Diffs:   $SMOKE_OUT/diff/"
 echo

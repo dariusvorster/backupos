@@ -177,7 +177,7 @@ Each step runs against backupos-pbs first, then against the real PBS control. Th
 
 - **Step 1 — status (auth probe):** `proxmox-backup-client status` against both servers using the smoke token. Proves the version handshake, API token auth, and ticket issuance work. Failure here means the wire-level auth path is broken. (We use `status` rather than the interactive `login` subcommand; it exercises the same auth path.)
 
-- **Step 2 — backup `.pxar` (didx):** back up `/etc` from CT299 as a `.pxar` archive against both servers. Proves the dynamic-index path: chunk upload, blob storage, manifest write, snapshot creation. Failure here means the didx path (PR #274) is broken.
+- **Step 2 — backup `.pxar` (didx):** the script writes a deterministic fixture tree to `/tmp/smoke-pxar-src` (text files, binary blobs, a symlink) and backs that up as a `.pxar` archive against both servers. A live `/etc` was rejected because system-managed files (`ld.so.cache`, `machine-id`, `.pwd.lock`, `/etc/adjtime`) change between backup and restore and produce false-positive content mismatches. Proves the dynamic-index path: chunk upload, blob storage, manifest write, snapshot creation. Failure here means the didx path (PR #274) is broken.
 
 - **Step 3 — backup `.img` (fidx):** create a 64 MiB test image with `dd if=/dev/urandom`, back it up against both servers. Proves the fixed-index path (PR #273). Failure here means VM-style backups don't work.
 
