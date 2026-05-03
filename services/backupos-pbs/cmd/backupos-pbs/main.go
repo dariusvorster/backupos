@@ -246,13 +246,13 @@ func requireAuth(v *auth.Validator, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			writeAuthError(w, "missing Authorization header")
+			writeAuthError(w, r, "missing Authorization header")
 			return
 		}
 
 		parsed, err := auth.ParseAuthHeader(authHeader)
 		if err != nil {
-			writeAuthError(w, "malformed Authorization header")
+			writeAuthError(w, r, "malformed Authorization header")
 			return
 		}
 
@@ -268,7 +268,7 @@ func requireAuth(v *auth.Validator, next http.HandlerFunc) http.HandlerFunc {
 				"token_name", parsed.TokenName,
 				"remote", r.RemoteAddr,
 			)
-			writeAuthError(w, "invalid credentials")
+			writeAuthError(w, r, "invalid credentials")
 			return
 		}
 
@@ -286,7 +286,14 @@ func requireAuth(v *auth.Validator, next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func writeAuthError(w http.ResponseWriter, reason string) {
+func writeAuthError(w http.ResponseWriter, r *http.Request, reason string) {
+	slog.Info("401",
+		"reason", reason,
+		"method", r.Method,
+		"path",   r.URL.Path,
+		"query",  r.URL.RawQuery,
+		"remote", r.RemoteAddr,
+	)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("WWW-Authenticate", `PBSAPIToken realm="backupos"`)
 	w.WriteHeader(http.StatusUnauthorized)
