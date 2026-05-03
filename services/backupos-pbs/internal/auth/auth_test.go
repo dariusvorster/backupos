@@ -36,6 +36,25 @@ func TestParseAuthHeader_SecretWithSpecialChars(t *testing.T) {
 	}
 }
 
+func TestParseAuthHeader_SpaceSeparated(t *testing.T) {
+	h, err := ParseAuthHeader("PBSAPIToken root@pbs!test1:abcdef")
+	if err != nil {
+		t.Fatalf("expected ok, got %v", err)
+	}
+	if h.User != "root" {
+		t.Errorf("user: got %q, want %q", h.User, "root")
+	}
+	if h.Realm != "pbs" {
+		t.Errorf("realm: got %q, want %q", h.Realm, "pbs")
+	}
+	if h.TokenName != "test1" {
+		t.Errorf("tokenName: got %q, want %q", h.TokenName, "test1")
+	}
+	if h.Secret != "abcdef" {
+		t.Errorf("secret: got %q, want %q", h.Secret, "abcdef")
+	}
+}
+
 func TestParseAuthHeader_Malformed(t *testing.T) {
 	cases := []string{
 		"",                               // empty
@@ -49,6 +68,8 @@ func TestParseAuthHeader_Malformed(t *testing.T) {
 		"PBSAPIToken=user@!name:secret",  // empty realm
 		"PBSAPIToken=user@realm!:secret", // empty token name
 		"PBSAPIToken=user!name:secret",   // missing @realm
+		"PBSAPIToken:root@pbs!test1:x",   // unrecognised separator
+		"PBSAPIToken",                    // scheme only, no separator
 	}
 	for _, c := range cases {
 		t.Run(c, func(t *testing.T) {
