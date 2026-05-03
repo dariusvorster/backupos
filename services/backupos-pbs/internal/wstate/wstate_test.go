@@ -366,12 +366,18 @@ func TestDynamicWriterAppendChunk_IncrementsChunkCount(t *testing.T) {
 	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
 
 	var digest [32]byte
-	if err := ws.DynamicWriterAppendChunk(wid, 65536, digest); err != nil {
+	// Pre-register chunk so knownChunks has the size lookup.
+	if err := ws.RegisterDynamicChunk(wid, digest, 65536, false); err != nil {
+		t.Fatal(err)
+	}
+	// Start offset is 0 (first chunk); after append running offset becomes 65536.
+	if err := ws.DynamicWriterAppendChunk(wid, 0, digest); err != nil {
 		t.Fatal(err)
 	}
 	if len(fi.chunks) != 1 {
 		t.Errorf("expected 1 chunk in fakeDynIdx, got %d", len(fi.chunks))
 	}
+	// Index receives the END offset (65536), not the start offset.
 	if fi.chunks[0].offset != 65536 {
 		t.Errorf("offset: got %d, want 65536", fi.chunks[0].offset)
 	}
@@ -387,7 +393,13 @@ func TestDynamicWriterClose_HappyPath(t *testing.T) {
 	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
 
 	var d [32]byte
-	_ = ws.DynamicWriterAppendChunk(wid, 65536, d)
+	if err := ws.RegisterDynamicChunk(wid, d, 65536, false); err != nil {
+		t.Fatal(err)
+	}
+	// Start offset 0; after append running offset becomes 65536.
+	if err := ws.DynamicWriterAppendChunk(wid, 0, d); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := ws.DynamicWriterClose(wid, 1, 65536, expectedCsum)
 	if err != nil {
@@ -415,7 +427,13 @@ func TestDynamicWriterClose_SizeMismatch_ReturnsError(t *testing.T) {
 	wid, _ := ws.RegisterDynamicWriter("a.didx", fi)
 
 	var d [32]byte
-	_ = ws.DynamicWriterAppendChunk(wid, 65536, d) // Offset becomes 65536
+	if err := ws.RegisterDynamicChunk(wid, d, 65536, false); err != nil {
+		t.Fatal(err)
+	}
+	// Start offset 0; after append running offset becomes 65536.
+	if err := ws.DynamicWriterAppendChunk(wid, 0, d); err != nil {
+		t.Fatal(err)
+	}
 
 	// client claims size=99999, server tracked 65536
 	_, err := ws.DynamicWriterClose(wid, 1, 99999, [32]byte{})
@@ -462,5 +480,46 @@ func TestCleanup_SkipsClosedDynamicWriters(t *testing.T) {
 	ws.Cleanup()
 	if fi.dropCalled {
 		t.Error("Drop called on already-closed dynamic writer during Cleanup")
+	}
+}
+
+func TestDynamicWriterAppendChunk_RejectsWrongStartOffset(t *testing.T) {
+	s := New()
+	idx := &fakeDynIdx{}
+	wid, err := s.RegisterDynamicWriter("test.didx", idx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var d1, d2 [32]byte
+	d1[0] = 0x01
+	d2[0] = 0x02
+	if err := s.RegisterDynamicChunk(wid, d1, 100, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RegisterDynamicChunk(wid, d2, 200, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// First chunk: start offset 0, size 100 → running offset becomes 100.
+	if err := s.DynamicWriterAppendChunk(wid, 0, d1); err != nil {
+		t.Fatalf("first append: %v", err)
+	}
+	// Second chunk: start offset MUST be 100, not 50 or 200.
+	if err := s.DynamicWriterAppendChunk(wid, 50, d2); err == nil {
+		t.Fatal("expected error for wrong start offset, got nil")
+	}
+	if err := s.DynamicWriterAppendChunk(wid, 100, d2); err != nil {
+		t.Fatalf("correct second append: %v", err)
+	}
+
+	// Final running offset should equal 100 + 200 = 300.
+	// Close with size=300, chunk_count=2; csum mismatch is expected (zero csum vs zero closeReturn).
+	var csum [32]byte
+	if _, err := s.DynamicWriterClose(wid, 2, 300, csum); err != nil {
+		// Csum mismatch is fine — verify the failure is csum-only, not offset-related.
+		if !strings.Contains(err.Error(), "csum") {
+			t.Fatalf("unexpected close error (should be csum): %v", err)
+		}
 	}
 }

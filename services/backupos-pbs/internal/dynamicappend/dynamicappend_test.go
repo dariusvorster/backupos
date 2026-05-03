@@ -125,7 +125,7 @@ func TestHandler_HappyPath_Returns200(t *testing.T) {
 	body := appendRequest{
 		Wid:        wid,
 		DigestList: []string{"dead" + "000000000000000000000000000000000000000000000000000000000000"},
-		OffsetList: []uint64{65536},
+		OffsetList: []uint64{0}, // start offset 0 (first chunk)
 	}
 	// Fix digest hex to be exactly 64 chars matching the registered digest.
 	hexStr := make([]byte, 64)
