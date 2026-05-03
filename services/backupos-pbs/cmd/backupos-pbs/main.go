@@ -252,6 +252,26 @@ func requireAuth(v *auth.Validator, next http.HandlerFunc) http.HandlerFunc {
 
 		parsed, err := auth.ParseAuthHeader(authHeader)
 		if err != nil {
+			prefix := authHeader
+			if len(prefix) > 30 {
+				prefix = prefix[:30] + "..."
+			}
+			slog.Info("auth header rejected",
+				"prefix", prefix,
+				"method", r.Method,
+				"path",   r.URL.Path,
+				"remote", r.RemoteAddr,
+			)
+			if cookie := r.Header.Get("Cookie"); cookie != "" {
+				cookiePrefix := cookie
+				if len(cookiePrefix) > 60 {
+					cookiePrefix = cookiePrefix[:60] + "..."
+				}
+				slog.Info("cookie present alongside rejected auth",
+					"cookie_prefix", cookiePrefix,
+					"path", r.URL.Path,
+				)
+			}
 			writeAuthError(w, r, "malformed Authorization header")
 			return
 		}
