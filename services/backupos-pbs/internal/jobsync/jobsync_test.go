@@ -39,7 +39,7 @@ func openDB(t *testing.T) *sql.DB {
 
 func TestJobID_RootNamespace(t *testing.T) {
 	got := JobID("ds-1", namespace.Root(), "vm", "100")
-	want := "pbs:ds-1::vm:100"
+	want := "pbs_ds-1_root_vm_100"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -51,7 +51,7 @@ func TestJobID_NonRootNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := JobID("ds-1", ns, "vm", "100")
-	want := "pbs:ds-1:tenant-a:vm:100"
+	want := "pbs_ds-1_tenant-a_vm_100"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -74,12 +74,12 @@ func TestUpsertJob_InsertsRow(t *testing.T) {
 	}
 
 	var id, name, sourceType string
-	err := db.QueryRow(`SELECT id, name, source_type FROM backup_jobs WHERE id = ?`, "pbs:ds-1::vm:100").
+	err := db.QueryRow(`SELECT id, name, source_type FROM backup_jobs WHERE id = ?`, "pbs_ds-1_root_vm_100").
 		Scan(&id, &name, &sourceType)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
-	if id != "pbs:ds-1::vm:100" {
+	if id != "pbs_ds-1_root_vm_100" {
 		t.Errorf("id: got %q", id)
 	}
 	if name != "PVE: vm/100" {
@@ -97,7 +97,7 @@ func TestUpsertJob_DoesNotUpdateExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Manually tweak the row to verify it's left unchanged.
-	if _, err := db.Exec(`UPDATE backup_jobs SET name = 'custom' WHERE id = ?`, "pbs:ds-1::vm:100"); err != nil {
+	if _, err := db.Exec(`UPDATE backup_jobs SET name = 'custom' WHERE id = ?`, "pbs_ds-1_root_vm_100"); err != nil {
 		t.Fatal(err)
 	}
 	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
@@ -105,7 +105,7 @@ func TestUpsertJob_DoesNotUpdateExisting(t *testing.T) {
 	}
 
 	var name string
-	_ = db.QueryRow(`SELECT name FROM backup_jobs WHERE id = ?`, "pbs:ds-1::vm:100").Scan(&name)
+	_ = db.QueryRow(`SELECT name FROM backup_jobs WHERE id = ?`, "pbs_ds-1_root_vm_100").Scan(&name)
 	if name != "custom" {
 		t.Errorf("expected row unchanged (name='custom'), got %q", name)
 	}
