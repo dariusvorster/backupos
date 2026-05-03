@@ -173,7 +173,7 @@ export async function updateChannelSubscriptions(channelId: string, events: Aler
   await db.update(alertChannels)
     .set({ subscribedEvents: JSON.stringify(events) })
     .where(eq(alertChannels.id, channelId))
-  revalidatePath('/settings/alerts')
+  redirect('/settings/alerts?saved=1')
 }
 
 export async function saveChannelSubscriptions(channelId: string, formData: FormData): Promise<void> {
