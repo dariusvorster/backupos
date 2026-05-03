@@ -1,0 +1,116 @@
+// Package jobsync synthesises backup_jobs and backup_runs rows for PBS sessions.
+//
+// PBS-protocol backups (PVE → backupos-pbs) don't go through the normal
+// backup-job scheduler, so they would be invisible in the web UI. This
+// package bridges that gap by creating a synthetic Job per unique backup tuple
+// and a Run per session. All operations are best-effort: callers log errors
+// but don't fail the backup on DB errors.
+package jobsync
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/namespace"
+)
+
+// JobID returns the deterministic synthetic Job ID for a backup tuple.
+// Format: pbs:<datastoreID>:<namespace>:<backupType>:<backupID>
+// Root namespace produces an empty string between the two colons.
+func JobID(datastoreID string, ns namespace.Namespace, backupType, backupID string) string {
+	nsPart := ""
+	if !ns.IsRoot() {
+		nsPart = ns.String()
+	}
+	return fmt.Sprintf("pbs:%s:%s:%s:%s", datastoreID, nsPart, backupType, backupID)
+}
+
+// JobName returns the human-friendly display name.
+// Root namespace: "PVE: vm/100"
+// Non-root:       "PVE: tenant-a/vm/100"
+func JobName(ns namespace.Namespace, backupType, backupID string) string {
+	if ns.IsRoot() {
+		return fmt.Sprintf("PVE: %s/%s", backupType, backupID)
+	}
+	return fmt.Sprintf("PVE: %s/%s/%s", ns.String(), backupType, backupID)
+}
+
+// sourceTypeFor maps a PBS backup_type to the closest backup_jobs.source_type.
+func sourceTypeFor(backupType string) string {
+	if backupType == "vm" {
+		return "proxmox_vm"
+	}
+	return "proxmox_lxc"
+}
+
+// UpsertJob inserts the synthetic Job if it doesn't already exist.
+// On conflict the existing row is left unchanged (ON CONFLICT DO NOTHING).
+func UpsertJob(db *sql.DB, datastoreID string, ns namespace.Namespace, backupType, backupID string) error {
+	jobID := JobID(datastoreID, ns, backupType, backupID)
+	sourceConfig, _ := json.Marshal(map[string]string{
+		"datastore_id": datastoreID,
+		"namespace":    ns.String(),
+		"backup_id":    backupID,
+		"source":       "pbs_protocol",
+	})
+	const q = `
+		INSERT INTO backup_jobs
+			(id, name, source_type, source_config, schedule, enabled,
+			 preflight_enabled, created_at)
+		VALUES (?, ?, ?, ?, '', 0, 0, ?)
+		ON CONFLICT(id) DO NOTHING
+	`
+	_, err := db.Exec(q,
+		jobID, JobName(ns, backupType, backupID),
+		sourceTypeFor(backupType), string(sourceConfig),
+		time.Now().UnixMilli(),
+	)
+	return err
+}
+
+// InsertRunningRun inserts a backup_runs row in 'running' state and returns the new run ID.
+func InsertRunningRun(db *sql.DB, jobID string, startedAt time.Time) (string, error) {
+	runID := uuid.NewString()
+	const q = `
+		INSERT INTO backup_runs
+			(id, job_id, status, trigger, started_at, run_type)
+		VALUES (?, ?, 'running', 'api', ?, 'backup')
+	`
+	_, err := db.Exec(q, runID, jobID, startedAt.UnixMilli())
+	return runID, err
+}
+
+// FinishRun marks a run as completed (success or failed) and updates the parent Job.
+// snapshotID and errorMessage may be nil for the unused branch.
+func FinishRun(db *sql.DB, runID, jobID, status string, snapshotID, errorMessage *string, startedAt, completedAt time.Time) error {
+	durationSec := int64(completedAt.Sub(startedAt).Seconds())
+	const updateRun = `
+		UPDATE backup_runs
+		SET status = ?, completed_at = ?, duration = ?, snapshot_id = ?, error_message = ?
+		WHERE id = ?
+	`
+	if _, err := db.Exec(updateRun, status, completedAt.UnixMilli(), durationSec,
+		nullableString(snapshotID), nullableString(errorMessage), runID); err != nil {
+		return fmt.Errorf("update run: %w", err)
+	}
+	const updateJob = `
+		UPDATE backup_jobs
+		SET last_run_at = ?, last_run_status = ?
+		WHERE id = ?
+	`
+	if _, err := db.Exec(updateJob, completedAt.UnixMilli(), status, jobID); err != nil {
+		return fmt.Errorf("update job: %w", err)
+	}
+	return nil
+}
+
+func nullableString(s *string) sql.NullString {
+	if s == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *s, Valid: true}
+}
