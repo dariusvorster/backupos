@@ -33,6 +33,7 @@ import (
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/blob"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/jobsync"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/db"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/dynamicappend"
@@ -95,6 +96,16 @@ func main() {
 		"release", releaseString,
 		"bind", *bind,
 	)
+
+	// Wire internal webhook for PBS → web alert delivery.
+	internalURL := os.Getenv("BACKUPOS_INTERNAL_URL")
+	internalSecret := os.Getenv("BACKUPOS_INTERNAL_SECRET")
+	if internalURL == "" || internalSecret == "" {
+		slog.Warn("BACKUPOS_INTERNAL_URL or BACKUPOS_INTERNAL_SECRET not set; PBS alerts will not fire")
+	} else {
+		jobsync.SetWebhookConfig(internalURL, internalSecret)
+		slog.Info("internal webhook configured", "url", internalURL)
+	}
 
 	// Open the SQLite database (read+write, WAL mode handled by Node side).
 	database, err := db.Open(*dbPath)

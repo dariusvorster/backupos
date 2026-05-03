@@ -14,7 +14,7 @@ import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTe
 import { ensureRepoMountedOnAgent } from './lib/repo-mount'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
-import { sendAlert } from './lib/alerts'
+import { sendAlert, fireBackupSucceeded, fireRestoreSucceeded, fireRestoreFailed } from './lib/alerts'
 import { appendLog } from './lib/logger'
 import { auth } from './lib/auth'
 import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
@@ -569,6 +569,11 @@ void app.prepare().then(() => {
             totalSize:       msg.stats.totalBytesProcessed,
             duration:        msg.stats.durationMs,
           }).where(eq(backupRuns.id, run.id))
+          try {
+            await fireBackupSucceeded(run.id)
+          } catch (err) {
+            console.error('[alerts] fireBackupSucceeded failed:', err)
+          }
           const [jobForNext] = await db.select({ schedule: backupJobs.schedule, name: backupJobs.name })
             .from(backupJobs).where(eq(backupJobs.id, msg.jobId)).limit(1)
           const jobLabel = jobForNext?.name ?? msg.jobId
@@ -781,6 +786,15 @@ void app.prepare().then(() => {
             resourceType: 'restore_run', resourceId: msg.restoreId,
             actor: agentId, createdAt: new Date(),
           })
+          try {
+            if (msg.success) {
+              await fireRestoreSucceeded(msg.restoreId)
+            } else {
+              await fireRestoreFailed(msg.restoreId, 'restore failed')
+            }
+          } catch (err) {
+            console.error('[alerts] restore alert failed:', err)
+          }
 
         } else if (msg.type === 'filesystem_restore_cancelled' && agentId) {
           console.log(`[restore] filesystem_restore_cancelled restoreId=${msg.restoreId} agentId=${agentId} reason=${msg.reason}`)
@@ -827,6 +841,15 @@ void app.prepare().then(() => {
             resourceType: 'restore_run', resourceId: msg.restoreId,
             actor: agentId, createdAt: new Date(),
           })
+          try {
+            if (msg.success) {
+              await fireRestoreSucceeded(msg.restoreId)
+            } else {
+              await fireRestoreFailed(msg.restoreId, msg.error ?? 'filesystem restore failed')
+            }
+          } catch (err) {
+            console.error('[alerts] restore alert failed:', err)
+          }
         }
       })()
     })

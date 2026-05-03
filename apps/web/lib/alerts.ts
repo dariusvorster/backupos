@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer'
-import { getDb, alerts, alertChannels, smtpConfig, eq } from '@backupos/db'
+import { getDb, alerts, alertChannels, smtpConfig, backupRuns, backupJobs, restoreRuns, restoreSpecs, eq } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 
 export type AlertType =
@@ -374,4 +374,83 @@ export async function sendAlert(type: AlertType, payload: AlertPayload): Promise
   } catch (err) {
     console.error('[alerts] email delivery failed:', err)
   }
+}
+
+export async function fireBackupSucceeded(runId: string): Promise<void> {
+  const db = getDb()
+  const [row] = await db.select({
+    jobId:     backupRuns.jobId,
+    jobName:   backupJobs.name,
+    duration:  backupRuns.duration,
+    totalSize: backupRuns.totalSize,
+  })
+    .from(backupRuns)
+    .leftJoin(backupJobs, eq(backupRuns.jobId, backupJobs.id))
+    .where(eq(backupRuns.id, runId))
+    .limit(1)
+  if (!row?.jobId) return
+  await sendAlert('backup_succeeded', {
+    jobId:          row.jobId,
+    jobName:        row.jobName ?? 'unknown',
+    durationSec:    row.duration != null ? Math.round(row.duration / 1000) : null,
+    totalSizeBytes: row.totalSize ?? null,
+  })
+}
+
+export async function fireRestoreSucceeded(runId: string): Promise<void> {
+  const db = getDb()
+  const [row] = await db.select({
+    specId:      restoreRuns.specId,
+    specName:    restoreSpecs.name,
+    startedAt:   restoreRuns.startedAt,
+    completedAt: restoreRuns.completedAt,
+  })
+    .from(restoreRuns)
+    .leftJoin(restoreSpecs, eq(restoreRuns.specId, restoreSpecs.id))
+    .where(eq(restoreRuns.id, runId))
+    .limit(1)
+  if (!row) return
+  const durationSec = (row.startedAt && row.completedAt)
+    ? Math.round((row.completedAt.getTime() - row.startedAt.getTime()) / 1000)
+    : null
+  await sendAlert('restore_succeeded', {
+    runId,
+    jobName:     row.specName ?? 'ad-hoc restore',
+    durationSec,
+  })
+}
+
+export async function fireRestoreFailed(runId: string, error: string): Promise<void> {
+  const db = getDb()
+  const [row] = await db.select({
+    specId:   restoreRuns.specId,
+    specName: restoreSpecs.name,
+  })
+    .from(restoreRuns)
+    .leftJoin(restoreSpecs, eq(restoreRuns.specId, restoreSpecs.id))
+    .where(eq(restoreRuns.id, runId))
+    .limit(1)
+  await sendAlert('restore_failed', {
+    runId,
+    jobName: row?.specName ?? 'ad-hoc restore',
+    error,
+  })
+}
+
+export async function fireBackupFailed(runId: string, error: string): Promise<void> {
+  const db = getDb()
+  const [row] = await db.select({
+    jobId:   backupRuns.jobId,
+    jobName: backupJobs.name,
+  })
+    .from(backupRuns)
+    .leftJoin(backupJobs, eq(backupRuns.jobId, backupJobs.id))
+    .where(eq(backupRuns.id, runId))
+    .limit(1)
+  if (!row?.jobId) return
+  await sendAlert('backup_failed', {
+    jobId:   row.jobId,
+    jobName: row.jobName ?? 'unknown',
+    error,
+  })
 }
