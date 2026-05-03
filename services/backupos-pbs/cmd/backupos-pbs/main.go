@@ -55,6 +55,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readchunk"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readerupgrade"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/speedtest"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/selftest"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/sessionreaper"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/upgrade"
@@ -154,6 +155,7 @@ func main() {
 	})
 	gcAdminHandler := gcadmin.NewHandler(datastoreLookup, gcTracker, oldestActiveWriter)
 	gcScheduler := gcsched.New(datastoreLookup, gcTracker, oldestActiveWriter, 0)
+	selfTestHandler := selftest.NewHandler(database, datastoreLookup, versionString)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
@@ -168,6 +170,7 @@ func main() {
 			gcAdminHandler.ServeHTTP(w, r)
 		},
 	))
+	mux.HandleFunc("/api2/json/admin/self-test/datastore/", selfTestHandler.ServeHTTP)
 	mux.HandleFunc("/", notFound)
 
 	// serverCtx is cancelled on SIGINT/SIGTERM so background goroutines

@@ -29,11 +29,14 @@ export default async function PbsIndexPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--fg)', margin: 0 }}>PBS datastores</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <a href="/pbs/connect" style={{ textDecoration: 'none' }}>
+            <Button variant="primary" size="sm">Connect to Proxmox</Button>
+          </a>
           <a href="/pbs/tokens" style={{ textDecoration: 'none' }}>
             <Button variant="ghost" size="sm">Tokens</Button>
           </a>
           <a href="/pbs/datastores/new" style={{ textDecoration: 'none' }}>
-            <Button variant="primary" size="sm">New datastore</Button>
+            <Button variant="ghost" size="sm">New datastore</Button>
           </a>
         </div>
       </div>
