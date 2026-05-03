@@ -115,11 +115,17 @@ func TestHandler_HappyPath_Returns200(t *testing.T) {
 func TestHandler_ChunkCountMismatch_Returns400(t *testing.T) {
 	ws, wid, _ := makeState(t)
 	var d [32]byte
-	_ = ws.RegisterDynamicChunk(wid, d, 4096, false)
-	_ = ws.DynamicWriterAppendChunk(wid, 4096, d)
+	if err := ws.RegisterDynamicChunk(wid, d, 4096, false); err != nil {
+		t.Fatal(err)
+	}
+	// Start offset 0; after append running offset becomes 4096.
+	if err := ws.DynamicWriterAppendChunk(wid, 0, d); err != nil {
+		t.Fatal(err)
+	}
 	h := injectCtx(makeSessionCtx(ws))(NewHandler())
 
 	csumHex := strings.Repeat("00", 32)
+	// Server has 1 chunk; client claims 0 → count mismatch.
 	url := "/dynamic_close?wid=1&chunk-count=0&size=4096&csum=" + csumHex
 	req := httptest.NewRequest(http.MethodPost, url, nil)
 	rr := httptest.NewRecorder()

@@ -267,8 +267,13 @@ func (s *State) RegisterDynamicChunk(wid int, digest [32]byte, size uint32, isDu
 }
 
 // DynamicWriterAppendChunk associates an uploaded chunk with a position in the
-// .didx index. The digest must already be in known_chunks (checked by caller).
-// No size is passed — dynamic index entries carry only (offset, digest).
+// .didx index. The digest must already be in known_chunks.
+//
+// offset is the START offset of this chunk (cumulative total BEFORE this chunk),
+// matching what proxmox-backup-client sends (fetch_add pre-increment return value).
+// We validate it matches our running counter, look up the chunk size from
+// knownChunks, bump the counter by that size, then write the END offset into the
+// index — matching environment.rs dynamic_writer_append_chunk in real PBS.
 func (s *State) DynamicWriterAppendChunk(wid int, offset uint64, digest [32]byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -282,11 +287,30 @@ func (s *State) DynamicWriterAppendChunk(wid int, offset uint64, digest [32]byte
 	if w.Closed {
 		return fmt.Errorf("dynamic writer %q already closed", w.Name)
 	}
-	if err := w.Index.AddChunk(offset, digest); err != nil {
+
+	// The client sends the START offset of this chunk (cumulative total before
+	// adding this chunk's length). Validate it matches our running counter.
+	if w.Offset != offset {
+		return fmt.Errorf("dynamic writer %q append: got strange chunk offset (%d != %d)",
+			w.Name, w.Offset, offset)
+	}
+
+	// Look up chunk size from knownChunks (populated when /dynamic_chunk uploaded it).
+	size, ok := s.knownChunks[digest]
+	if !ok {
+		return fmt.Errorf("dynamic writer %q append: chunk not found in known_chunks",
+			w.Name)
+	}
+
+	// Bump running offset by chunk size, then write the END offset into the index.
+	// This matches environment.rs dynamic_writer_append_chunk in real PBS:
+	//   data.offset += size as u64;
+	//   data.index.add_chunk(data.offset, digest)?;
+	w.Offset += uint64(size)
+	if err := w.Index.AddChunk(w.Offset, digest); err != nil {
 		return fmt.Errorf("dynamic writer %q add_chunk failed: %w", w.Name, err)
 	}
 	w.ChunkCount++
-	w.Offset = offset
 	return nil
 }
 
