@@ -80,7 +80,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Finalize the synthetic run row if one was created at upgrade time.
 	if sc.RunID != "" {
 		snapshotID := buildSnapshotID(sc.DatastoreID, sc.Namespace, sc.BackupType, sc.BackupID, sc.BackupTime)
-		if err := jobsync.FinishRun(h.db, sc.RunID, sc.JobID, "ok",
+		if err := jobsync.FinishRun(h.db, sc.RunID, sc.JobID, "success",
 			&snapshotID, nil, sc.SessionStartedAt, time.Now()); err != nil {
 			slog.Error("finish: FinishRun failed (backup still saved)",
 				"error", err, "run_id", sc.RunID)

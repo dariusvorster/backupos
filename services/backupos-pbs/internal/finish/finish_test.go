@@ -449,14 +449,14 @@ func TestFinish_FinalizesSyntheticRun(t *testing.T) {
 
 	var runStatus string
 	_ = snapDB.QueryRow(`SELECT status FROM backup_runs WHERE id = ?`, runID).Scan(&runStatus)
-	if runStatus != "ok" {
-		t.Errorf("run status: got %q, want 'ok'", runStatus)
+	if runStatus != "success" {
+		t.Errorf("run status: got %q, want 'success'", runStatus)
 	}
 
 	var lastRunStatus string
 	_ = snapDB.QueryRow(`SELECT last_run_status FROM backup_jobs WHERE id = ?`, jobID).Scan(&lastRunStatus)
-	if lastRunStatus != "ok" {
-		t.Errorf("job last_run_status: got %q, want 'ok'", lastRunStatus)
+	if lastRunStatus != "success" {
+		t.Errorf("job last_run_status: got %q, want 'success'", lastRunStatus)
 	}
 }
 

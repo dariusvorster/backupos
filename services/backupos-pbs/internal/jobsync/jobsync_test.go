@@ -159,7 +159,7 @@ func TestFinishRun_Success(t *testing.T) {
 
 	snapID := "snap-abc"
 	completedAt := time.Unix(1735000060, 0)
-	if err := FinishRun(db, runID, jobID, "ok", &snapID, nil, startedAt, completedAt); err != nil {
+	if err := FinishRun(db, runID, jobID, "success", &snapID, nil, startedAt, completedAt); err != nil {
 		t.Fatal(err)
 	}
 
@@ -167,7 +167,7 @@ func TestFinishRun_Success(t *testing.T) {
 	var snapshotID sql.NullString
 	_ = db.QueryRow(`SELECT status, snapshot_id FROM backup_runs WHERE id = ?`, runID).
 		Scan(&status, &snapshotID)
-	if status != "ok" {
+	if status != "success" {
 		t.Errorf("status: got %q", status)
 	}
 	if !snapshotID.Valid || snapshotID.String != "snap-abc" {
@@ -176,7 +176,7 @@ func TestFinishRun_Success(t *testing.T) {
 
 	var lastRunStatus string
 	_ = db.QueryRow(`SELECT last_run_status FROM backup_jobs WHERE id = ?`, jobID).Scan(&lastRunStatus)
-	if lastRunStatus != "ok" {
+	if lastRunStatus != "success" {
 		t.Errorf("last_run_status: got %q", lastRunStatus)
 	}
 }
@@ -218,7 +218,7 @@ func TestFinishRun_DurationCalculation(t *testing.T) {
 	completedAt := startedAt.Add(90 * time.Second)
 	runID, _ := InsertRunningRun(db, jobID, startedAt)
 
-	if err := FinishRun(db, runID, jobID, "ok", nil, nil, startedAt, completedAt); err != nil {
+	if err := FinishRun(db, runID, jobID, "success", nil, nil, startedAt, completedAt); err != nil {
 		t.Fatal(err)
 	}
 
