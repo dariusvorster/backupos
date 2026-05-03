@@ -56,6 +56,7 @@ import (
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/readerupgrade"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/speedtest"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastorelist"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastorestatus"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/selftest"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/session"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/sessionreaper"
@@ -156,8 +157,9 @@ func main() {
 	})
 	gcAdminHandler := gcadmin.NewHandler(datastoreLookup, gcTracker, oldestActiveWriter)
 	gcScheduler := gcsched.New(datastoreLookup, gcTracker, oldestActiveWriter, 0)
-	selfTestHandler      := selftest.NewHandler(database, datastoreLookup, versionString)
-	datastoreListHandler := datastorelist.NewHandler(database)
+	selfTestHandler        := selftest.NewHandler(database, datastoreLookup, versionString)
+	datastoreListHandler   := datastorelist.NewHandler(database)
+	datastoreStatusHandler := datastorestatus.NewHandler(datastoreLookup)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", versionHandler.ServeHTTP)
@@ -176,7 +178,12 @@ func main() {
 	))
 	mux.HandleFunc("/api2/json/admin/datastore/", requireAuth(validator,
 		func(w http.ResponseWriter, r *http.Request) {
-			if !strings.HasSuffix(r.URL.Path, "/gc") {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/gc"):
+				gcAdminHandler.ServeHTTP(w, r)
+			case strings.HasSuffix(r.URL.Path, "/status"):
+				datastoreStatusHandler.ServeHTTP(w, r)
+			default:
 				slog.Info("404 (admin/datastore subtree)",
 					"method", r.Method,
 					"path",   r.URL.Path,
@@ -184,9 +191,7 @@ func main() {
 					"remote", r.RemoteAddr,
 				)
 				http.NotFound(w, r)
-				return
 			}
-			gcAdminHandler.ServeHTTP(w, r)
 		},
 	))
 	mux.HandleFunc("/api2/json/admin/self-test/datastore/", selfTestHandler.ServeHTTP)
