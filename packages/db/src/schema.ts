@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 // ── Agents ────────────────────────────────────────────────────────────────
 // An agent is the backupos-agent binary running on a source host
@@ -655,7 +655,9 @@ export const pbsTokens = sqliteTable('pbs_tokens', {
   expiresAt:    integer('expires_at', { mode: 'timestamp_ms' }),
   createdAt:    integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   lastUsedAt:   integer('last_used_at', { mode: 'timestamp_ms' }),
-})
+}, t => [
+  uniqueIndex('pbs_tokens_user_realm_token_name_uniq').on(t.user, t.realm, t.tokenName),
+])
 
 export const pbsActiveSessions = sqliteTable('pbs_active_sessions', {
   id:           text('id').primaryKey(),
