@@ -644,38 +644,6 @@ export const pbsDatastores = sqliteTable('pbs_datastores', {
   chunkCount:        integer('chunk_count'),
 })
 
-export const pbsNamespaces = sqliteTable('pbs_namespaces', {
-  id:           text('id').primaryKey(),
-  datastoreId:  text('datastore_id').references(() => pbsDatastores.id),
-  path:         text('path').notNull(),
-  createdAt:    integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-})
-
-export const pbsSnapshots = sqliteTable('pbs_snapshots', {
-  id:                text('id').primaryKey(),
-  datastoreId:       text('datastore_id').references(() => pbsDatastores.id),
-  namespaceId:       text('namespace_id').references(() => pbsNamespaces.id),
-  backupType:        text('backup_type').notNull(),
-  backupId:          text('backup_id').notNull(),
-  backupTime:        integer('backup_time', { mode: 'timestamp_ms' }).notNull(),
-  finishedAt:        integer('finished_at', { mode: 'timestamp_ms' }),
-  manifest:          text('manifest'),
-  totalSizeBytes:    integer('total_size_bytes'),
-  uniqueSizeBytes:   integer('unique_size_bytes'),
-  protected:         integer('protected', { mode: 'boolean' }).default(false),
-  notes:             text('notes'),
-})
-
-export const pbsChunkRefs = sqliteTable('pbs_chunk_refs', {
-  digest:       text('digest').notNull(),
-  snapshotId:   text('snapshot_id').references(() => pbsSnapshots.id),
-  archiveName:  text('archive_name').notNull(),
-  refCount:     integer('ref_count').notNull(),
-}, t => ({
-  digestSnapshotIdx: index('pbs_chunk_refs_digest_snapshot_idx').on(t.digest, t.snapshotId),
-  digestIdx:         index('pbs_chunk_refs_digest_idx').on(t.digest),
-}))
-
 export const pbsTokens = sqliteTable('pbs_tokens', {
   id:           text('id').primaryKey(),
   datastoreId:  text('datastore_id').references(() => pbsDatastores.id),
