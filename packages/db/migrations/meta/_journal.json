@@ -302,6 +302,27 @@
       "when": 1777680000000,
       "tag": "0042_pbs_gc_schedule_interval",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1777766400000,
+      "tag": "0043_pbs_session_namespace",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1777852800000,
+      "tag": "0044_pbs_token_unique_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1777939200000,
+      "tag": "0045_pbs_token_permissions_backfill",
+      "breakpoints": true
     }
   ]
 }
