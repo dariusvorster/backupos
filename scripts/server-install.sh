@@ -7,10 +7,11 @@
 #   sudo bash scripts/server-install.sh uninstall
 #
 # Options:
-#   --url    https://backupos.example.com   Public URL (default: auto-detect LAN IP)
-#   --port   3093                           Listen port (default: 3093)
-#   --user   backupos                       System user to run the service (default: backupos)
-#   --source /path/to/repo                  Use local source dir instead of auto-detect
+#   --url      https://backupos.example.com   Public URL (default: auto-detect LAN IP)
+#   --port     3093                           Listen port (default: 3093)
+#   --pbs-port 8007                           PBS protocol port (default: 8007)
+#   --user     backupos                       System user to run the service (default: backupos)
+#   --source   /path/to/repo                  Use local source dir instead of auto-detect
 
 set -eo pipefail
 
@@ -23,6 +24,8 @@ ENV_FILE=$CONF_DIR/server.env
 SERVICE_NAME=backupos
 SVC_USER=backupos
 PORT=3093
+PBS_PORT=8007
+PBS_BIND="0.0.0.0:${PBS_PORT}"
 PUBLIC_URL=""
 SOURCE_DIR=""
 COMMAND="${1:-install}"
@@ -32,10 +35,11 @@ case "$COMMAND" in install|update|uninstall) shift ;; *) COMMAND=install ;; esac
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --url)    PUBLIC_URL="$2";  shift 2 ;;
-    --port)   PORT="$2";        shift 2 ;;
-    --user)   SVC_USER="$2";    shift 2 ;;
-    --source) SOURCE_DIR="$2";  shift 2 ;;
+    --url)      PUBLIC_URL="$2";                            shift 2 ;;
+    --port)     PORT="$2";                                  shift 2 ;;
+    --pbs-port) PBS_PORT="$2"; PBS_BIND="0.0.0.0:${PBS_PORT}"; shift 2 ;;
+    --user)     SVC_USER="$2";                              shift 2 ;;
+    --source)   SOURCE_DIR="$2";                            shift 2 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -294,6 +298,10 @@ NODE_ENV=production
 PORT=$PORT
 HOSTNAME=0.0.0.0
 
+# backupos-pbs (Go service) bind address. Read by /pbs/connect to show
+# users how to point PVE at this server.
+BACKUPOS_PBS_BIND=$PBS_BIND
+
 # Database
 DATABASE_URL=file:$DATA_DIR/backupos.db
 
@@ -376,7 +384,7 @@ Type=simple
 User=$SVC_USER
 Group=$SVC_USER
 ExecStart=$INSTALL_DIR/bin/backupos-pbs \\
-  --bind 0.0.0.0:8007 \\
+  --bind $PBS_BIND \\
   --cert $DATA_DIR/pbs/cert.pem \\
   --key $DATA_DIR/pbs/key.pem \\
   --db $DATA_DIR/backupos.db \\
