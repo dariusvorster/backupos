@@ -177,6 +177,12 @@ func main() {
 	mux.HandleFunc("/api2/json/admin/datastore/", requireAuth(validator,
 		func(w http.ResponseWriter, r *http.Request) {
 			if !strings.HasSuffix(r.URL.Path, "/gc") {
+				slog.Info("404 (admin/datastore subtree)",
+					"method", r.Method,
+					"path",   r.URL.Path,
+					"query",  r.URL.RawQuery,
+					"remote", r.RemoteAddr,
+				)
 				http.NotFound(w, r)
 				return
 			}
@@ -289,6 +295,12 @@ func writeAuthError(w http.ResponseWriter, reason string) {
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {
+	slog.Info("404",
+		"method", r.Method,
+		"path",   r.URL.Path,
+		"query",  r.URL.RawQuery,
+		"remote", r.RemoteAddr,
+	)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
 	resp := map[string]string{"error": "not found"}
