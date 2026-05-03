@@ -408,7 +408,7 @@ func TestFinish_FinalizesSyntheticRun(t *testing.T) {
 	_, snapDB, store := setupFull(t)
 	h := NewHandler(store, snapDB)
 
-	jobID := "pbs:ds-1::vm:100"
+	jobID := "pbs_ds-1_root_vm_100"
 	runID := "test-run-uuid"
 	startedAt := time.Unix(1735000000, 0)
 	backupTime := time.Unix(1735000100, 0)
