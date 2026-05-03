@@ -244,7 +244,11 @@ export function ConnectClient({ tokens, datastores, server, serverError }: Props
               </li>
               <li style={{ marginTop: 8 }}>
                 Fill in the fields:
-                <table style={{ fontSize: 12, marginTop: 8, borderCollapse: 'collapse', width: '100%' }}>
+                <table style={{ fontSize: 12, marginTop: 8, borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: 90 }} />
+                    <col />
+                  </colgroup>
                   <tbody>
                     {[
                       ['ID',          'backupos (or any name)'],
@@ -255,12 +259,14 @@ export function ConnectClient({ tokens, datastores, server, serverError }: Props
                       ['Fingerprint', fp         || '—'],
                     ].map(([k, v]) => (
                       <tr key={k}>
-                        <td style={{ padding: '3px 12px 3px 0', color: 'var(--fg-faint)', whiteSpace: 'nowrap' }}>{k}</td>
-                        <td>
-                          <span style={{ ...mono, color: 'var(--fg)' }}>{v}</span>
-                          {['Server', 'Username', 'Datastore', 'Fingerprint'].includes(k ?? '') && v && v !== '—' && (
-                            <span style={{ marginLeft: 8 }}><CopyButton text={v ?? ''} /></span>
-                          )}
+                        <td style={{ padding: '4px 12px 4px 0', color: 'var(--fg-faint)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{k}</td>
+                        <td style={{ verticalAlign: 'top' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
+                            <span style={{ ...mono, color: 'var(--fg)', flex: 1, minWidth: 0, wordBreak: 'break-all' }}>{v}</span>
+                            {['Server', 'Username', 'Datastore', 'Fingerprint'].includes(k ?? '') && v && v !== '—' && (
+                              <CopyButton text={v ?? ''} />
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
