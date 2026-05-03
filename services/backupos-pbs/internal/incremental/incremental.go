@@ -1,5 +1,5 @@
 // Package incremental implements pre-population of knownChunks from a previous
-// backup's .fidx index for incremental (reuse-csum) backup sessions.
+// backup's index file for incremental (reuse-csum) backup sessions.
 package incremental
 
 import (
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/didx"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/fidx"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/wstate"
 )
@@ -58,4 +59,49 @@ func RegisterFromPreviousIndex(s *wstate.State, previousIndexPath string, expect
 		s.RegisterKnownChunk(digest, header.ChunkSize)
 	}
 	return len(digests), nil
+}
+
+// RegisterFromPreviousDynamicIndex opens the previous backup's .didx file at
+// previousIndexPath, validates that its index_csum equals expectedCsum, and
+// registers every chunk digest into s's knownChunks map with the correct
+// per-chunk size derived from end_le deltas.
+//
+// Returns the count of registered digests.
+//
+// Errors:
+//   - ErrCsumMismatch: stored csum != expectedCsum
+//   - os.ErrNotExist (wrapped): file not found
+//   - other I/O / validation errors as appropriate
+func RegisterFromPreviousDynamicIndex(s *wstate.State, previousIndexPath string, expectedCsum [32]byte) (int, error) {
+	f, err := os.Open(previousIndexPath)
+	if err != nil {
+		return 0, fmt.Errorf("open previous didx: %w", err)
+	}
+	defer f.Close()
+
+	header, err := didx.ReadHeader(f)
+	if err != nil {
+		return 0, fmt.Errorf("read previous didx header: %w", err)
+	}
+
+	if header.IndexCsum != expectedCsum {
+		return 0, fmt.Errorf("%w: stored=%s, requested=%s",
+			ErrCsumMismatch,
+			hex.EncodeToString(header.IndexCsum[:]),
+			hex.EncodeToString(expectedCsum[:]))
+	}
+
+	entries, err := didx.ReadEntries(f)
+	if err != nil {
+		return 0, fmt.Errorf("read previous didx entries: %w", err)
+	}
+
+	var prevEnd uint64
+	for _, entry := range entries {
+		chunkSize := entry.End - prevEnd
+		// chunkSize fits in uint32 because didx.ReadEntries enforces MaxChunkSize=64MiB
+		s.RegisterKnownChunk(entry.Digest, uint32(chunkSize))
+		prevEnd = entry.End
+	}
+	return len(entries), nil
 }
