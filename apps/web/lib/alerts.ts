@@ -2,17 +2,61 @@ import nodemailer from 'nodemailer'
 import { getDb, alerts, alertChannels, smtpConfig, eq } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 
-export type AlertType = 'backup_failed' | 'backup_missed' | 'agent_disconnected'
+export type AlertType =
+  | 'backup_failed'
+  | 'backup_missed'
+  | 'backup_succeeded'
+  | 'restore_succeeded'
+  | 'restore_failed'
+  | 'restore_missed'
+  | 'agent_disconnected'
 
-export interface AlertBackupFailed  { jobId: string; jobName: string; error: string }
-export interface AlertBackupMissed  { jobId: string; jobName: string }
-export interface AlertAgentDisc     { agentId: string; agentName: string }
+// All AlertTypes for UI rendering. Order matters — UI shows them in this order.
+export const ALL_ALERT_TYPES: AlertType[] = [
+  'backup_succeeded',
+  'backup_failed',
+  'backup_missed',
+  'restore_succeeded',
+  'restore_failed',
+  'restore_missed',
+  'agent_disconnected',
+]
 
-export type AlertPayload = AlertBackupFailed | AlertBackupMissed | AlertAgentDisc
+// Human-friendly labels for the settings UI.
+export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
+  backup_succeeded:   'Backup succeeded',
+  backup_failed:      'Backup failed',
+  backup_missed:      'Backup missed schedule',
+  restore_succeeded:  'Restore succeeded',
+  restore_failed:     'Restore failed',
+  restore_missed:     'Restore missed schedule',
+  agent_disconnected: 'Agent disconnected',
+}
+
+export interface AlertBackupFailed    { jobId: string; jobName: string; error: string }
+export interface AlertBackupMissed    { jobId: string; jobName: string }
+export interface AlertBackupSucceeded { jobId: string; jobName: string; durationSec: number | null; totalSizeBytes: number | null }
+export interface AlertRestoreSucceeded { runId: string; jobName: string; durationSec: number | null }
+export interface AlertRestoreFailed   { runId: string; jobName: string; error: string }
+export interface AlertRestoreMissed   { jobId: string; jobName: string }
+export interface AlertAgentDisc       { agentId: string; agentName: string }
+
+export type AlertPayload =
+  | AlertBackupFailed
+  | AlertBackupMissed
+  | AlertBackupSucceeded
+  | AlertRestoreSucceeded
+  | AlertRestoreFailed
+  | AlertRestoreMissed
+  | AlertAgentDisc
 
 const SEVERITY: Record<AlertType, string> = {
   backup_failed:       'error',
   backup_missed:       'warning',
+  backup_succeeded:    'info',
+  restore_failed:      'error',
+  restore_missed:      'warning',
+  restore_succeeded:   'info',
   agent_disconnected:  'warning',
 }
 
@@ -63,7 +107,21 @@ async function deliverOrThrow(
   }
 }
 
-function buildMessage(type: AlertType, payload: AlertPayload): string {
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return s === 0 ? `${m}m` : `${m}m ${s}s`
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`
+}
+
+export function buildMessage(type: AlertType, payload: AlertPayload): string {
   if (type === 'backup_failed') {
     const p = payload as AlertBackupFailed
     return `Backup job "${p.jobName}" failed: ${p.error}`
@@ -72,8 +130,48 @@ function buildMessage(type: AlertType, payload: AlertPayload): string {
     const p = payload as AlertBackupMissed
     return `Scheduled backup job "${p.jobName}" did not run on time`
   }
+  if (type === 'backup_succeeded') {
+    const p = payload as AlertBackupSucceeded
+    const parts = [`Backup job "${p.jobName}" completed successfully`]
+    if (p.durationSec != null) parts.push(`in ${formatDuration(p.durationSec)}`)
+    if (p.totalSizeBytes != null) parts.push(`(${formatBytes(p.totalSizeBytes)})`)
+    return parts.join(' ')
+  }
+  if (type === 'restore_succeeded') {
+    const p = payload as AlertRestoreSucceeded
+    const parts = [`Restore for "${p.jobName}" completed successfully`]
+    if (p.durationSec != null) parts.push(`in ${formatDuration(p.durationSec)}`)
+    return parts.join(' ')
+  }
+  if (type === 'restore_failed') {
+    const p = payload as AlertRestoreFailed
+    return `Restore for "${p.jobName}" failed: ${p.error}`
+  }
+  if (type === 'restore_missed') {
+    const p = payload as AlertRestoreMissed
+    return `Scheduled restore for "${p.jobName}" did not run on time`
+  }
   const p = payload as AlertAgentDisc
   return `Agent "${p.agentName}" (${p.agentId}) has been unreachable for over 10 minutes`
+}
+
+/**
+ * Returns true if a channel with the given subscribedEvents value should
+ * receive an event of the given type.
+ *
+ * - null / missing → back-compat: receive all events
+ * - JSON array     → receive only listed types
+ * - malformed JSON → fail-safe: receive all events
+ */
+export function channelReceivesEvent(subscribedEvents: string | null | undefined, type: AlertType): boolean {
+  if (!subscribedEvents) return true
+  try {
+    const events = JSON.parse(subscribedEvents) as string[]
+    return events.includes(type)
+  } catch {
+    console.warn(`[alerts] malformed subscribed_events; treating as subscribe-to-all`)
+    return true
+  }
 }
 
 async function fireDiscord(url: string, type: AlertType, message: string, severity: string): Promise<void> {
@@ -258,8 +356,10 @@ export async function sendAlert(type: AlertType, payload: AlertPayload): Promise
   const channels = await db.select().from(alertChannels).all()
   const enabled  = channels.filter(c => c.enabled)
 
+  const subscribed = enabled.filter(channel => channelReceivesEvent(channel.subscribedEvents, type))
+
   await Promise.allSettled(
-    enabled.map(async channel => {
+    subscribed.map(async channel => {
       try {
         await dispatchToChannel(channel, type, message, severity, payload)
       } catch (err) {
@@ -268,6 +368,7 @@ export async function sendAlert(type: AlertType, payload: AlertPayload): Promise
     })
   )
 
+  // Email always receives every alert — no per-recipient filtering in V1.
   try {
     await fireEmail(type, message)
   } catch (err) {

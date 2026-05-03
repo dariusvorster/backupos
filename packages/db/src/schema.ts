@@ -409,12 +409,13 @@ export const alerts = sqliteTable('alerts', {
 // Webhook destinations for alert delivery
 
 export const alertChannels = sqliteTable('alert_channels', {
-  id:        text('id').primaryKey(),
-  name:      text('name').notNull(),
-  type:      text('type').notNull(),
-  config:    text('config').notNull(),
-  enabled:   integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  id:               text('id').primaryKey(),
+  name:             text('name').notNull(),
+  type:             text('type').notNull(),
+  config:           text('config').notNull(),
+  enabled:          integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  subscribedEvents: text('subscribed_events'), // JSON string[] of AlertType; null = subscribe to all (back-compat)
+  createdAt:        integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
 // ── Verification tests ─────────────────────────────────────────────────────
