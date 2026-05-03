@@ -51,6 +51,14 @@ function fmtAge(d: Date | null): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+function fmtIn(d: Date): string {
+  const ms = d.getTime() - Date.now()
+  if (ms < 60_000) return 'soon'
+  if (ms < 3_600_000) return `in ${Math.floor(ms / 60_000)}m`
+  if (ms < 86_400_000) return `in ${Math.floor(ms / 3_600_000)}h`
+  return `in ${Math.floor(ms / 86_400_000)}d`
+}
+
 export default async function DashboardPage() {
   const db      = getDb()
   const now     = Date.now()
@@ -58,7 +66,7 @@ export default async function DashboardPage() {
   const since7d   = new Date(now -  7  * 24 * 60 * 60 * 1000)
   const since30d  = new Date(now - 30  * 24 * 60 * 60 * 1000)
 
-  const [jobs, recentRuns, allAgents, repos, successRuns24h, openAlerts, runs30d, passedVerifications7d, allServices] =
+  const [jobs, recentRuns, allAgents, repos, successRuns24h, openAlerts, runs30d, passedVerifications7d, allServices, upcomingJobs] =
     await Promise.all([
       db.select().from(backupJobs).all(),
       db.select({
@@ -105,6 +113,20 @@ export default async function DashboardPage() {
         host:        infraOsServices.host,
         description: infraOsServices.description,
       }).from(infraOsServices).all(),
+
+      db.select({
+        id:        backupJobs.id,
+        name:      backupJobs.name,
+        nextRunAt: backupJobs.nextRunAt,
+      })
+        .from(backupJobs)
+        .where(and(
+          eq(backupJobs.enabled, true),
+          gte(backupJobs.nextRunAt, new Date()),
+        ))
+        .orderBy(backupJobs.nextRunAt)
+        .limit(5)
+        .all(),
     ])
 
   const runs24h      = recentRuns.filter(r => r.startedAt && r.startedAt >= since24h)
@@ -338,6 +360,42 @@ export default async function DashboardPage() {
                       </div>
                     </div>
                     <Badge status={toBadge(agent.status ?? 'disconnected')} />
+                  </div>
+                ))}
+              </CardBody>
+            )}
+          </Card>
+
+          {/* Coming up card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Coming up</CardTitle>
+              <CardLink href="/activity">View all →</CardLink>
+            </CardHeader>
+            {upcomingJobs.length === 0 ? (
+              <CardBody>
+                <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--fg-faint)', fontSize: 13 }}>
+                  No scheduled jobs queued.
+                </div>
+              </CardBody>
+            ) : (
+              <CardBody style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {upcomingJobs.map(job => (
+                  <div key={job.id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                  }}>
+                    <a href={`/jobs/${job.id}`} style={{
+                      fontSize: 13, fontWeight: 500, color: 'var(--fg)',
+                      textDecoration: 'none', flex: 1, overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {job.name}
+                    </a>
+                    {job.nextRunAt && (
+                      <span style={{ fontSize: 11, color: 'var(--accent)', flexShrink: 0, fontFamily: 'var(--font-mono)' }}>
+                        {fmtIn(job.nextRunAt)}
+                      </span>
+                    )}
                   </div>
                 ))}
               </CardBody>
