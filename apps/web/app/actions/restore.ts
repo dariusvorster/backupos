@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, alertChannels, eq, desc } from '@backupos/db'
 import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery, type DatabaseRestoreDelivery } from '@backupos/restore'
 import { requireAdmin } from '@/lib/user'
-import { dispatchToChannel } from '@/lib/alerts'
+import { dispatchToChannel, fireRestoreSucceeded, fireRestoreFailed } from '@/lib/alerts'
 import type { AlertType, AlertPayload } from '@/lib/alerts'
 import { decryptField } from '@/lib/repo-crypto'
 import { connectedAgentIds, requestFilesystemRestore, requestDatabaseRestore, dispatch } from '@/lib/ws-state'
@@ -138,6 +138,17 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
       .where(eq(restoreRuns.id, runId))
     try {
       if (result.success) {
+        await fireRestoreSucceeded(runId)
+      } else {
+        await fireRestoreFailed(runId, result.failedStep
+          ? `failed at step "${result.failedStep}"`
+          : 'restore failed')
+      }
+    } catch (err) {
+      console.error('[alerts] restore alert failed:', err)
+    }
+    try {
+      if (result.success) {
         appendLog({
           level: 'info',
           component: 'web',
@@ -161,6 +172,11 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
     await db.update(restoreRuns).set({
       status: 'failed', completedAt: new Date(),
     }).where(eq(restoreRuns.id, runId))
+    try {
+      await fireRestoreFailed(runId, err instanceof Error ? err.message : String(err))
+    } catch (alertErr) {
+      console.error('[alerts] restore alert failed:', alertErr)
+    }
     console.error('[restore] executeRestoreSpec failed:', err)
     try {
       appendLog({
