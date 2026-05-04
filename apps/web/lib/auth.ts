@@ -51,6 +51,12 @@ export const auth = betterAuth({
     return isPrivateOrigin(origin) ? [...explicitTrusted, origin] : explicitTrusted
   },
   plugins: buildPlugins(),
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['oidc'],
+    },
+  },
   database: drizzleAdapter(getDb(), {
     provider: 'sqlite',
     schema: { user, session, account, verification, twoFactor },
