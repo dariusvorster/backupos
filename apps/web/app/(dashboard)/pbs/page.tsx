@@ -18,10 +18,15 @@ export default async function PbsIndexPage() {
     .orderBy(desc(pbsDatastores.createdAt))
 
   const datastores = rows.map(r => ({
-    id:        r.id,
-    name:      r.name,
-    path:      r.path,
-    createdAt: r.createdAt.toISOString(),
+    id:              r.id,
+    name:            r.name,
+    path:            r.path,
+    createdAt:       r.createdAt.toISOString(),
+    pruneSchedule:   r.pruneSchedule,
+    gcSchedule:      r.gcSchedule,
+    lastGcAt:        r.lastGcAt?.toISOString() ?? null,
+    totalSizeBytes:  r.totalSizeBytes,
+    uniqueSizeBytes: r.uniqueSizeBytes,
   }))
 
   return (
