@@ -60,7 +60,12 @@ export function LoginForm() {
           </div>
 
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6 }}>Password</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <label style={{ fontSize: 13, color: 'var(--fg-mute)' }}>Password</label>
+              <Link href="/forgot-password" style={{ fontSize: 12, color: 'var(--fg-dim)', textDecoration: 'none' }}>
+                Forgot password?
+              </Link>
+            </div>
             <input name="password" type="password" required placeholder="••••••••" style={inputStyle} />
           </div>
 
