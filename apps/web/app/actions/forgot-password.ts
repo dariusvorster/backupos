@@ -21,7 +21,8 @@ export async function requestPasswordReset(formData: FormData): Promise<{ messag
   }
 
   try {
-    await auth.api.requestPasswordReset({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (auth.api as any).forgetPassword({
       body: {
         email,
         redirectTo: '/reset-password',
