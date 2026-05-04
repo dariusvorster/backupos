@@ -4,6 +4,7 @@ export type { DetectedResources }
 
 export interface RepoTestResult  { ok: boolean; error?: string; snapshotCount?: number }
 export interface MountTestResult { ok: boolean; error?: string }
+export interface InitRepoResult  { ok: boolean; error?: string }
 
 declare global {
   // eslint-disable-next-line no-var
@@ -14,6 +15,8 @@ declare global {
   var __bkp_pending_repo_tests: Map<string, (r: RepoTestResult) => void> | undefined
   // eslint-disable-next-line no-var
   var __bkp_pending_mount_tests: Map<string, (r: MountTestResult) => void> | undefined
+  // eslint-disable-next-line no-var
+  var __bkp_pending_init_repos: Map<string, (r: InitRepoResult) => void> | undefined
   // eslint-disable-next-line no-var
   var __bkp_pending_fs_restores: Map<string, (r: { ok: boolean; error?: string }) => void> | undefined
 }
@@ -29,6 +32,9 @@ const pendingRepoTests: Map<string, (r: RepoTestResult) => void> =
 
 const pendingMountTests: Map<string, (r: MountTestResult) => void> =
   (globalThis.__bkp_pending_mount_tests ??= new Map())
+
+const pendingInitRepos: Map<string, (r: InitRepoResult) => void> =
+  (globalThis.__bkp_pending_init_repos ??= new Map())
 
 const pendingFsRestores: Map<string, (r: { ok: boolean; error?: string }) => void> =
   (globalThis.__bkp_pending_fs_restores ??= new Map())
@@ -136,6 +142,36 @@ export function requestTestMount(agentId: string, mountConfig: MountConfig): Pro
 
 export function resolveTestMount(requestId: string, result: MountTestResult): void {
   pendingMountTests.get(requestId)?.(result)
+}
+
+export function requestInitRepository(
+  agentId: string,
+  repoUrl: string,
+  repoPassword: string,
+  envVars?: Record<string, string>,
+): Promise<InitRepoResult> {
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID()
+    const timer = setTimeout(() => {
+      pendingInitRepos.delete(requestId)
+      reject(new Error('Agent did not respond in time'))
+    }, 60_000)
+    pendingInitRepos.set(requestId, (result) => {
+      clearTimeout(timer)
+      pendingInitRepos.delete(requestId)
+      resolve(result)
+    })
+    const sent = dispatch(agentId, { type: 'init_repository', requestId, repoUrl, repoPassword, envVars })
+    if (!sent) {
+      clearTimeout(timer)
+      pendingInitRepos.delete(requestId)
+      reject(new Error('Agent not connected'))
+    }
+  })
+}
+
+export function resolveInitRepository(requestId: string, result: InitRepoResult): void {
+  pendingInitRepos.get(requestId)?.(result)
 }
 
 declare global {

@@ -7763,6 +7763,44 @@ async function runMountRepository(msg, send2) {
   }
 }
 
+// src/handlers/testRepo.ts
+init_dist();
+async function runTestRepo(msg, send2, binaryPath) {
+  const { requestId, repoUrl, repoPassword, envVars } = msg;
+  try {
+    const engine = new ResticEngine({
+      repositoryUrl: repoUrl,
+      password: repoPassword,
+      envVars: envVars ?? {},
+      binaryPath
+    });
+    const snapshots = await engine.snapshots();
+    send2({ type: "test_repo_result", requestId, ok: true, snapshotCount: snapshots.length });
+  } catch (err) {
+    const error = err instanceof ResticError ? err.message : err instanceof Error ? err.message : String(err);
+    send2({ type: "test_repo_result", requestId, ok: false, error });
+  }
+}
+
+// src/handlers/initRepository.ts
+init_dist();
+async function runInitRepository(msg, send2, binaryPath) {
+  const { requestId, repoUrl, repoPassword, envVars } = msg;
+  try {
+    const engine = new ResticEngine({
+      repositoryUrl: repoUrl,
+      password: repoPassword,
+      envVars: envVars ?? {},
+      binaryPath
+    });
+    await engine.init();
+    send2({ type: "init_repository_result", requestId, ok: true });
+  } catch (err) {
+    const error = err instanceof ResticError ? err.message : err instanceof Error ? err.message : String(err);
+    send2({ type: "init_repository_result", requestId, ok: false, error });
+  }
+}
+
 // src/handlers/testMount.ts
 var import_child_process3 = require("child_process");
 var import_fs4 = require("fs");
@@ -8187,6 +8225,10 @@ async function handleMessage(raw) {
       job.ctrl.abort();
       send({ type: "backup_cancelled", jobId: msg.jobId, runId: job.runId, reason: "user_requested" });
     }
+  } else if (msg.type === "test_repo") {
+    void runTestRepo(msg, send, BINARY);
+  } else if (msg.type === "init_repository") {
+    void runInitRepository(msg, send, BINARY);
   } else if (msg.type === "verify_repo") {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars);
   } else if (msg.type === "run_compose_backup") {

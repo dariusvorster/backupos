@@ -9,6 +9,8 @@ import { getSystemUptimeSeconds } from './system-uptime'
 import { detectCapabilities } from './capabilities'
 import { resolveHostPrefix, applyHostPrefixAll } from './lib/host-prefix'
 import { runMountRepository } from './handlers/mountRepository'
+import { runTestRepo } from './handlers/testRepo'
+import { runInitRepository } from './handlers/initRepository'
 import { runTestMount } from './handlers/testMount'
 import { handleFilesystemRestore } from './handlers/filesystemRestore'
 import { handleDatabaseRestore } from './handlers/databaseRestore'
@@ -238,6 +240,12 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       job.ctrl.abort()
       send({ type: 'backup_cancelled', jobId: msg.jobId, runId: job.runId, reason: 'user_requested' })
     }
+
+  } else if (msg.type === 'test_repo') {
+    void runTestRepo(msg, send, BINARY)
+
+  } else if (msg.type === 'init_repository') {
+    void runInitRepository(msg, send, BINARY)
 
   } else if (msg.type === 'verify_repo') {
     void verifyRepo(msg.repoId, msg.repoUrl, msg.repoPassword, msg.readData, msg.envVars)

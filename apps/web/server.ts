@@ -10,7 +10,7 @@ import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
 import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, requestInitRepository, resolveInitRepository, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete } from './lib/ws-state'
 import { ensureRepoMountedOnAgent } from './lib/repo-mount'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
@@ -249,6 +249,32 @@ void app.prepare().then(async () => {
         requestTestRepo(agentId, repoCfg['repositoryUrl'] ?? '', decryptField(repo.resticPassword), repoCfg)
           .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
           .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Test failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
+      })()
+      return
+    }
+
+    // Initialize a repo via agent (restic init)
+    const initRepoMatch = parsed.pathname?.match(/^\/api\/repos\/([^/]+)\/init$/)
+    if (req.method === 'POST' && initRepoMatch) {
+      void (async () => {
+        const session = await requireSession(req)
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'unauthorized' }))
+          return
+        }
+        const repoId = initRepoMatch[1]!
+        const db2 = getDb()
+        const [repo] = await db2.select().from(repositories).where(eq(repositories.id, repoId)).limit(1)
+        if (!repo) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Repository not found' })); return }
+        const repoCfg = JSON.parse(decryptField(repo.config)) as Record<string, string>
+        const connected = connectedAgentIds()
+        const jobs2 = await db2.select({ agentId: backupJobs.agentId }).from(backupJobs).where(eq(backupJobs.repositoryId, repoId)).all()
+        const agentId = jobs2.map(j => j.agentId).find(aid => aid && connected.includes(aid)) ?? connected[0] ?? null
+        if (!agentId) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'No connected agent. Connect a BackupOS agent first.' })); return }
+        requestInitRepository(agentId, repoCfg['repositoryUrl'] ?? '', decryptField(repo.resticPassword), repoCfg)
+          .then(result => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(result)) })
+          .catch((err: unknown) => { const msg = err instanceof Error ? err.message : 'Init failed'; res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: msg })) })
       })()
       return
     }
@@ -741,6 +767,9 @@ void app.prepare().then(async () => {
 
         } else if (msg.type === 'test_repo_result') {
           resolveTestRepo(msg.requestId, { ok: msg.ok, error: msg.error, snapshotCount: msg.snapshotCount })
+
+        } else if (msg.type === 'init_repository_result') {
+          resolveInitRepository(msg.requestId, { ok: msg.ok, error: msg.error })
 
         } else if (msg.type === 'test_mount_result') {
           resolveTestMount(msg.requestId, { ok: msg.ok, error: msg.error })
