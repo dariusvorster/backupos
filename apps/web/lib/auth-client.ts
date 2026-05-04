@@ -15,7 +15,12 @@ interface TwoFactorMethods {
   verifyBackupCode(opts: { code: string; trustDevice?: boolean }): Promise<TwoFactorResult<unknown>>
 }
 
-type AuthClientType = ReturnType<typeof createAuthClient> & { twoFactor: TwoFactorMethods }
+interface AuthMethods {
+  forgetPassword(opts: { email: string; redirectTo?: string }): Promise<TwoFactorResult<{ status: boolean }>>
+  resetPassword(opts: { newPassword: string; token: string }): Promise<TwoFactorResult<{ status: boolean }>>
+}
+
+type AuthClientType = ReturnType<typeof createAuthClient> & { twoFactor: TwoFactorMethods } & AuthMethods
 
 // Explicit cast avoids TS2742 "inferred type cannot be named" from better-auth internals.
 // twoFactor methods are manually typed against the plugin's documented API.
