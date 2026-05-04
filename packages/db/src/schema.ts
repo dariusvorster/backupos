@@ -660,6 +660,23 @@ export const pbsTokens = sqliteTable('pbs_tokens', {
   uniqueIndex('pbs_tokens_user_realm_token_name_uniq').on(t.user, t.realm, t.tokenName),
 ])
 
+// ── OIDC SSO config ───────────────────────────────────────────────────────
+// Singleton row (id = 'singleton') storing the OIDC IdP credentials.
+// client_secret_enc is AES-256-GCM encrypted with ENCRYPTION_KEY.
+
+export const oidcConfig = sqliteTable('oidc_config', {
+  id:              text('id').primaryKey(),  // always 'singleton'
+  enabled:         integer('enabled',        { mode: 'boolean' }).notNull().default(false),
+  providerLabel:   text('provider_label').notNull(),
+  discoveryUrl:    text('discovery_url').notNull(),
+  clientId:        text('client_id').notNull(),
+  clientSecretEnc: text('client_secret_enc').notNull(),
+  scopes:          text('scopes').notNull().default('openid profile email'),
+  buttonLabel:     text('button_label').notNull().default('Sign in with SSO'),
+  createdAt:       integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt:       integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 export const pbsActiveSessions = sqliteTable('pbs_active_sessions', {
   id:           text('id').primaryKey(),
   tokenId:      text('token_id').references(() => pbsTokens.id),

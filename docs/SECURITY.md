@@ -296,6 +296,22 @@ Configured in `apps/web/next.config.ts`:
 
 The `audit_log` table stores enumerated action types only (no raw user input or credential values). Each entry chains to the previous via SHA-256, providing tamper-evidence. The `detail` JSON field is set only by application code, never reflects user form data verbatim.
 
+### OIDC Single Sign-On
+
+When SSO is configured at `/settings/auth/sso`:
+
+- Local password authentication remains available unless administratively disabled
+- SSO users sign in via the configured IdP (Authentik, Okta, Duo, or any OIDC-compliant provider)
+- First sign-in creates a local user with role `viewer`. Admin can promote on `/settings/users`
+- SSO users have no local password set — they cannot use `/forgot-password`
+- TOTP 2FA is bypassed for SSO sessions (the IdP is responsible for MFA). The twoFactor plugin only challenges users who have `twoFactorEnabled = true` on their local user row; SSO-created users never enroll TOTP and so skip the challenge naturally
+- The `account` table records the OIDC linkage; `account.providerId = 'oidc'`
+- Audit log distinguishes login methods: `user.login` for password, `user.login.sso` for SSO (wiring deferred — tracked separately as a follow-up to #187)
+
+The OIDC client secret is encrypted with the same AES-256-GCM key used for repository credentials (`ENCRYPTION_KEY` / `ENCRYPTION_KEY_FILE`). The encryption key rotation tool at `/settings/security` and `scripts/rotate-key.ts` covers it.
+
+**Operational note:** changes to OIDC config require a service restart because the better-auth plugin list (`genericOAuth`) is read at module-init time.
+
 ### What is NOT included in V1
 
 - DDoS protection (responsibility of the reverse proxy in front of BackupOS)

@@ -1,11 +1,12 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
-import { getDb, repositories, smtpConfig, alertChannels, verificationTests, eq } from '@backupos/db'
+import { getDb, repositories, smtpConfig, alertChannels, verificationTests, oidcConfig, eq } from '@backupos/db'
 
 export interface RotationStats {
   repositories:      number
   smtpConfig:        number
   alertChannels:     number
   verificationTests: number
+  oidcConfig:        number
   total:             number
   durationMs:        number
 }
@@ -44,7 +45,7 @@ export async function rotateEncryptionKey(
   const startedAt = Date.now()
   const db = getDb()
   const stats: RotationStats = {
-    repositories: 0, smtpConfig: 0, alertChannels: 0, verificationTests: 0,
+    repositories: 0, smtpConfig: 0, alertChannels: 0, verificationTests: 0, oidcConfig: 0,
     total: 0, durationMs: 0,
   }
 
@@ -171,9 +172,24 @@ export async function rotateEncryptionKey(
       }
       stats.verificationTests++
     }
+
+    // oidcConfig: clientSecretEnc
+    const oidcRows = tx.select().from(oidcConfig).all()
+    for (const row of oidcRows) {
+      if (!row.clientSecretEnc) continue
+      const newClientSecretEnc = reencrypt(row.clientSecretEnc)
+      if (newClientSecretEnc === row.clientSecretEnc) continue
+      if (!opts.dryRun) {
+        tx.update(oidcConfig)
+          .set({ clientSecretEnc: newClientSecretEnc! })
+          .where(eq(oidcConfig.id, row.id))
+          .run()
+      }
+      stats.oidcConfig++
+    }
   })
 
-  stats.total      = stats.repositories + stats.smtpConfig + stats.alertChannels + stats.verificationTests
+  stats.total      = stats.repositories + stats.smtpConfig + stats.alertChannels + stats.verificationTests + stats.oidcConfig
   stats.durationMs = Date.now() - startedAt
   return stats
 }

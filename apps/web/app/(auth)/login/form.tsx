@@ -4,8 +4,14 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
+import { SsoButton } from './sso-button'
 
-export function LoginForm() {
+interface Props {
+  ssoEnabled?:     boolean
+  ssoButtonLabel?: string
+}
+
+export function LoginForm({ ssoEnabled = false, ssoButtonLabel = 'Sign in with SSO' }: Props) {
   const router = useRouter()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -85,6 +91,8 @@ export function LoginForm() {
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          {ssoEnabled && <SsoButton buttonLabel={ssoButtonLabel} />}
         </form>
 
         <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginTop: 20, textAlign: 'center' }}>

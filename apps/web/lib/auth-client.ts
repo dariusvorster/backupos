@@ -20,7 +20,14 @@ interface AuthMethods {
   resetPassword(opts: { newPassword: string; token: string }): Promise<TwoFactorResult<{ status: boolean }>>
 }
 
-type AuthClientType = ReturnType<typeof createAuthClient> & { twoFactor: TwoFactorMethods } & AuthMethods
+interface SignInExtensions {
+  oauth2(opts: { providerId: string; callbackURL?: string }): Promise<{ data: { url: string; redirect: boolean } | null; error: { message?: string } | null }>
+}
+
+type AuthClientType = ReturnType<typeof createAuthClient> & {
+  twoFactor: TwoFactorMethods
+  signIn:    ReturnType<typeof createAuthClient>['signIn'] & SignInExtensions
+} & AuthMethods
 
 // Explicit cast avoids TS2742 "inferred type cannot be named" from better-auth internals.
 // twoFactor methods are manually typed against the plugin's documented API.

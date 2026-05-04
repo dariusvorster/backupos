@@ -7,7 +7,7 @@ export type AuditAction =
   | 'repo.created'   | 'repo.updated'   | 'repo.deleted'
   | 'agent.enrolled' | 'agent.deleted'
   | 'snapshot.pinned' | 'snapshot.tagged' | 'snapshot.held' | 'snapshot.deleted'
-  | 'user.login'     | 'user.logout'    | 'user.password_changed'
+  | 'user.login'     | 'user.login.sso' | 'user.logout'    | 'user.password_changed'
   | 'totp.enabled'   | 'totp.disabled'  | 'backup_code.redeemed'
   | 'session.created'| 'session.revoked'
   | 'escrow.accessed'
