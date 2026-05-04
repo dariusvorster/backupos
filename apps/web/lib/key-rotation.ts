@@ -113,57 +113,61 @@ export async function rotateEncryptionKey(
     return JSON.stringify(cfg)
   }
 
-  await db.transaction(async (tx) => {
+  db.transaction((tx) => {
     // repositories: config + resticPassword
-    const repoRows = await tx.select().from(repositories).all()
+    const repoRows = tx.select().from(repositories).all()
     for (const row of repoRows) {
       const newConfig         = reencrypt(row.config)
       const newResticPassword = reencrypt(row.resticPassword)
       if (newConfig === row.config && newResticPassword === row.resticPassword) continue
       if (!opts.dryRun) {
-        await tx.update(repositories)
+        tx.update(repositories)
           .set({ config: newConfig!, resticPassword: newResticPassword! })
           .where(eq(repositories.id, row.id))
+          .run()
       }
       stats.repositories++
     }
 
     // smtpConfig: password
-    const smtpRows = await tx.select().from(smtpConfig).all()
+    const smtpRows = tx.select().from(smtpConfig).all()
     for (const row of smtpRows) {
       if (!row.password) continue
       const newPassword = reencrypt(row.password)
       if (newPassword === row.password) continue
       if (!opts.dryRun) {
-        await tx.update(smtpConfig)
+        tx.update(smtpConfig)
           .set({ password: newPassword })
           .where(eq(smtpConfig.id, row.id))
+          .run()
       }
       stats.smtpConfig++
     }
 
     // alertChannels: per-type encrypted fields inside config JSON
-    const alertRows = await tx.select().from(alertChannels).all()
+    const alertRows = tx.select().from(alertChannels).all()
     for (const row of alertRows) {
       const newConfig = reencryptChannelConfig(row.type, row.config)
       if (newConfig === row.config) continue
       if (!opts.dryRun) {
-        await tx.update(alertChannels)
+        tx.update(alertChannels)
           .set({ config: newConfig })
           .where(eq(alertChannels.id, row.id))
+          .run()
       }
       stats.alertChannels++
     }
 
     // verificationTests: sshKey inside targetConfig JSON, only for ssh_target
-    const verifyRows = await tx.select().from(verificationTests).all()
+    const verifyRows = tx.select().from(verificationTests).all()
     for (const row of verifyRows) {
       const newTargetConfig = reencryptVerificationConfig(row.targetType, row.targetConfig)
       if (newTargetConfig === row.targetConfig) continue
       if (!opts.dryRun) {
-        await tx.update(verificationTests)
+        tx.update(verificationTests)
           .set({ targetConfig: newTargetConfig })
           .where(eq(verificationTests.id, row.id))
+          .run()
       }
       stats.verificationTests++
     }
