@@ -70,7 +70,8 @@ export const auth = betterAuth({
             providerId = 'credential'
           } else if (path.startsWith('/oauth2/callback/') || path.startsWith('/callback/')) {
             action     = 'user.login.sso'
-            providerId = path.split('/').pop() || 'oauth'
+            const ctxParams = (context as { params?: { id?: string; providerId?: string } } | null)?.params
+            providerId = ctxParams?.id || ctxParams?.providerId || 'oauth'
           } else if (path === '/two-factor/verify-totp' || path === '/two-factor/verify-backup-code') {
             action     = 'user.login'
             providerId = 'credential+totp'
