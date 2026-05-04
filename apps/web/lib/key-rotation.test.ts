@@ -26,8 +26,9 @@ describe('rotateEncryptionKey', () => {
     await expect(rotateEncryptionKey(KEY_A, 'abc')).rejects.toThrow(/64 hex/)
   })
 
-  // Integration tests below need a real DB with migrations.
-  // Marked .skip until a shared in-memory DB fixture is available.
+  // Integration tests below require injecting a test DB into rotateEncryptionKey.
+  // getDb() from @backupos/db is a module-level singleton with no injection point,
+  // so these tests cannot be wired without a refactor that is out of scope for this PR.
   // The smoke test in the acceptance checklist covers the integration path.
 
   it.skip('round-trips: rotate A→B, decrypt with B succeeds', async () => {
