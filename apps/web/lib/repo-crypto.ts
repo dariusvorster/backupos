@@ -1,8 +1,39 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
+import { readFileSync } from 'node:fs'
 
+/**
+ * Resolve the encryption key.
+ *
+ * Source order (first match wins):
+ *   1. ENCRYPTION_KEY_FILE — path to a file containing the hex key. Useful
+ *      with systemd LoadCredential= which exposes secrets at /run/credentials/...
+ *   2. ENCRYPTION_KEY — hex key directly in env.
+ *
+ * Either source must yield at least 64 hex chars (32 bytes). Whitespace
+ * around the value (newlines, etc.) is trimmed before validation so a file
+ * created with `echo "$KEY" > /path` works.
+ */
 function getKey(): Buffer {
-  const hex = process.env['ENCRYPTION_KEY'] ?? ''
-  if (hex.length < 64) throw new Error('ENCRYPTION_KEY must be at least 32 bytes (64 hex chars)')
+  const filePath = process.env['ENCRYPTION_KEY_FILE']
+  let hex: string
+
+  if (filePath && filePath.length > 0) {
+    try {
+      hex = readFileSync(filePath, 'utf8').trim()
+    } catch (err) {
+      throw new Error(
+        `Failed to read ENCRYPTION_KEY_FILE at ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  } else {
+    hex = (process.env['ENCRYPTION_KEY'] ?? '').trim()
+  }
+
+  if (hex.length < 64) {
+    const source = filePath ? `ENCRYPTION_KEY_FILE (${filePath})` : 'ENCRYPTION_KEY'
+    throw new Error(`${source} must contain at least 32 bytes (64 hex chars)`)
+  }
+
   return Buffer.from(hex.slice(0, 64), 'hex')
 }
 
