@@ -3713,9 +3713,11 @@ var init_restic = __esm({
       }
       async init() {
         const result = await this.run(["init"], void 0, 6e4);
+        const log = buildRunLog(result.stdout, result.stderr);
         if (result.exitCode !== 0) {
           throw new ResticError("init", result);
         }
+        return { log };
       }
       async backup(opts) {
         if (opts.preHook)
