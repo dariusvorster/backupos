@@ -57,6 +57,51 @@ export const auth = betterAuth({
       trustedProviders: ['oidc'],
     },
   },
+  databaseHooks: {
+    session: {
+      create: {
+        async after(session, context) {
+          const path = (context as { path?: string } | null)?.path ?? ''
+          let action: 'user.login' | 'user.login.sso' | null = null
+          let providerId = 'unknown'
+
+          if (path === '/sign-in/email' || path === '/sign-up/email') {
+            action     = 'user.login'
+            providerId = 'credential'
+          } else if (path.startsWith('/oauth2/callback/') || path.startsWith('/callback/')) {
+            action     = 'user.login.sso'
+            providerId = path.split('/').pop() || 'oauth'
+          } else if (path === '/two-factor/verify-totp' || path === '/two-factor/verify-backup-code') {
+            action     = 'user.login'
+            providerId = 'credential+totp'
+          }
+
+          if (!action || !session.userId) return
+
+          try {
+            const { appendAuditEntry } = await import('./audit')
+            const { getDb, user, eq }  = await import('@backupos/db')
+            const db = getDb()
+            const userRow = db.select({ email: user.email }).from(user).where(eq(user.id, session.userId)).get()
+            appendAuditEntry({
+              action,
+              resourceType: 'user',
+              resourceId:   session.userId,
+              resourceName: userRow?.email ?? undefined,
+              actor:        session.userId,
+              detail: {
+                providerId,
+                ip:        session.ipAddress ?? undefined,
+                userAgent: session.userAgent?.slice(0, 200) ?? undefined,
+              },
+            })
+          } catch (err) {
+            console.error('[audit] failed to record login event:', err)
+          }
+        },
+      },
+    },
+  },
   database: drizzleAdapter(getDb(), {
     provider: 'sqlite',
     schema: { user, session, account, verification, twoFactor },
