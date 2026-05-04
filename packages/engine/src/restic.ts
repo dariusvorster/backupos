@@ -51,11 +51,13 @@ export class ResticEngine {
     this.binary = config.binaryPath ?? 'restic'
   }
 
-  async init(): Promise<void> {
+  async init(): Promise<{ log: string }> {
     const result = await this.run(['init'], undefined, 60_000)
+    const log = buildRunLog(result.stdout, result.stderr)
     if (result.exitCode !== 0) {
       throw new ResticError('init', result)
     }
+    return { log }
   }
 
   async backup(opts: BackupOptions): Promise<BackupResult> {

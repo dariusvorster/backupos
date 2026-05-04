@@ -155,6 +155,7 @@ export type AgentMessage =
   | { type: 'verification_complete'; verificationRunId: string; success: boolean; log: string; errorMessage?: string }
   | { type: 'resources_result'; requestId: string; resources: DetectedResources }
   | { type: 'test_repo_result'; requestId: string; ok: boolean; error?: string; snapshotCount?: number }
+  | { type: 'init_repository_result'; requestId: string; ok: boolean; error?: string }
   | { type: 'test_mount_result'; requestId: string; ok: boolean; error?: string }
   | { type: 'compose_project_listing'; requestId: string; project: ComposeProjectListing }
   | { type: 'mount_complete'; requestId: string; repoId: string }
@@ -180,6 +181,7 @@ export type ServerMessage =
   | { type: 'verify_repo'; repoId: string; repoUrl: string; repoPassword: string; readData: boolean; envVars?: Record<string, string> }
   | { type: 'list_resources'; requestId: string }
   | { type: 'test_repo'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
+  | { type: 'init_repository'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
   | { type: 'test_mount'; requestId: string; mountConfig: MountConfig }
   | { type: 'force_update' }
   | { type: 'list_compose_project'; requestId: string; projectName: string }

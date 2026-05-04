@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { RunCheckButton } from './run-check-button'
 import { PruneButton } from './prune-button'
 import { TestConnectionButton } from './test-connection-button'
+import { InitRepositoryButton } from './InitRepositoryButton'
 import { DeleteRepositoryButton } from './delete-button'
 import { TestMountButton } from './test-mount-button'
 import { MountStatusBadge } from './mount-status-badge'
@@ -99,6 +100,7 @@ export default async function RepoDetailPage({ params }: { params: Promise<{ id:
           <Button variant="secondary" size="md">Browse snapshots</Button>
         </Link>
         <TestConnectionButton repoId={id} />
+        <InitRepositoryButton repoId={id} />
         {(repo.backend === 'nfs' || repo.backend === 'smb') && (
           <>
             <TestMountButton repoId={id} />
