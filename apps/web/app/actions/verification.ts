@@ -9,6 +9,7 @@ import { connectedAgentIds } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import { requireAdmin } from '@/lib/user'
 import { appendAuditEntry } from '@/lib/audit'
+import { parseExpression } from 'cron-parser'
 
 export async function createVerificationTest(data: {
   name: string
@@ -162,7 +163,6 @@ export async function updateVerificationTest(input: UpdateVerificationTestInput)
   if (input.name.length > 200) return { error: 'Name too long (max 200 chars)' }
 
   try {
-    const { parseExpression } = await import('cron-parser')
     parseExpression(input.schedule)
   } catch (err) {
     return { error: `Invalid cron expression: ${(err as Error).message}` }
