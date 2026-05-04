@@ -1,10 +1,11 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getDb, backupJobs, repositories, agents, eq } from '@backupos/db'
 import { Button } from '@/components/ui/button'
 import { SourceConfigSection } from '@/components/source-config-section'
 import { updateJob } from '@/app/actions/jobs'
 import { CronInput } from '@/components/cron-input'
+import { getCurrentUser, isAdmin } from '@/lib/user'
 
 export default async function EditJobPage({
   params,
@@ -14,6 +15,9 @@ export default async function EditJobPage({
   searchParams: Promise<{ cronError?: string; composeError?: string }>
 }) {
   const { id }      = await params
+  const currentUser = await getCurrentUser()
+  if (!currentUser) redirect('/login')
+  if (!isAdmin(currentUser)) redirect(`/jobs/${id}`)
   const { cronError, composeError } = await searchParams
   const db = getDb()
 
