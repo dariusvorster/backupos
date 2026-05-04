@@ -18,7 +18,7 @@ export type AuditAction =
   | 'user.created'
   | 'user.role_changed'
   | 'pbs_token.created' | 'pbs_token.revoked'
-  | 'pbs_datastore.created' | 'pbs_datastore.deleted'
+  | 'pbs_datastore.created' | 'pbs_datastore.deleted' | 'pbs_datastore.updated' | 'pbs_datastore.gc_triggered'
 
 function canonical(fields: {
   action: string; resourceType: string; resourceId?: string | null;

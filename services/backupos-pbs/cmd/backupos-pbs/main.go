@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/auth"
+	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/internalauth"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/blob"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/jobsync"
 	"github.com/dariusvorster/backupos/services/backupos-pbs/internal/datastore"
@@ -219,6 +220,30 @@ func main() {
 		},
 	))
 	mux.HandleFunc("/api2/json/admin/self-test/datastore/", selfTestHandler.ServeHTTP)
+
+	// Internal-only routes, gated by BACKUPOS_INTERNAL_SECRET (no PBS token required).
+	// Used by the web UI for stats sync and manual GC trigger.
+	//
+	//   GET  /api2/internal/datastore/<store>/status  → datastoreStatusHandler
+	//   POST /api2/internal/datastore/<store>/gc      → gcAdminHandler (start GC)
+	//   GET  /api2/internal/datastore/<store>/gc      → gcAdminHandler (last status)
+	//
+	// Path is rewritten from /api2/internal/... to /api2/json/admin/... before
+	// forwarding so the underlying handlers' path parsing works unchanged.
+	mux.Handle("/api2/internal/datastore/", internalauth.Middleware(internalSecret,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = strings.Replace(r.URL.Path, "/api2/internal/datastore/", "/api2/json/admin/datastore/", 1)
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/gc"):
+				gcAdminHandler.ServeHTTP(w, r)
+			case strings.HasSuffix(r.URL.Path, "/status"):
+				datastoreStatusHandler.ServeHTTP(w, r)
+			default:
+				http.NotFound(w, r)
+			}
+		}),
+	))
+
 	mux.HandleFunc("/", notFound)
 
 	// serverCtx is cancelled on SIGINT/SIGTERM so background goroutines
