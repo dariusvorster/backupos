@@ -42,7 +42,7 @@ function ipToInt(ip: string): number | null {
 function isLinkLocalV4(ip: string): boolean {
   const n = ipToInt(ip)
   if (n === null) return false
-  return (n & LINK_LOCAL_V4_MASK) === LINK_LOCAL_V4_BASE
+  return ((n & LINK_LOCAL_V4_MASK) >>> 0) === LINK_LOCAL_V4_BASE
 }
 
 function isBlockedIPv6(ip: string): boolean {
