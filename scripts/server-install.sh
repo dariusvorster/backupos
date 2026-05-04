@@ -311,6 +311,9 @@ RESTIC_BINARY_PATH=$(command -v restic)
 # Auth secrets — rotate these only if you want to invalidate all sessions
 BETTER_AUTH_SECRET=$(rand32)
 BETTER_AUTH_URL=$PUBLIC_URL
+# Encryption key for field-level secrets. Required.
+# Alternative: set ENCRYPTION_KEY_FILE=/path/to/keyfile to load from disk
+# (useful with systemd LoadCredential=). See docs/SECURITY.md for details.
 ENCRYPTION_KEY=$(rand32)
 ENVEOF
   chmod 600 "$ENV_FILE"
