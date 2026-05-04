@@ -9,6 +9,7 @@ import { getSystemUptimeSeconds } from './system-uptime'
 import { detectCapabilities } from './capabilities'
 import { resolveHostPrefix, applyHostPrefixAll } from './lib/host-prefix'
 import { runMountRepository } from './handlers/mountRepository'
+import { runTestMount } from './handlers/testMount'
 import { handleFilesystemRestore } from './handlers/filesystemRestore'
 import { handleDatabaseRestore } from './handlers/databaseRestore'
 
@@ -273,6 +274,9 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
 
   } else if (msg.type === 'mount_repository') {
     void runMountRepository(msg, send)
+
+  } else if (msg.type === 'test_mount') {
+    void runTestMount(msg, send)
 
   } else if (msg.type === 'run_verification') {
     void (async () => {
