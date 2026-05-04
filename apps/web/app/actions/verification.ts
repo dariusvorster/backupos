@@ -8,6 +8,7 @@ import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { connectedAgentIds } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import { requireAdmin } from '@/lib/user'
+import { appendAuditEntry } from '@/lib/audit'
 
 export async function createVerificationTest(data: {
   name: string
@@ -135,4 +136,105 @@ export async function runVerification(testId: string): Promise<void> {
   }
 
   revalidatePath(`/verification/${testId}`)
+}
+
+// ── Edit / Delete ─────────────────────────────────────────────────────────────
+
+export interface UpdateVerificationTestInput {
+  id:             string
+  name:           string
+  schedule:       string
+  validationHook: string
+  sshHost?:       string
+  sshPort?:       number
+  sshUser?:       string
+  sshKey?:        string  // empty = keep existing
+  remoteDir?:     string
+  cleanupRemote?: boolean
+}
+
+export async function updateVerificationTest(input: UpdateVerificationTestInput): Promise<{ error?: string }> {
+  const adminUser = await requireAdmin()
+  const db = getDb()
+
+  if (!input.name?.trim()) return { error: 'Name is required' }
+  if (!input.schedule?.trim()) return { error: 'Schedule is required' }
+  if (input.name.length > 200) return { error: 'Name too long (max 200 chars)' }
+
+  try {
+    const { parseExpression } = await import('cron-parser')
+    parseExpression(input.schedule)
+  } catch (err) {
+    return { error: `Invalid cron expression: ${(err as Error).message}` }
+  }
+
+  const [existing] = await db.select().from(verificationTests).where(eq(verificationTests.id, input.id)).limit(1)
+  if (!existing) return { error: 'Verification test not found' }
+
+  let nextTargetConfig: string | null = existing.targetConfig
+  if (existing.targetType === 'ssh_target') {
+    if (!input.sshHost || !input.sshUser || !input.remoteDir) {
+      return { error: 'SSH host, user, and remote directory are required for SSH targets' }
+    }
+    const oldCfg = existing.targetConfig
+      ? JSON.parse(existing.targetConfig) as Record<string, string | number | boolean>
+      : {}
+    const oldSshKeyEncrypted = typeof oldCfg['sshKey'] === 'string' ? oldCfg['sshKey'] as string : null
+    const newSshKeyEncrypted = input.sshKey?.trim()
+      ? encryptField(input.sshKey)
+      : oldSshKeyEncrypted
+
+    nextTargetConfig = JSON.stringify({
+      host:          input.sshHost,
+      port:          input.sshPort ?? 22,
+      user:          input.sshUser,
+      sshKey:        newSshKeyEncrypted,
+      remoteDir:     input.remoteDir,
+      cleanupRemote: input.cleanupRemote ?? true,
+    })
+  }
+
+  await db.update(verificationTests)
+    .set({
+      name:           input.name.trim(),
+      schedule:       input.schedule.trim(),
+      validationHook: input.validationHook?.trim() || null,
+      targetConfig:   nextTargetConfig,
+    })
+    .where(eq(verificationTests.id, input.id))
+
+  void appendAuditEntry({
+    action:       'verification.updated',
+    resourceType: 'verification_test',
+    resourceId:   input.id,
+    resourceName: input.name.trim(),
+    actor:        adminUser.id,
+    detail:       { schedule: input.schedule, hookChanged: input.validationHook !== existing.validationHook },
+  })
+
+  revalidatePath(`/verification/${input.id}`)
+  revalidatePath('/verification')
+  return {}
+}
+
+export async function deleteVerificationTest(id: string): Promise<{ error?: string }> {
+  const adminUser = await requireAdmin()
+  const db = getDb()
+
+  const [existing] = await db.select().from(verificationTests).where(eq(verificationTests.id, id)).limit(1)
+  if (!existing) return { error: 'Verification test not found' }
+
+  await db.delete(verificationRuns).where(eq(verificationRuns.testId, id))
+  await db.delete(verificationTests).where(eq(verificationTests.id, id))
+
+  void appendAuditEntry({
+    action:       'verification.deleted',
+    resourceType: 'verification_test',
+    resourceId:   id,
+    resourceName: existing.name,
+    actor:        adminUser.id,
+  })
+
+  revalidatePath('/verification')
+  return {}
 }
