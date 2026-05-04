@@ -29,6 +29,7 @@ export function getDb(): Db {
   _sqlite.pragma('journal_mode = WAL')
   _sqlite.pragma('busy_timeout = 10000')
   _sqlite.pragma('foreign_keys = ON')
+  _sqlite.pragma('secure_delete = ON')
 
   _db = drizzleSqlite(_sqlite, { schema })
   return _db

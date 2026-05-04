@@ -233,3 +233,73 @@ contain).
 See [SECURITY.md in the repository root](../SECURITY.md) (if present) or
 contact the maintainers directly. Please do not file public GitHub
 issues for security bugs.
+
+---
+
+## Application security audit (V1)
+
+This section documents the security posture of BackupOS as audited per #185.
+
+### Threat model
+
+- **Trust boundary:** the server is operated by the deployer. We assume the deployer is trusted.
+- **In scope:** hostile internal users (employees within an org), credential leaks, exposed network services, supply-chain attacks on outbound connections.
+- **Out of scope:** physical server access, kernel-level compromise, side-channel attacks.
+
+### SQL injection
+
+All database access uses Drizzle ORM with parameterized queries. There is no raw SQL string concatenation in the codebase. The only `` sql`...` `` template usages reference column identifiers, not user input.
+
+### Server-side request forgery (SSRF)
+
+Outbound HTTP fetches that accept user-provided URLs (alert webhooks, monitor probes) are guarded by `apps/web/lib/ssrf-guard.ts`. URLs resolving to RFC 1918 private ranges, loopback, CGNAT (Tailscale), link-local IPv4 (169.254/16, including AWS/GCP metadata), or link-local/ULA/multicast IPv6 are refused before the request is made. DNS lookups are performed to catch hostnames that resolve to private IPs.
+
+This is enforced at runtime, not just at config time — DNS rebinding cannot bypass it.
+
+### Cross-site request forgery (CSRF)
+
+All mutations go through Next.js server actions, which include framework-level CSRF protection (origin checks against the server's allowed origins).
+
+### Authentication
+
+- Email + password via better-auth, with optional TOTP 2FA.
+- Sessions: HttpOnly cookies, SameSite=Lax, Secure when served over HTTPS (auto-detected from `BETTER_AUTH_URL`).
+- Session expiry: 30 days, sliding window.
+- Global rate limit on auth endpoints: 10 requests / 60 seconds.
+- Password reset: 5 requests per email per 15 minutes, 20 per IP per 60 minutes.
+- Successful password reset invalidates ALL sessions for that user.
+
+### Security headers (HTTP response)
+
+Configured in `apps/web/next.config.ts`:
+
+- `Content-Security-Policy` (default-src 'self'; frame-ancestors 'none'; etc.)
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+- `X-XSS-Protection: 1; mode=block`
+
+### Database hardening
+
+- WAL journal mode (concurrent reads, atomic writes)
+- Foreign keys ON
+- `secure_delete = ON` — freed pages are zeroed to prevent plaintext residue from deleted credentials
+- Busy timeout 10 s
+
+### Error pages
+
+`apps/web/app/error.tsx` and `apps/web/app/global-error.tsx` never display raw error messages or stack traces to users in production. Only generic copy + an opaque error digest for debugging via server logs.
+
+### Audit log
+
+The `audit_log` table stores enumerated action types only (no raw user input or credential values). Each entry chains to the previous via SHA-256, providing tamper-evidence. The `detail` JSON field is set only by application code, never reflects user form data verbatim.
+
+### What is NOT included in V1
+
+- DDoS protection (responsibility of the reverse proxy in front of BackupOS)
+- Penetration testing (separate engagement)
+- Automated bug-bounty program
+- WAF rules
+- IP-based geo-blocking
