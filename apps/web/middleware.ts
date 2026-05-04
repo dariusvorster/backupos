@@ -7,6 +7,7 @@ const PUBLIC_PATHS = [
   '/login',
   '/login/two-factor',
   '/signup',
+  '/forgot-password',
   '/install.sh',
   '/install.ps1',
   '/manifest.webmanifest',
@@ -21,6 +22,7 @@ const PUBLIC_PREFIXES = [
   '/apple-icon',
   '/opengraph-image',
   '/icon',
+  '/reset-password/',
 ]
 
 export function middleware(request: NextRequest) {
