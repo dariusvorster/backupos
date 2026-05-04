@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { getDb, alerts, alertChannels, eq } from '@backupos/db'
 import { requireAdmin } from '@/lib/user'
 import { dispatchToChannel, ALL_ALERT_TYPES, type AlertType } from '@/lib/alerts'
+import { encryptChannelConfig } from '@/lib/alert-channel-crypto'
 
 const VALID_CHANNEL_TYPES = [
   'discord', 'slack', 'webhook',
@@ -84,7 +85,7 @@ export async function createAlertChannel(formData: FormData): Promise<void> {
     id: crypto.randomUUID(),
     name,
     type,
-    config: JSON.stringify(config),
+    config: JSON.stringify(encryptChannelConfig(type, config)),
     enabled: true,
     createdAt: new Date(),
   })
@@ -111,7 +112,7 @@ export async function createAlertChannelForType(integType: string, formData: For
     id: crypto.randomUUID(),
     name,
     type: integType,
-    config: JSON.stringify(config),
+    config: JSON.stringify(encryptChannelConfig(integType, config)),
     enabled: true,
     createdAt: new Date(),
   })
@@ -152,7 +153,7 @@ export async function testAlertChannel(input: TestAlertChannelInput): Promise<Te
     if (!input.config || Object.keys(input.config).length === 0) {
       return { ok: false, error: 'Missing configuration fields' }
     }
-    testChannel = { id: 'test', type: input.type, config: JSON.stringify(input.config) }
+    testChannel = { id: 'test', type: input.type, config: JSON.stringify(encryptChannelConfig(input.type, input.config)) }
   }
 
   const message = 'BackupOS test message — if you can read this, your channel is configured correctly.'

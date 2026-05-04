@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer'
 import { getDb, alerts, alertChannels, smtpConfig, backupRuns, backupJobs, restoreRuns, restoreSpecs, eq } from '@backupos/db'
 import { decryptField } from './repo-crypto'
+import { decryptChannelConfig } from './alert-channel-crypto'
 
 export type AlertType =
   | 'backup_failed'
@@ -325,7 +326,17 @@ export async function dispatchToChannel(
   severity: string,
   payload: AlertPayload,
 ): Promise<void> {
-  const cfg = JSON.parse(channel.config) as Record<string, unknown>
+  let cfg: Record<string, unknown>
+  try {
+    const parsed = JSON.parse(channel.config) as Record<string, unknown>
+    cfg = decryptChannelConfig(channel.type, parsed)
+  } catch (err) {
+    console.error(
+      `[alerts] channel ${channel.id} (${channel.type}) config decrypt failed; skipping dispatch:`,
+      err,
+    )
+    return
+  }
   const url = (cfg.url as string | undefined) ?? ''
 
   if      (channel.type === 'discord')   await fireDiscord(url, type, message, severity)

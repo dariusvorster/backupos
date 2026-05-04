@@ -15,6 +15,7 @@ import { ensureRepoMountedOnAgent } from './lib/repo-mount'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
 import { sendAlert, fireBackupSucceeded, fireRestoreSucceeded, fireRestoreFailed } from './lib/alerts'
+import { migrateAlertChannelEncryption } from './lib/alert-channel-crypto'
 import { appendLog } from './lib/logger'
 import { auth } from './lib/auth'
 import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
@@ -138,7 +139,9 @@ function getBundleHash(): string {
 const BUNDLE_HASH = getBundleHash()
 console.log('[server] bundle hash:', BUNDLE_HASH || '(not found)')
 
-void app.prepare().then(() => {
+void app.prepare().then(async () => {
+  await migrateAlertChannelEncryption()
+
   const server = createServer((req, res) => {
     const parsed = parse(req.url!, true)
 
