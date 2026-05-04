@@ -201,6 +201,8 @@ ok "User '$SVC_USER'"
 # ── 3. Directories ────────────────────────────────────────────────────────────
 mkdir -p "$INSTALL_DIR" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
 chown "$SVC_USER:$SVC_USER" "$DATA_DIR" "$LOG_DIR"
+chown "$SVC_USER:$SVC_USER" "$CONF_DIR"
+chmod 700 "$CONF_DIR"
 
 # ── 4. Source code ────────────────────────────────────────────────────────────
 if [[ -n "$SOURCE_DIR" ]]; then
@@ -317,6 +319,7 @@ BETTER_AUTH_URL=$PUBLIC_URL
 ENCRYPTION_KEY=$(rand32)
 ENVEOF
   chmod 600 "$ENV_FILE"
+  chown "$SVC_USER:$SVC_USER" "$ENV_FILE"
   ok "Environment file created"
 else
   ok "Environment file already exists (keeping existing secrets)"
@@ -332,6 +335,17 @@ if ! grep -q '^BACKUPOS_INTERNAL_URL=' "$ENV_FILE" 2>/dev/null; then
   echo "BACKUPOS_INTERNAL_URL=http://127.0.0.1:3093" >> "$ENV_FILE"
   echo "[backupos] Set BACKUPOS_INTERNAL_URL"
 fi
+
+# Heal env-file ownership for upgrades from older installs that left the
+# file as root:root. The service runs as $SVC_USER and needs write access
+# for the UI key-rotation flow (#317).
+chown "$SVC_USER:$SVC_USER" "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+
+# Heal any pre-rotation backup files
+for backup in "$CONF_DIR"/server.env.pre-rotation-*; do
+  [ -f "$backup" ] && chown "$SVC_USER:$SVC_USER" "$backup" && chmod 600 "$backup"
+done
 
 # ── 7. Log rotation ───────────────────────────────────────────────────────────
 cat > /etc/logrotate.d/$SERVICE_NAME <<LREOF
