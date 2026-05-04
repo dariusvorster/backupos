@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
-import { getCurrentUser } from '@/lib/user'
+import { getCurrentUser, isAdmin } from '@/lib/user'
 import { getDb, backupDefaults } from '@backupos/db'
 import { saveBackupDefaults } from '@/app/actions/settings'
+import { ViewOnlyBanner } from '@/components/ui/view-only-banner'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => ({
   value: i,
@@ -11,6 +12,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => ({
 export default async function ScheduleWindowsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
+  const canEdit = isAdmin(user)
 
   const { saved } = await searchParams
   const db = getDb()
@@ -30,6 +32,8 @@ export default async function ScheduleWindowsPage({ searchParams }: { searchPara
       <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg)', marginBottom: 4 }}>Schedule windows</h1>
       <p style={{ fontSize: 13, color: 'var(--fg-dim)', marginBottom: 24 }}>Default time window for backup jobs. Individual jobs can override this.</p>
 
+      {!canEdit && <ViewOnlyBanner />}
+
       {saved === '1' && (
         <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
           Settings saved.
@@ -41,13 +45,13 @@ export default async function ScheduleWindowsPage({ searchParams }: { searchPara
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
               <label style={labelStyle}>Window start</label>
-              <select name="scheduleStart" defaultValue={cfg?.scheduleStart ?? 0} style={inputStyle}>
+              <select name="scheduleStart" defaultValue={cfg?.scheduleStart ?? 0} style={inputStyle} disabled={!canEdit}>
                 {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
               </select>
             </div>
             <div>
               <label style={labelStyle}>Window end</label>
-              <select name="scheduleEnd" defaultValue={cfg?.scheduleEnd ?? 23} style={inputStyle}>
+              <select name="scheduleEnd" defaultValue={cfg?.scheduleEnd ?? 23} style={inputStyle} disabled={!canEdit}>
                 {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
               </select>
             </div>
@@ -62,7 +66,7 @@ export default async function ScheduleWindowsPage({ searchParams }: { searchPara
         <input type="hidden" name="keepWeekly"  value={String(cfg?.keepWeekly  ?? 4)}  />
         <input type="hidden" name="keepMonthly" value={String(cfg?.keepMonthly ?? 12)} />
         <input type="hidden" name="keepYearly"  value={String(cfg?.keepYearly  ?? 0)}  />
-        <button type="submit" style={{ padding: '8px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+        <button type="submit" disabled={!canEdit} style={{ padding: '8px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: canEdit ? 'pointer' : 'default', opacity: canEdit ? 1 : 0.5 }}>
           Save defaults
         </button>
       </form>

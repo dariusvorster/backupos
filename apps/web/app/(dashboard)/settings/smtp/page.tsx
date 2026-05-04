@@ -1,12 +1,14 @@
 import { redirect } from 'next/navigation'
-import { getCurrentUser } from '@/lib/user'
+import { getCurrentUser, isAdmin } from '@/lib/user'
 import { getDb, smtpConfig } from '@backupos/db'
 import { saveSmtpConfig, testSmtpConnection } from '@/app/actions/settings'
 import { SmtpTestButton } from './test-button'
+import { ViewOnlyBanner } from '@/components/ui/view-only-banner'
 
 export default async function SmtpSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
+  const canEdit = isAdmin(user)
 
   const { saved } = await searchParams
   const db = getDb()
@@ -33,6 +35,8 @@ export default async function SmtpSettingsPage({ searchParams }: { searchParams:
         </div>
       )}
 
+      {!canEdit && <ViewOnlyBanner />}
+
       {cfg?.enabled && !cfg?.toAddresses && (
         <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--warn-dim)', border: '1px solid color-mix(in srgb, var(--warn) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--warn)' }}>
           Alerts will not be delivered — no recipients configured. Add at least one address below.
@@ -46,8 +50,8 @@ export default async function SmtpSettingsPage({ searchParams }: { searchParams:
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)' }}>Enable SMTP</div>
               <div style={{ fontSize: 12, color: 'var(--fg-dim)' }}>Send emails via your SMTP server</div>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input name="enabled" type="checkbox" defaultChecked={cfg?.enabled ?? false} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: canEdit ? 'pointer' : 'default' }}>
+              <input name="enabled" type="checkbox" defaultChecked={cfg?.enabled ?? false} disabled={!canEdit} />
               <span style={{ fontSize: 13, color: 'var(--fg-mute)' }}>Enabled</span>
             </label>
           </div>
@@ -55,55 +59,55 @@ export default async function SmtpSettingsPage({ searchParams }: { searchParams:
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 16 }}>
             <div>
               <label style={labelStyle}>SMTP host</label>
-              <input name="host" type="text" defaultValue={cfg?.host ?? ''} placeholder="smtp.example.com" style={inputStyle} />
+              <input name="host" type="text" defaultValue={cfg?.host ?? ''} placeholder="smtp.example.com" style={inputStyle} disabled={!canEdit} />
             </div>
             <div style={{ width: 100 }}>
               <label style={labelStyle}>Port</label>
-              <input name="port" type="number" defaultValue={cfg?.port ?? 587} style={inputStyle} />
+              <input name="port" type="number" defaultValue={cfg?.port ?? 587} style={inputStyle} disabled={!canEdit} />
             </div>
           </div>
 
           <div style={fieldStyle}>
             <label style={labelStyle}>Username</label>
-            <input name="username" type="text" defaultValue={cfg?.username ?? ''} placeholder="user@example.com" style={inputStyle} />
+            <input name="username" type="text" defaultValue={cfg?.username ?? ''} placeholder="user@example.com" style={inputStyle} disabled={!canEdit} />
           </div>
 
           <div style={fieldStyle}>
             <label style={labelStyle}>Password</label>
-            <input name="password" type="password" defaultValue={cfg?.password ?? ''} placeholder="••••••••" style={inputStyle} />
+            <input name="password" type="password" defaultValue={cfg?.password ?? ''} placeholder="••••••••" style={inputStyle} disabled={!canEdit} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div>
               <label style={labelStyle}>From name</label>
-              <input name="fromName" type="text" defaultValue={cfg?.fromName ?? 'BackupOS'} style={inputStyle} />
+              <input name="fromName" type="text" defaultValue={cfg?.fromName ?? 'BackupOS'} style={inputStyle} disabled={!canEdit} />
             </div>
             <div>
               <label style={labelStyle}>From email</label>
-              <input name="fromEmail" type="email" defaultValue={cfg?.fromEmail ?? ''} placeholder="noreply@example.com" style={inputStyle} />
+              <input name="fromEmail" type="email" defaultValue={cfg?.fromEmail ?? ''} placeholder="noreply@example.com" style={inputStyle} disabled={!canEdit} />
             </div>
           </div>
 
           <div style={fieldStyle}>
             <label style={labelStyle}>Send alerts to</label>
-            <input name="toAddresses" type="text" defaultValue={cfg?.toAddresses ?? ''} placeholder="alice@example.com, bob@example.com" style={inputStyle} />
+            <input name="toAddresses" type="text" defaultValue={cfg?.toAddresses ?? ''} placeholder="alice@example.com, bob@example.com" style={inputStyle} disabled={!canEdit} />
             <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 4 }}>Comma-separated list of email addresses to receive alerts. Leave blank to disable alert delivery.</div>
           </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input name="tls" type="checkbox" defaultChecked={cfg?.tls ?? true} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: canEdit ? 'pointer' : 'default' }}>
+            <input name="tls" type="checkbox" defaultChecked={cfg?.tls ?? true} disabled={!canEdit} />
             <span style={{ fontSize: 13, color: 'var(--fg-mute)' }}>Use TLS/STARTTLS</span>
           </label>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-          <button type="submit" style={{ padding: '8px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <button type="submit" disabled={!canEdit} style={{ padding: '8px 20px', backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: canEdit ? 'pointer' : 'default', opacity: canEdit ? 1 : 0.5 }}>
             Save changes
           </button>
           <SmtpTestButton
             testAction={testSmtpConnection}
-            disabled={!(cfg?.enabled && cfg?.host && cfg?.fromEmail && cfg?.toAddresses)}
-            disabledReason={!cfg?.enabled ? 'SMTP is not enabled' : !cfg?.toAddresses ? 'No recipients configured' : 'SMTP not fully configured'}
+            disabled={!canEdit || !(cfg?.enabled && cfg?.host && cfg?.fromEmail && cfg?.toAddresses)}
+            disabledReason={!canEdit ? 'Admin role required' : !cfg?.enabled ? 'SMTP is not enabled' : !cfg?.toAddresses ? 'No recipients configured' : 'SMTP not fully configured'}
           />
         </div>
       </form>

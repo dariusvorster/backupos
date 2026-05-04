@@ -1,4 +1,7 @@
+import { redirect } from 'next/navigation'
+import { getCurrentUser, isAdmin } from '@/lib/user'
 import { getLoggingConfig, saveLoggingConfig } from '@/app/actions/logging-config'
+import { ViewOnlyBanner } from '@/components/ui/view-only-banner'
 
 const ACTIVITY_OPTIONS = ['30d', '90d', '180d', '365d', 'forever']
 const AUDIT_OPTIONS    = ['90d', '365d', '3y', '7y', 'forever']
@@ -14,6 +17,9 @@ const selectStyle: React.CSSProperties = {
 }
 
 export default async function LoggingSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+  const user = await getCurrentUser()
+  if (!user) redirect('/login')
+  const canEdit = isAdmin(user)
   const config = await getLoggingConfig()
   const { saved } = await searchParams
 
@@ -21,6 +27,8 @@ export default async function LoggingSettingsPage({ searchParams }: { searchPara
     <div style={{ maxWidth: 560 }}>
       <a href="/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 24 }}>← Settings</a>
       <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg)', marginBottom: 24 }}>Logging</h1>
+
+      {!canEdit && <ViewOnlyBanner />}
 
       {saved === '1' && (
         <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
@@ -35,28 +43,28 @@ export default async function LoggingSettingsPage({ searchParams }: { searchPara
           </div>
           <div style={rowStyle}>
             <span style={{ color: 'var(--fg)' }}>Activity feed</span>
-            <select name="activityRetention" defaultValue={config.activityRetention} style={selectStyle}>
+            <select name="activityRetention" defaultValue={config.activityRetention} style={selectStyle} disabled={!canEdit}>
               {ACTIVITY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
           <div style={rowStyle}>
             <span style={{ color: 'var(--fg)' }}>Audit log</span>
-            <select name="auditRetention" defaultValue={config.auditRetention} style={selectStyle}>
+            <select name="auditRetention" defaultValue={config.auditRetention} style={selectStyle} disabled={!canEdit}>
               {AUDIT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
           <div style={rowStyle}>
             <span style={{ color: 'var(--fg)' }}>Operational logs</span>
-            <select name="opsRetention" defaultValue={config.opsRetention} style={selectStyle}>
+            <select name="opsRetention" defaultValue={config.opsRetention} style={selectStyle} disabled={!canEdit}>
               {OPS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
         </div>
 
-        <button type="submit" style={{
+        <button type="submit" disabled={!canEdit} style={{
           padding: '8px 20px', fontSize: 13, fontWeight: 500,
           borderRadius: 'var(--radius-sm)', border: 'none',
-          backgroundColor: 'var(--accent)', color: '#fff', cursor: 'pointer',
+          backgroundColor: 'var(--accent)', color: '#fff', cursor: canEdit ? 'pointer' : 'default', opacity: canEdit ? 1 : 0.5,
         }}>
           Save
         </button>

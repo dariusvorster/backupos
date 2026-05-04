@@ -1,7 +1,10 @@
+import { redirect } from 'next/navigation'
+import { getCurrentUser, isAdmin } from '@/lib/user'
 import { getDb, infraOsServices, backupJobs } from '@backupos/db'
 import { addInfraServiceAction, removeInfraService } from '@/app/actions/infra-os'
 import Link from 'next/link'
 import { Cpu } from 'lucide-react'
+import { ViewOnlyBanner } from '@/components/ui/view-only-banner'
 
 const SERVICE_TYPES = [
   { value: 'database',   label: 'Database',   desc: 'PostgreSQL, MySQL, Redis, etc.' },
@@ -10,6 +13,9 @@ const SERVICE_TYPES = [
 ]
 
 export default async function InfraOsSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
+  const user = await getCurrentUser()
+  if (!user) redirect('/login')
+  const canEdit = isAdmin(user)
   const db       = getDb()
   const services = await db.select().from(infraOsServices).all()
   const { saved } = await searchParams
@@ -31,6 +37,8 @@ export default async function InfraOsSettingsPage({ searchParams }: { searchPara
           Register the services and infrastructure your organization runs. BackupOS tracks which ones have backup jobs and surfaces gaps on the dashboard.
         </p>
       </div>
+
+      {!canEdit && <ViewOnlyBanner />}
 
       {saved === '1' && (
         <div style={{ padding: '10px 16px', marginBottom: 20, backgroundColor: 'var(--ok-dim)', border: '1px solid color-mix(in srgb, var(--ok) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: 13, color: 'var(--ok)' }}>
@@ -56,6 +64,7 @@ export default async function InfraOsSettingsPage({ searchParams }: { searchPara
                 type="text"
                 required
                 placeholder="PostgreSQL main"
+                disabled={!canEdit}
                 style={{ width: '100%', padding: '6px 10px', fontSize: 13, backgroundColor: 'var(--surf2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
@@ -65,6 +74,7 @@ export default async function InfraOsSettingsPage({ searchParams }: { searchPara
                 name="host"
                 type="text"
                 placeholder="db.internal:5432"
+                disabled={!canEdit}
                 style={{ width: '100%', padding: '6px 10px', fontSize: 13, backgroundColor: 'var(--surf2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
@@ -74,6 +84,7 @@ export default async function InfraOsSettingsPage({ searchParams }: { searchPara
             <select
               name="serviceType"
               required
+              disabled={!canEdit}
               style={{ width: '100%', padding: '6px 10px', fontSize: 13, backgroundColor: 'var(--surf2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--fg)' }}
             >
               <option value="">— Select type —</option>
@@ -88,14 +99,15 @@ export default async function InfraOsSettingsPage({ searchParams }: { searchPara
               name="description"
               type="text"
               placeholder="Optional notes"
+              disabled={!canEdit}
               style={{ width: '100%', padding: '6px 10px', fontSize: 13, backgroundColor: 'var(--surf2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--fg)', outline: 'none', boxSizing: 'border-box' }}
             />
           </div>
           <div>
-            <button type="submit" style={{
-              fontSize: 13, padding: '7px 16px', cursor: 'pointer',
+            <button type="submit" disabled={!canEdit} style={{
+              fontSize: 13, padding: '7px 16px', cursor: canEdit ? 'pointer' : 'default',
               borderRadius: 'var(--radius-sm)', border: 'none',
-              background: 'var(--accent)', color: '#fff',
+              background: 'var(--accent)', color: '#fff', opacity: canEdit ? 1 : 0.5,
             }}>
               Add service
             </button>
@@ -151,15 +163,17 @@ export default async function InfraOsSettingsPage({ searchParams }: { searchPara
                     Create backup job →
                   </Link>
                 )}
-                <form action={boundRemove}>
-                  <button type="submit" style={{
-                    fontSize: 12, padding: '3px 10px', cursor: 'pointer',
-                    borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                    color: 'var(--fg-mute)', background: 'var(--surf2)',
-                  }}>
-                    Remove
-                  </button>
-                </form>
+                {canEdit && (
+                  <form action={boundRemove}>
+                    <button type="submit" style={{
+                      fontSize: 12, padding: '3px 10px', cursor: 'pointer',
+                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                      color: 'var(--fg-mute)', background: 'var(--surf2)',
+                    }}>
+                      Remove
+                    </button>
+                  </form>
+                )}
               </div>
             )
           })}

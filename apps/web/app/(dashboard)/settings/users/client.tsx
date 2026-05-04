@@ -343,7 +343,7 @@ export function UsersClient({ users: initialUsers, invites: initialInvites, base
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   <button style={btnGhost} onClick={() => copyLink(link)}>Copy link</button>
-                  {smtpConfigured && (
+                  {smtpConfigured && currentUserIsAdmin && (
                     <button
                       style={btnGhost}
                       onClick={() => startTransition(async () => {

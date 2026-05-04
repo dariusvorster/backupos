@@ -23,6 +23,7 @@ interface Profile {
 
 interface Props {
   profiles: Profile[]
+  canEdit?: boolean
 }
 
 const HOURS = Array.from({ length: 25 }, (_, i) => i)
@@ -48,7 +49,7 @@ function Sparkline({ rules }: { rules: BandwidthRule[] }) {
   )
 }
 
-function RuleEditor({ profileId, rules }: { profileId: string; rules: Rule[] }) {
+function RuleEditor({ profileId, rules, canEdit = true }: { profileId: string; rules: Rule[]; canEdit?: boolean }) {
   const [startHour, setStartHour] = useState('0')
   const [endHour,   setEndHour]   = useState('8')
   const [limitKbps, setLimitKbps] = useState('')
@@ -81,12 +82,14 @@ function RuleEditor({ profileId, rules }: { profileId: string; rules: Rule[] }) 
                 <td style={{ padding: '4px 8px', color: 'var(--fg)' }}>{r.endHour}:00</td>
                 <td style={{ padding: '4px 8px', color: 'var(--fg)' }}>{fmtLimit(r.limitKbps)}</td>
                 <td style={{ padding: '4px 8px' }}>
-                  <button
-                    onClick={() => startTransition(() => { deleteRule(r.id) })}
-                    style={{ fontSize: 11, color: 'var(--fg-dim)', background: 'none', border: 'none', cursor: 'pointer' }}
-                  >
-                    Remove
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => startTransition(() => { deleteRule(r.id) })}
+                      style={{ fontSize: 11, color: 'var(--fg-dim)', background: 'none', border: 'none', cursor: 'pointer' }}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -94,37 +97,39 @@ function RuleEditor({ profileId, rules }: { profileId: string; rules: Rule[] }) 
         </table>
       )}
 
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={startHour} onChange={e => setStartHour(e.target.value)} style={{ ...inputSm, width: 68 }}>
-          {HOURS.slice(0, 24).map(h => <option key={h} value={h}>{h}:00</option>)}
-        </select>
-        <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>to</span>
-        <select value={endHour} onChange={e => setEndHour(e.target.value)} style={{ ...inputSm, width: 68 }}>
-          {HOURS.slice(1).map(h => <option key={h} value={h}>{h}:00</option>)}
-        </select>
-        <input
-          type="number"
-          value={limitKbps}
-          onChange={e => setLimitKbps(e.target.value)}
-          placeholder="KB/s (blank = unlimited)"
-          style={{ ...inputSm, width: 160 }}
-        />
-        <button
-          onClick={handleAdd}
-          style={{
-            padding: '5px 12px', fontSize: 12, cursor: 'pointer',
-            borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-            background: 'none', color: 'var(--fg)',
-          }}
-        >
-          Add rule
-        </button>
-      </div>
+      {canEdit && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={startHour} onChange={e => setStartHour(e.target.value)} style={{ ...inputSm, width: 68 }}>
+            {HOURS.slice(0, 24).map(h => <option key={h} value={h}>{h}:00</option>)}
+          </select>
+          <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>to</span>
+          <select value={endHour} onChange={e => setEndHour(e.target.value)} style={{ ...inputSm, width: 68 }}>
+            {HOURS.slice(1).map(h => <option key={h} value={h}>{h}:00</option>)}
+          </select>
+          <input
+            type="number"
+            value={limitKbps}
+            onChange={e => setLimitKbps(e.target.value)}
+            placeholder="KB/s (blank = unlimited)"
+            style={{ ...inputSm, width: 160 }}
+          />
+          <button
+            onClick={handleAdd}
+            style={{
+              padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+              background: 'none', color: 'var(--fg)',
+            }}
+          >
+            Add rule
+          </button>
+        </div>
+      )}
     </div>
   )
 }
 
-export function BandwidthProfileManager({ profiles }: Props) {
+export function BandwidthProfileManager({ profiles, canEdit = true }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
@@ -177,19 +182,21 @@ export function BandwidthProfileManager({ profiles }: Props) {
             <span style={{ fontSize: 12, color: 'var(--fg-dim)', marginLeft: 4 }}>
               {p.rules.length} rule{p.rules.length !== 1 ? 's' : ''}
             </span>
-            <button
-              onClick={e => {
-                e.stopPropagation()
-                startTransition(() => { deleteProfile(p.id) })
-              }}
-              style={{
-                fontSize: 12, color: 'var(--fg-dim)', background: 'none',
-                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                padding: '3px 10px', cursor: 'pointer',
-              }}
-            >
-              Delete
-            </button>
+            {canEdit && (
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  startTransition(() => { deleteProfile(p.id) })
+                }}
+                style={{
+                  fontSize: 12, color: 'var(--fg-dim)', background: 'none',
+                  border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                  padding: '3px 10px', cursor: 'pointer',
+                }}
+              >
+                Delete
+              </button>
+            )}
             <span style={{ fontSize: 12, color: 'var(--fg-dim)' }}>
               {expanded === p.id ? '▲' : '▼'}
             </span>
@@ -201,7 +208,7 @@ export function BandwidthProfileManager({ profiles }: Props) {
               padding: '14px 18px',
               backgroundColor: 'var(--surf2)',
             }}>
-              <RuleEditor profileId={p.id} rules={p.rules} />
+              <RuleEditor profileId={p.id} rules={p.rules} canEdit={canEdit} />
             </div>
           )}
         </div>
