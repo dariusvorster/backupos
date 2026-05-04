@@ -170,12 +170,63 @@ sudo sed -i \
 sudo systemctl restart backupos backupos-pbs
 ```
 
-### Rotating the key
+### Rotating the key — UI (recommended)
 
-A key-rotation tool is planned (issue #188). Until then, rotation
-requires manually re-encrypting every encrypted column with the new key.
-**Do not change the key without re-encrypting** — existing encrypted
-data becomes unreadable.
+Available at `/settings/security` → "Rotate encryption key". The button:
+
+1. Generates a new random 32-byte key.
+2. Re-encrypts every stored secret in a single SQLite transaction.
+3. Writes the new key to `/etc/backupos/server.env` (backing up the old
+   file as `server.env.pre-rotation-<timestamp>`).
+4. Triggers the service to exit so systemd restarts it with the new key.
+
+Total downtime is ~1–2 seconds. The button is disabled when
+`ENCRYPTION_KEY_FILE` is set (use the CLI in that case — see below).
+
+**Save the new key from the env file backup or the running env file
+before the next rotation.** If the env file is lost, encrypted data is
+unrecoverable.
+
+### Rotating the key — CLI (headless servers, recovery)
+
+```bash
+sudo systemctl stop backupos backupos-pbs
+cd /opt/backupos
+sudo -u backupos tsx apps/web/scripts/rotate-key.ts
+sudo systemctl start backupos backupos-pbs
+```
+
+The CLI uses the same rotation engine as the UI. It supports both
+`ENCRYPTION_KEY` and `ENCRYPTION_KEY_FILE` deployments — the new key is
+written to whichever source the env file declares.
+
+### What the rotation tool does NOT touch
+
+- **`repositories.escrowed_key`** uses a passphrase-derived cipher,
+  separate from `ENCRYPTION_KEY`. Re-escrow each repository manually if
+  you've forgotten the escrow passphrase.
+- **API token hashes** are SHA-256 hashes; rotation has nothing to do.
+- **Backup data itself** is encrypted by Restic with the per-repository
+  password. That password gets re-encrypted with the new key, but the
+  Restic-side encryption is unchanged.
+
+### Recovery if rotation fails partway
+
+The DB rewrite is wrapped in a single SQLite transaction — if any field
+fails to decrypt or re-encrypt, the entire pass rolls back and the DB
+is left exactly as it was. The env file is only updated AFTER the DB
+transaction commits.
+
+If the DB rotates but the env file write fails (rare — disk full,
+permissions, etc.), the rotation tool prints the new key to the console
+and exits with a non-zero status. Write the printed key to the env file
+manually, then restart the service.
+
+If you need to roll back manually, the previous env file is backed up
+alongside the active one as `server.env.pre-rotation-<timestamp>`.
+Restore it and restart — but only if no rotation has been performed
+since (otherwise the DB is encrypted under a key that backup doesn't
+contain).
 
 ## Reporting security issues
 
