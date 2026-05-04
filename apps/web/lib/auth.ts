@@ -1,8 +1,45 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { twoFactor as twoFactorPlugin } from 'better-auth/plugins'
+import { twoFactor as twoFactorPlugin, genericOAuth } from 'better-auth/plugins'
 import { getDb, user, session, account, verification, twoFactor, eq } from '@backupos/db'
 import { isPrivateOrigin } from './private-origin'
+import { getOidcConfigDecrypted } from './oidc-config'
+
+function buildPlugins(): ReturnType<typeof twoFactorPlugin>[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const plugins: any[] = [twoFactorPlugin({ issuer: 'BackupOS' })]
+
+  // Conditionally load genericOAuth from DB config.
+  // NOTE: This runs at module-init. Changes to /settings/auth/sso require service restart.
+  // TODO #187 follow-up: wire databaseHooks.session.create to record user.login.sso vs user.login
+  // based on the account row's providerId. Currently login events are not audited at all
+  // because better-auth doesn't expose a clean post-login hook in this version.
+  let oidc: ReturnType<typeof getOidcConfigDecrypted> = null
+  try {
+    oidc = getOidcConfigDecrypted()
+  } catch {
+    // DB may not be migrated yet on first boot; skip silently.
+  }
+
+  if (oidc?.enabled) {
+    plugins.push(genericOAuth({
+      config: [{
+        providerId:   'oidc',
+        discoveryUrl: oidc.discoveryUrl,
+        clientId:     oidc.clientId,
+        clientSecret: oidc.clientSecret,
+        scopes:       oidc.scopes.split(/\s+/).filter(Boolean),
+        pkce:         true,
+        mapProfileToUser: (profile: Record<string, unknown>) => ({
+          email: profile['email'] as string,
+          name:  (profile['name'] || profile['preferred_username'] || profile['email']) as string,
+        }),
+      }],
+    }))
+  }
+
+  return plugins
+}
 
 const explicitTrusted = process.env['BETTER_AUTH_TRUSTED_ORIGINS']
   ?.split(',').map(s => s.trim()).filter(Boolean) ?? []
@@ -13,7 +50,7 @@ export const auth = betterAuth({
     const origin = request?.headers.get('origin') ?? ''
     return isPrivateOrigin(origin) ? [...explicitTrusted, origin] : explicitTrusted
   },
-  plugins: [twoFactorPlugin({ issuer: 'BackupOS' })],
+  plugins: buildPlugins(),
   database: drizzleAdapter(getDb(), {
     provider: 'sqlite',
     schema: { user, session, account, verification, twoFactor },
