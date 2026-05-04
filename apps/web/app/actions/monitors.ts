@@ -6,6 +6,7 @@ import { getDb, backupMonitors, repositories, eq } from '@backupos/db'
 import { type PBSConfig } from '@backupos/monitors'
 import { performMonitorSync } from '@/lib/monitors'
 import { requireAdmin } from '@/lib/user'
+import { assertSafeUrl, SSRFViolation } from '@/lib/ssrf-guard'
 
 export async function promoteMonitorToRepo(monitorId: string, formData: FormData): Promise<void> {
   await requireAdmin() // admin only
@@ -70,6 +71,15 @@ export async function testMonitorConnection(url: string): Promise<{ ok: boolean;
   try { parsed = new URL(url) } catch { return { ok: false, message: 'Invalid URL' } }
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     return { ok: false, message: 'Only http:// and https:// URLs are allowed' }
+  }
+
+  try {
+    await assertSafeUrl(url)
+  } catch (err) {
+    if (err instanceof SSRFViolation) {
+      return { ok: false, message: 'URL points to a private/loopback address — not allowed' }
+    }
+    throw err
   }
 
   const controller = new AbortController()

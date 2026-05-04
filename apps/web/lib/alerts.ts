@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import { getDb, alerts, alertChannels, smtpConfig, backupRuns, backupJobs, restoreRuns, restoreSpecs, eq } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 import { decryptChannelConfig } from './alert-channel-crypto'
+import { assertSafeUrl, SSRFViolation } from './ssrf-guard'
 
 export type AlertType =
   | 'backup_failed'
@@ -89,6 +90,15 @@ async function deliverOrThrow(
   url: string,
   init: RequestInit,
 ): Promise<void> {
+  try {
+    await assertSafeUrl(url)
+  } catch (err) {
+    if (err instanceof SSRFViolation) {
+      throw new Error(`${channelType} delivery blocked: ${err.message}`)
+    }
+    throw err
+  }
+
   let response: Response
   try {
     response = await fetch(url, init)
