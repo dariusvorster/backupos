@@ -465,6 +465,13 @@ PBSSVCEOF
 
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME" "$SERVICE_NAME-pbs"
+
+# Flush all OS write buffers before starting the service. Without this the
+# Next.js process can start reading .next/ before the kernel has written the
+# clientReferenceManifest files, causing a 500 for ~5-30 seconds. See #360.
+sync
+sleep 2
+
 systemctl restart "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME-pbs"
 
