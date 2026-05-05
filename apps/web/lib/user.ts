@@ -18,7 +18,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 export async function requireAdmin(): Promise<AuthUser> {
   const u = await getCurrentUser()
   if (!u) redirect('/login')
-  if (u.role !== 'admin') throw new Error('Forbidden: admin role required')
+  if (u.role !== 'admin') redirect('/access-denied')
   return u
 }
 
