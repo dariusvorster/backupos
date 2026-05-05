@@ -29,8 +29,8 @@ const CARDS = [
   {
     type:  'host' as const,
     icon:  Server,
-    title: 'Restore a whole host',
-    desc:  'Full-system restore from a backup snapshot. Requires pre-restore dry-run.',
+    title: 'Restore a compose stack',
+    desc:  'In-place restore of a docker-compose project from the latest successful backup run.',
   },
 ]
 

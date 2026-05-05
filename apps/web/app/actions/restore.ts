@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, alertChannels, eq, desc } from '@backupos/db'
+import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, backupRuns, alertChannels, eq, desc, and } from '@backupos/db'
 import type { ComposeProjectConfig } from '@backupos/agent-protocol'
 import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery, type DatabaseRestoreDelivery } from '@backupos/restore'
 import { requireAdmin } from '@/lib/user'
@@ -553,6 +553,46 @@ export async function triggerDatabaseRestore(
   }
 
   return { ok: true, restoreId: dbRestoreId }
+}
+
+export async function getLatestRunForJob(
+  jobId: string,
+): Promise<{ ok: true; runId: string; createdAt: Date | null } | { ok: false; error: string }> {
+  await requireAdmin()
+  const db = getDb()
+
+  const [latest] = await db
+    .select({ id: backupRuns.id, createdAt: backupRuns.startedAt })
+    .from(backupRuns)
+    .where(and(
+      eq(backupRuns.jobId, jobId),
+      eq(backupRuns.status, 'success'),
+    ))
+    .orderBy(desc(backupRuns.startedAt))
+    .limit(1)
+    .all()
+
+  if (!latest) {
+    return { ok: false, error: 'No successful backup runs found for this job. Run a successful backup first.' }
+  }
+
+  return { ok: true, runId: latest.id, createdAt: latest.createdAt }
+}
+
+export async function getJobComposeProjectName(
+  jobId: string,
+): Promise<{ ok: true; projectName: string } | { ok: false; error: string }> {
+  await requireAdmin()
+  const db = getDb()
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (!job?.sourceConfig) return { ok: false, error: 'Job has no source config' }
+  try {
+    const cfg = JSON.parse(job.sourceConfig) as ComposeProjectConfig
+    if (!cfg.projectName) return { ok: false, error: 'Compose config has no project name' }
+    return { ok: true, projectName: cfg.projectName }
+  } catch {
+    return { ok: false, error: 'Compose config is malformed' }
+  }
 }
 
 export async function cancelRestore(restoreId: string): Promise<{ ok: boolean; error?: string }> {
