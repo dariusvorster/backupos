@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CheckCircle, AlertTriangle } from 'lucide-react'
 import { logDrAction } from '@/app/actions/dr-audit'
+import { getLatestSnapshotForJob, restoreFromSnapshot } from '@/app/actions/restore'
 
 /* ── HTML escape for runbook export ── */
 export function escHtml(s: string): string {
@@ -118,18 +119,58 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone]             = useState(false)
   const [error, setError]           = useState<string | null>(null)
+  const [latestSnapshot, setLatestSnapshot] = useState<{ id: string; createdAt: Date | null } | null>(null)
+  const [loadingSnapshot, setLoadingSnapshot] = useState(false)
 
   async function execute() {
     setSubmitting(true)
     setError(null)
     try {
-      await logDrAction({ action: 'restore_file', jobId, target: filePath, dryRun: false })
+      // 1. Resolve latest snapshot for this job.
+      const snapResult = await getLatestSnapshotForJob(jobId)
+      if (!snapResult.ok) {
+        setError(snapResult.error)
+        setSubmitting(false)
+        return
+      }
+
+      // 2. Dispatch the restore. DR Mode = inplace overwrite by design.
+      const restoreResult = await restoreFromSnapshot({
+        snapshotId: snapResult.snapshotId,
+        sourcePath: filePath,
+        targetType: 'inplace',
+      })
+      if (!restoreResult.ok) {
+        setError(restoreResult.error)
+        setSubmitting(false)
+        return
+      }
+
+      // 3. Audit log AFTER successful dispatch (so failed dispatches don't pollute the log).
+      await logDrAction({
+        action:   'restore_file',
+        jobId,
+        target:   filePath,
+        dryRun:   false,
+        metadata: { snapshotId: snapResult.snapshotId, runId: restoreResult.runId },
+      })
+
       setDone(true)
-    } catch {
-      setError('Something went wrong. Please try again.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
       setSubmitting(false)
     }
   }
+
+  useEffect(() => {
+    if (step !== 3 || !jobId) return
+    setLatestSnapshot(null)
+    setLoadingSnapshot(true)
+    getLatestSnapshotForJob(jobId).then(result => {
+      setLoadingSnapshot(false)
+      if (result.ok) setLatestSnapshot({ id: result.snapshotId, createdAt: result.createdAt })
+    }).catch(() => setLoadingSnapshot(false))
+  }, [step, jobId])
 
   function printRunbook() {
     const jobName = jobs.find(j => j.id === jobId)?.name ?? jobId
@@ -270,36 +311,69 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
       )}
 
       {step === 3 && (
-        <WizardCard title="Ready to restore">
-          <div style={{
-            backgroundColor: 'var(--err-dim)',
-            border: '1px solid color-mix(in srgb, var(--err) 25%, transparent)',
-            borderRadius: 'var(--radius-sm)', padding: '14px 16px', marginBottom: 20,
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)', marginBottom: 4 }}>Restore summary</div>
-            <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>Job: {selectedJob?.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>Path: {filePath}</div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
-            <AlertTriangle size={14} color="var(--warn)" style={{ flexShrink: 0, marginTop: 2 }} />
-            <span style={{ fontSize: 12, color: 'var(--warn)' }}>
-              This action will be recorded in the audit log with DR mode flag.
-            </span>
-          </div>
-          {error && (
-            <div style={{ fontSize: 12, color: 'var(--err)', marginBottom: 12 }}>{error}</div>
-          )}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setStep(2)} style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg)' }}>Back</button>
-            <button
-              onClick={execute}
-              disabled={submitting}
-              style={{ padding: '8px 20px', fontSize: 13, cursor: submitting ? 'not-allowed' : 'pointer', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--err)', color: '#fff', opacity: submitting ? 0.6 : 1 }}
-            >
-              {submitting ? 'Initiating…' : 'Execute restore'}
-            </button>
-          </div>
-        </WizardCard>
+          <WizardCard title="Ready to restore">
+            <div style={{
+              backgroundColor: 'var(--err-dim)',
+              border: '1px solid color-mix(in srgb, var(--err) 25%, transparent)',
+              borderRadius: 'var(--radius-sm)', padding: '14px 16px', marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)', marginBottom: 4 }}>Restore summary</div>
+              <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>Job: {selectedJob?.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>Path: {filePath}</div>
+            </div>
+
+            {loadingSnapshot && (
+              <div style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 12 }}>
+                Looking up latest snapshot…
+              </div>
+            )}
+            {latestSnapshot && (
+              <div style={{
+                backgroundColor: 'var(--surf2)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                padding: 12,
+                fontSize: 13,
+                fontFamily: 'var(--font-mono)',
+                marginBottom: 12,
+              }}>
+                <div style={{ color: 'var(--fg-mute)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+                  Snapshot
+                </div>
+                <div style={{ color: 'var(--fg)' }}>
+                  {latestSnapshot.id.slice(0, 12)} · {latestSnapshot.createdAt ? new Date(latestSnapshot.createdAt).toLocaleString() : 'unknown'}
+                </div>
+              </div>
+            )}
+
+            <div style={{
+              fontSize: 12, color: 'var(--err)', marginBottom: 16,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <AlertTriangle size={12} />
+              This will overwrite the file at <code>{filePath}</code> with the snapshot version.
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
+              <AlertTriangle size={14} color="var(--warn)" style={{ flexShrink: 0, marginTop: 2 }} />
+              <span style={{ fontSize: 12, color: 'var(--warn)' }}>
+                This action will be recorded in the audit log with DR mode flag.
+              </span>
+            </div>
+            {error && (
+              <div style={{ fontSize: 12, color: 'var(--err)', marginBottom: 12 }}>{error}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setStep(2)} style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg)' }}>Back</button>
+              <button
+                onClick={execute}
+                disabled={submitting}
+                style={{ padding: '8px 20px', fontSize: 13, cursor: submitting ? 'not-allowed' : 'pointer', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--err)', color: '#fff', opacity: submitting ? 0.6 : 1 }}
+              >
+                {submitting ? 'Initiating…' : 'Execute restore'}
+              </button>
+            </div>
+          </WizardCard>
       )}
     </div>
   )
