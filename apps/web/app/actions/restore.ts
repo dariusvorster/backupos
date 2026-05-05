@@ -351,6 +351,27 @@ export async function restoreFromSnapshot(
   return { ok: true, runId }
 }
 
+export async function getLatestSnapshotForJob(
+  jobId: string,
+): Promise<{ ok: true; snapshotId: string; createdAt: Date | null } | { ok: false; error: string }> {
+  await requireAdmin()
+  const db = getDb()
+
+  const [latest] = await db
+    .select({ id: snapshots.id, createdAt: snapshots.createdAt })
+    .from(snapshots)
+    .where(eq(snapshots.jobId, jobId))
+    .orderBy(desc(snapshots.createdAt))
+    .limit(1)
+    .all()
+
+  if (!latest) {
+    return { ok: false, error: 'No snapshots found for this job. Run a successful backup first.' }
+  }
+
+  return { ok: true, snapshotId: latest.id, createdAt: latest.createdAt }
+}
+
 export async function cancelRestore(restoreId: string): Promise<{ ok: boolean; error?: string }> {
   await requireAdmin()
   if (!restoreId) return { ok: false, error: 'restoreId required' }
