@@ -65,12 +65,21 @@ export async function detectCapabilities(): Promise<Capability[]> {
   const caps: Capability[] = []
 
   if (canReadFilesystem()) caps.push('filesystem')
-  if (await canReachDocker()) caps.push('docker')
+
+  const dockerOk = await canReachDocker()
+  if (dockerOk) caps.push('docker')
+
   if (process.platform === 'win32') caps.push('vss')
-  if (await binaryExists('pg_dump'))   caps.push('apphook:postgres')
-  if (await binaryExists('mysqldump')) caps.push('apphook:mysql')
-  if (await binaryExists('redis-cli')) caps.push('apphook:redis')
-  if (await binaryExists('sqlite3'))   caps.push('apphook:sqlite')
+
+  // Postgres / MySQL: host binary OR a reachable Docker daemon (hook code already
+  // branches on config.containerName to choose docker exec vs direct invocation).
+  if (await binaryExists('pg_dump')   || dockerOk) caps.push('apphook:postgres')
+  if (await binaryExists('mysqldump') || dockerOk) caps.push('apphook:mysql')
+
+  // Redis hook uses ioredis over TCP — no host binary required.
+  // Sqlite hook uses better-sqlite3 native library — no host binary required.
+  caps.push('apphook:redis')
+  caps.push('apphook:sqlite')
 
   return caps
 }
