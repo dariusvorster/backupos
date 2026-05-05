@@ -363,11 +363,11 @@ export function SourceTypes() {
 
 export function GlossaryTable() {
   const terms: { term: string; def: string }[] = [
-    { term: 'Agent',         def: 'The process running on a source machine that executes backup jobs. A single binary supports Linux and Windows.' },
-    { term: 'Repository',    def: 'A Restic-compatible storage location (R2 bucket, B2 bucket, local path). Encrypted at rest.' },
+    { term: 'Agent',         def: 'The process running on a source machine that executes backup jobs. Linux uses a Node.js bundle; Windows uses a native binary; both speak the same agent protocol.' },
+    { term: 'Repository',    def: 'A Restic-compatible storage location. Supported backends: local filesystem, NFS, SMB, SFTP, S3, R2, B2, Rclone. Encrypted at rest.' },
     { term: 'Job',           def: 'A configured backup task: one source, one repository, one schedule, optional hooks.' },
     { term: 'Run',           def: 'A single execution of a job. Has phases: pre-flight → pre-hook → backup → post-hook → (optional) verification.' },
-    { term: 'Source',        def: 'What gets backed up. Types: filesystem path, Docker volume, Docker container, PostgreSQL, MySQL, Redis, SQLite, Proxmox VM, Proxmox LXC, Windows system (VSS).' },
+    { term: 'Source',        def: 'What gets backed up. Types: filesystem, Compose project, Docker volume (deprecated), database (PostgreSQL, MySQL, MariaDB, SQLite, Redis, MongoDB), Proxmox VM, Proxmox LXC, Windows system (VSS), NAS share (NFS or SMB).' },
     { term: 'Snapshot',      def: 'An immutable point-in-time copy of the source, created by Restic. Deduplicated and encrypted.' },
     { term: 'Tag',           def: 'A string label attached to a snapshot (e.g. pre-migration, v2.3.0). Used for filtering and retention policy overrides.' },
     { term: 'Pin',           def: 'Marks a snapshot as protected. Pinned snapshots are excluded from forget/prune runs.' },

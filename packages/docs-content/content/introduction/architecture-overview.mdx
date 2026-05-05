@@ -9,7 +9,7 @@ description: How the BackupOS components fit together.
 
 ### Web app
 
-The central control plane. Runs as a Docker container (image: `backupos/web`). Stores all configuration and state in a local SQLite database. Exposes the browser UI and a REST API consumed by agents.
+The central control plane. Runs as a native systemd service on a Linux host (the install script also runs a sibling service for the PBS protocol — see below). All configuration and state live in a local SQLite database. Exposes the browser UI, an internal API, and a WebSocket endpoint that agents connect to.
 
 **Responsibilities:**
 - Job scheduling and orchestration
@@ -19,47 +19,75 @@ The central control plane. Runs as a Docker container (image: `backupos/web`). S
 - Audit and operational logging
 - Alert rules and notifications
 
+### PBS protocol service
+
+A native Go service (`backupos-pbs`) that listens on port 8007 and speaks the [Proxmox Backup Server](https://pbs.proxmox.com) wire protocol. This lets Proxmox VE point at BackupOS as a backup target without any in-guest agent.
+
+It shares the SQLite database with the web app and writes synthesized job and run rows for each PBS-protocol backup, so PBS-driven backups appear alongside agent-driven backups in the dashboard.
+
 ### Agents
 
-Lightweight processes that run on source machines. A single binary (`ios-agent`) supports both Linux and Windows, shared with the Infra OS product family for consistency.
+Lightweight processes that run on source machines. The agent connects outbound to the BackupOS server over a WebSocket — no inbound ports are required on the agent host.
+
+- **Linux agents** are a Node.js bundle (`agent.js`) installed at `/opt/backupos-agent/`, run by a systemd unit. The install script handles Node bootstrap if needed.
+- **Windows agents** are a native binary (`backupos-agent.exe`) installed under `C:\Program Files\BackupOS Agent\` and registered as a Windows Service.
+
+Both implementations share the same agent protocol (defined in `@backupos/agent-protocol`) so the server treats them uniformly.
 
 **Responsibilities:**
-- Execute backup jobs as instructed by the web app
-- Stream structured logs back to the web app
-- Report capabilities (available source types, disk space)
+- Execute backup jobs as instructed by the server
+- Stream structured logs back over the same WebSocket
+- Report capabilities (available source types, app-hooks present, disk space)
 - Run pre-flight checks on demand
-
-Agents communicate with the web app over HTTPS. No inbound ports are required on agent machines.
 
 ### Repositories
 
-Standard Restic repositories stored in object storage or on local filesystems. BackupOS does not introduce a proprietary format — any Restic-compatible tool can read the data.
+Standard Restic repositories stored in object storage, on remote shares, or on a local filesystem. BackupOS does not introduce a proprietary format — any Restic-compatible tool can read the data directly.
 
 **Supported backends:**
-- Cloudflare R2 (recommended for zero egress cost)
-- Backblaze B2
-- AWS S3 and S3-compatible (MinIO, Wasabi)
-- Local filesystem or NAS (NFS, SMB)
+
+- **Local filesystem** — disks attached to the agent host
+- **NFS share** — agent host mounts the export
+- **SMB / CIFS share** — agent host mounts via cifs-utils
+- **Amazon S3** (and S3-compatible: MinIO, Wasabi, Storj S3)
+- **Cloudflare R2** — recommended for zero egress cost
+- **Backblaze B2** — native B2 API
+- **SFTP** — over SSH to any host
+- **Rclone** — any backend rclone can reach
 
 ### Hypervisor integration
 
-For Proxmox, BackupOS talks directly to the Proxmox API to trigger VM and LXC snapshots without requiring an in-guest agent. This covers the full VM even if the guest OS is inaccessible.
+For Proxmox, BackupOS talks to the Proxmox API directly (no in-guest agent required) and snapshots VMs and LXC containers via the API. This covers the full disk image, even when the guest OS is unreachable.
+
+XCP-ng support via the XAPI / CBT protocol is on the roadmap (V1.x).
 
 ## Data flow — a typical backup run
 
 ```
-1. Scheduler triggers job at the configured cron time
-2. Web app sends run instruction to the assigned agent
-3. Agent runs pre-flight checks (disk space, source reachable, repo accessible)
-4. Agent executes: pre-hook → restic backup → post-hook
-5. Agent streams structured log lines to the web app in real time
-6. On completion, agent reports snapshot ID, bytes transferred, duration
-7. Web app stores run record, updates health score, fires alerts if configured
-8. (Optional) Scheduled verification test restores a file from the new snapshot
+1. Scheduler triggers a job at the configured cron time
+2. Server sends a run instruction over the WebSocket to the assigned agent
+3. Agent runs the job through these phases:
+     pre-flight → pre-hook → restic backup → post-hook → verification
+   Each phase emits structured log lines streamed back to the server.
+4. On completion, the agent reports snapshot ID, bytes transferred,
+   files added, files modified, duration.
+5. Server writes the run record, updates health scores, and fires alerts
+   if any rules match (failure, overdue, threshold breach).
 ```
+
+Pre-hook and post-hook are optional per job. Verification, if configured separately, is run as its own scheduled test rather than inline — the verification feature lives at the **Verification** top-level page, not inside the backup run.
 
 ## Persistence
 
-The web app uses a single SQLite file (`backupos.db`) for all relational data. This makes backup of the control plane trivial — copy the file. For high-availability deployments, a read replica or periodic export to S3 is recommended.
+The web app uses a single SQLite file (`/var/lib/backupos/backupos.db`) for all relational data. This makes backup of the control plane trivial — copy the file (after `systemctl stop backupos backupos-pbs` to release locks).
 
-Restic repositories are the source of truth for backup data. The BackupOS database is an index and control plane — losing it does not lose your backups.
+For high-availability or disaster-recovery scenarios, [Litestream](https://litestream.io)-style continuous streaming replication of the SQLite file to S3 is the recommended pattern. SQLite is an embedded database — a multi-node primary/replica setup isn't applicable.
+
+Restic repositories are the source of truth for backup data. The BackupOS database is an index and control plane — losing it does not lose your backups, only the metadata about them. The repositories themselves can be re-indexed by pointing a fresh BackupOS install at them.
+
+## Trust boundaries
+
+- **Server ↔ agent**: WebSocket secured by TLS (when fronted by a reverse proxy with HTTPS). The agent authenticates with a token negotiated at enrolment; the server authenticates by URL pinning configured at install time.
+- **Agent ↔ repository**: Restic encrypts everything client-side. The repository password never leaves the agent. The server stores a copy only if escrow is explicitly enabled.
+- **Server ↔ database**: All credential fields (alert channel secrets, repository passwords, OIDC client secrets, SMTP passwords) are encrypted at rest using `ENCRYPTION_KEY` before being written.
+- **Audit log**: every privileged action is recorded with a SHA-256 hash chain, so log tampering is detectable on read.
