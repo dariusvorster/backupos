@@ -1,13 +1,36 @@
 ---
 title: Back up a Docker container
-description: App-consistent backup — pause, snapshot volumes, resume.
+description: App-consistent backup for a Docker Compose stack.
 ---
 
-# Back up a Docker container
+# Back up a Docker container (Compose project)
 
-1. **Jobs → New job → Source type: Docker container**
-2. Container name: e.g. `my-app`
-3. Volumes to include: select from the list detected by the agent
-4. Choose repository and schedule
+For an app-consistent backup of a Dockerized service, use the **Compose project** source type. It backs up the service's volumes alongside its `docker-compose.yml` and any database dumps produced by app-aware hooks, so a restore puts the whole stack back together.
 
-BackupOS pauses the container (`docker pause`), backs up its volumes, then resumes it. Pause time is typically under 5 seconds.
+There is no standalone "single Docker container" source type in V1 — the Compose project source is the supported path. For backing up a single named volume independently of any container lifecycle, see [Back up a Docker volume](/docs/how-to/docker-volume).
+
+## Prerequisites
+
+- BackupOS agent enrolled on the host that runs the Compose stack
+- The agent has read access to the Compose project directory
+
+## Steps
+
+1. **Jobs → New backup job → Source type: Compose project**
+2. Pick the Compose project path (e.g. `/opt/myservice/docker-compose.yml`)
+3. The agent parses the Compose file and lists the services and volumes — confirm which volumes to include
+4. (Optional) Configure **app-aware hooks** for any database services in the project. The agent runs `pg_dump`, `mysqldump`, `BGSAVE`, or a SQLite WAL checkpoint inside the container before the volume snapshot, so the dump is consistent
+5. Choose repository and schedule
+6. Click **Create job**
+
+## What gets backed up
+
+For each run:
+
+1. Pre-hook — app-aware dumps run inside the relevant containers (Postgres, MySQL, MariaDB, SQLite, Redis, MongoDB) and write to the volume. Pause time on the running container is typically under a second
+2. Restic backs up the project directory and all included volumes
+3. Post-hook — temporary dump files are cleaned up
+
+## Restoring
+
+For a single file from a backup, use [Restore a single file](/docs/how-to/restore-file). For full-service recovery (database + volumes + container restart + health check), build a [restore spec](/docs/concepts/restore-specs) and run it from DR Mode.

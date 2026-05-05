@@ -1,14 +1,26 @@
 ---
 title: Back up a Docker volume
-description: Back up a named Docker volume directly without pausing any container.
+description: Back up a single named Docker volume directly.
 ---
 
 # Back up a Docker volume
 
-Use this when you want to back up volume data independently of the container lifecycle.
+<Warning>The **Docker volume** source type is deprecated. New jobs should use **Compose project** instead — it covers the same volumes plus app-aware hooks and Compose-file context, which makes the backup actually restorable as a working stack. The Docker volume source remains available for existing jobs and edge cases.</Warning>
 
-1. **Jobs → New job → Source type: Docker volume**
+## When the Docker volume source still makes sense
+
+- The volume is used by something that isn't a Compose project (a hand-rolled `docker run`, a swarm service, etc.)
+- You explicitly want volume data only, with no Compose context
+- You're pre-staging a specific volume for a manual recovery procedure
+
+For everything else, [back up the Compose project](/docs/how-to/docker-container) instead.
+
+## Steps
+
+1. **Jobs → New backup job → Source type: Docker volume**
 2. Volume name: e.g. `my-app_data`
 3. Choose repository and schedule
 
-No container pause — the volume is mounted directly and snapshotted. For app-consistent backups, use the **Docker container** source type instead.
+The agent mounts the named volume directly and snapshots its contents with Restic. No container pause — the running container's writes during backup are included as-is.
+
+For app-consistent backup of a database stored in a volume, set up an external pre-hook (e.g. `docker exec my-db pg_dump ...` writing into the volume) before the run. Or use a Compose project source, which handles app-hooks automatically.

@@ -1,15 +1,27 @@
 ---
 title: Restore a database
-description: Recover a database from a BackupOS snapshot.
+description: Recover a database from a BackupOS snapshot using the DR Mode database wizard.
 ---
 
 # Restore a database
 
-For database sources (PostgreSQL, MySQL, SQLite), each snapshot includes a dump file. To restore:
+Database restores have a guided wizard inside DR Mode. It's the right tool when you want to replay a database dump back into a running database — the [Restore from snapshot](/docs/how-to/restore-file) flow drops files at a target path; it does not re-import dumps.
 
-1. Find the snapshot in **Snapshots**
-2. Click **Restore → Restore database**
-3. Select target database connection string
-4. Click **Start restore**
+<Note>The database restore wizard supports PostgreSQL and MySQL / MariaDB in V1. SQLite, Redis, and MongoDB restore-via-wizard is on the roadmap (issues #230, #231). For now, restore the dump file using [Restore a single file](/docs/how-to/restore-file) and replay it manually with the appropriate CLI tool.</Note>
 
-BackupOS downloads the dump file from the snapshot and runs the appropriate restore command (`psql`, `mysql`, or SQLite file copy).
+## Steps
+
+1. Open **DR Mode** — press **⌘⇧D** (Mac) or **Ctrl+Shift+D** (Windows / Linux), or click the DR Mode icon in the topbar
+2. Pick **Restore database** from the recovery cards
+3. Pick the source job — only jobs with database source types are listed
+4. Pick the snapshot to restore from (defaults to the most recent)
+5. Pick the target:
+   - **Database** — connection string and database name
+   - **Container** — for Compose-project jobs, the running container name plus the in-container `psql` or `mysql` arguments
+6. Review and click **Run restore**
+
+The agent downloads the dump file from the snapshot, replays it against the target, and reports success or the exact error returned by the database.
+
+## Building this into a restore spec
+
+For a service-level recovery (database restore as one step in a larger procedure), use a [restore spec](/docs/concepts/restore-specs) with a `database_restore` step. The spec model lets you chain database restore → filesystem restore → container restart → HTTP health check, with `on_failure` handling at each step.

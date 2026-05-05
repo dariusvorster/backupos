@@ -1,13 +1,34 @@
 ---
 title: Restore an entire host
-description: Use a Restore Spec to recover a whole machine step by step.
+description: Use a restore spec to recover a whole machine step by step.
 ---
 
 # Restore an entire host
 
-1. Go to **DR Mode** (or press the DR Mode shortcut: ⌘⇧D / Ctrl+Shift+D)
-2. Select the restore spec for the host
-3. Follow the guided checklist — each step shows instructions and a **Mark complete** button
-4. Steps that can be automated (file restore, hook execution) run automatically
+A whole-host recovery is the classic 3am scenario: a machine is gone and you need to get every service it ran back up on a fresh host. BackupOS handles this through **restore specs** — declarative YAML files that describe the steps in order.
 
-For a step-by-step guide on creating the restore spec in advance, see [Restore specs](/docs/concepts/restore-specs).
+## Before the bad day
+
+Write the spec while everything is calm:
+
+1. **Restore → New restore spec** (sidebar)
+2. Author the spec in the YAML editor — see [Restore specs](/docs/concepts/restore-specs) for the step types
+3. Click **Validate** to check the YAML parses
+4. Click **Save**
+
+Rehearse the spec at least once on a test target so you know which steps actually work. Some step types have V1 limitations (see Note below) — finding out during rehearsal is much better than finding out during recovery.
+
+<Note>The spec executor in V1 supports `filesystem_restore`, `database_restore` (PostgreSQL and MySQL), `shell`, `http_check`, `container_restart`, and `notify`. SQLite, Redis, and MongoDB database restores are roadmap items (#230, #231). The run-detail UI for in-progress spec execution is being expanded (#32) — current state is functional but the visualization is rough.</Note>
+
+## During the incident
+
+1. Open **DR Mode** — press **⌘⇧D** (Mac) or **Ctrl+Shift+D** (Windows / Linux), or click the DR Mode icon in the topbar
+2. Pick **Run restore spec** from the recovery cards
+3. Pick the spec for the affected host
+4. Click **Start** — steps execute in order
+
+Each step shows pass / fail and the exact error if it fails. `on_failure: abort` halts the spec; `on_failure: continue` records the failure and moves on; `on_failure: notify_only` just fires the configured notification channel and continues.
+
+## Don't be a hero in the moment
+
+The point of having a spec is that you don't have to think during the incident. Trust the spec. If a step fails in a way the spec doesn't handle, that's a signal to fix the spec for next time, not to start improvising.

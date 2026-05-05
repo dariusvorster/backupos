@@ -5,10 +5,33 @@ description: Schedule automated restore tests to prove your backups work.
 
 # Set up restore verification
 
-1. Go to **Jobs → [job name] → Verification**
-2. Enable **Scheduled verification**
-3. Set frequency: daily, weekly, or monthly
-4. Set sandbox path: a temporary directory on the agent (e.g. `/tmp/verify-JOBNAME`)
-5. (Optional) Add a validation hook script to check the restored data
+Verification is the cheapest insurance against silent backup corruption. It picks the most recent snapshot for a job, restores a sampled subset of files to a sandbox path on the agent, and reports pass / fail. Run it weekly and you'll know about a broken backup the same week, not when you actually need it.
 
-BackupOS will automatically restore a sample of files from the most recent snapshot and report **Passed** or **Failed**. A failure triggers a critical alert.
+## Steps
+
+1. In the sidebar, go to **Verification**
+2. Click **New verification**
+3. Pick the job to verify — the dropdown lists every backup job
+4. Set a name (typically the job name + "verification")
+5. Pick a frequency: daily, weekly, or monthly
+6. Pick a target — typically a single small file or a small directory you know is in every snapshot
+7. Set a sandbox path — a temporary directory on the agent where the file will be restored (e.g. `/tmp/verify-<jobname>`)
+8. (Optional) Add a validation hook script — runs after the restore against the restored data, e.g. `sqlite3 -readonly /tmp/verify/foo.db 'SELECT 1'`
+9. Click **Create verification**
+
+The verification runs on its own schedule, independent of the backup job's schedule. Results show on the **Verification** list page and on the parent job's detail page.
+
+## What it proves
+
+- A snapshot is structurally valid (Restic can read it)
+- Files inside the snapshot can be reconstructed
+- If you set a validation hook, that the restored data is actually usable (e.g. a SQLite file isn't just bytes-on-disk, it's a parseable database)
+
+## What it doesn't prove
+
+- That the snapshot covers everything you wanted backed up (that's a job-config concern, not a verification concern)
+- That a service can come back up from the snapshot in production (that's a [restore spec](/docs/concepts/restore-specs) concern)
+
+## Failures
+
+If verification fails, BackupOS fires the alert rules with `integrity_error` triggers. The verification's detail page shows the exact failure — usually a missing file, a Restic checksum mismatch, or a non-zero exit from the validation hook. Investigate before assuming it's flaky.

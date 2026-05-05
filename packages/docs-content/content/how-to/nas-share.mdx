@@ -5,15 +5,29 @@ description: Back up files from an NFS or SMB network share.
 
 # Back up a NAS share
 
-Mount the NAS share on the agent machine and use a filesystem source.
+BackupOS has a dedicated **NAS share** source type that mounts the share for you and runs the backup against it — no manual `/etc/fstab` setup required.
 
-```bash
-# NFS example (add to /etc/fstab):
-192.168.1.10:/volume1/data  /mnt/nas  nfs  defaults  0  0
-mount /mnt/nas
-```
+## Steps
 
-Then in BackupOS:
-1. **Jobs → New job → Source type: Filesystem**
-2. Path: `/mnt/nas`
-3. Choose repository and schedule
+1. **Jobs → New backup job → Source type: NAS share**
+2. Pick a protocol: **NFS** or **SMB / CIFS**
+3. Enter the share path:
+   - NFS: `host:/export/path` (e.g. `192.168.1.10:/volume1/data`)
+   - SMB: `//host/share` (e.g. `//192.168.1.10/Backups`)
+4. For SMB, enter username, password, and optional domain
+5. Click **Test mount** — BackupOS mounts the share at a temporary path and reports success or the exact mount error
+6. Choose repository and schedule
+7. Click **Create job**
+
+The agent mounts the share for each run, runs Restic against the mounted path, and unmounts after.
+
+## Prerequisites on the agent host
+
+- For NFS: `nfs-common` (Debian/Ubuntu) or `nfs-utils` (RHEL/Fedora)
+- For SMB: `cifs-utils`
+
+The agent reports a **Test mount** failure if these aren't present.
+
+## When to use a manual filesystem source instead
+
+If the share is already permanently mounted on the agent host (e.g. via `/etc/fstab` for other services), use the regular **Filesystem** source type pointing at the existing mount path. The dedicated NAS share type is for one-shot mount-on-demand semantics.
