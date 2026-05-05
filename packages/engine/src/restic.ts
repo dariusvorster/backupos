@@ -229,7 +229,7 @@ export class ResticEngine {
     return {
       filesRestored,
       totalSize,
-      duration: Math.round((Date.now() - before) / 1000),
+      durationMs: Date.now() - before,
     }
   }
 
