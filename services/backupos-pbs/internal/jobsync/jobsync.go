@@ -103,13 +103,13 @@ func InsertRunningRun(db *sql.DB, jobID string, startedAt time.Time) (string, er
 // FinishRun marks a run as completed (success or failed) and updates the parent Job.
 // snapshotID, errorMessage, and totalSize may be nil for the unused branch.
 func FinishRun(db *sql.DB, runID, jobID, status string, snapshotID, errorMessage *string, totalSize *int64, startedAt, completedAt time.Time) error {
-	durationSec := int64(completedAt.Sub(startedAt).Seconds())
+	durationMs := completedAt.Sub(startedAt).Milliseconds()
 	const updateRun = `
 		UPDATE backup_runs
 		SET status = ?, completed_at = ?, duration = ?, total_size = ?, snapshot_id = ?, error_message = ?
 		WHERE id = ?
 	`
-	if _, err := db.Exec(updateRun, status, completedAt.UnixMilli(), durationSec,
+	if _, err := db.Exec(updateRun, status, completedAt.UnixMilli(), durationMs,
 		nullableInt64(totalSize),
 		nullableString(snapshotID), nullableString(errorMessage), runID); err != nil {
 		return fmt.Errorf("update run: %w", err)
