@@ -33,7 +33,7 @@ func openDB(t *testing.T) *sql.DB {
 		CREATE TABLE backup_runs (
 			id TEXT PRIMARY KEY, job_id TEXT, status TEXT, trigger TEXT,
 			started_at INTEGER, run_type TEXT,
-			completed_at INTEGER, duration INTEGER, snapshot_id TEXT, error_message TEXT
+			completed_at INTEGER, duration INTEGER, total_size INTEGER, snapshot_id TEXT, error_message TEXT
 		);
 	`)
 	if err != nil {
@@ -164,7 +164,7 @@ func TestFinishRun_Success(t *testing.T) {
 
 	snapID := "snap-abc"
 	completedAt := time.Unix(1735000060, 0)
-	if err := FinishRun(db, runID, jobID, "success", &snapID, nil, startedAt, completedAt); err != nil {
+	if err := FinishRun(db, runID, jobID, "success", &snapID, nil, nil, startedAt, completedAt); err != nil {
 		t.Fatal(err)
 	}
 
@@ -197,7 +197,7 @@ func TestFinishRun_Failed(t *testing.T) {
 
 	errMsg := "connection closed without /finish"
 	completedAt := time.Unix(1735000030, 0)
-	if err := FinishRun(db, runID, jobID, "failed", nil, &errMsg, startedAt, completedAt); err != nil {
+	if err := FinishRun(db, runID, jobID, "failed", nil, &errMsg, nil, startedAt, completedAt); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,7 +223,7 @@ func TestFinishRun_DurationCalculation(t *testing.T) {
 	completedAt := startedAt.Add(90 * time.Second)
 	runID, _ := InsertRunningRun(db, jobID, startedAt)
 
-	if err := FinishRun(db, runID, jobID, "success", nil, nil, startedAt, completedAt); err != nil {
+	if err := FinishRun(db, runID, jobID, "success", nil, nil, nil, startedAt, completedAt); err != nil {
 		t.Fatal(err)
 	}
 
@@ -335,4 +335,46 @@ func TestFireWebhook_AuthFailure_LogsButDoesntPanic(t *testing.T) {
 	SetWebhookConfig(srv.URL, "wrong-secret")
 	// Must not panic; non-2xx is logged and swallowed
 	fireWebhook("run-5", "success", nil)
+}
+
+func TestFinishRun_TotalSize(t *testing.T) {
+	db := openDB(t)
+	jobID := JobID("ds-1", namespace.Root(), "vm", "100")
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Unix(1735000000, 0)
+	completedAt := startedAt.Add(60 * time.Second)
+	runID, _ := InsertRunningRun(db, jobID, startedAt)
+
+	var size int64 = 1024 * 1024 * 512 // 512 MiB
+	if err := FinishRun(db, runID, jobID, "success", nil, nil, &size, startedAt, completedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	var got sql.NullInt64
+	_ = db.QueryRow(`SELECT total_size FROM backup_runs WHERE id = ?`, runID).Scan(&got)
+	if !got.Valid || got.Int64 != size {
+		t.Errorf("total_size: got %v, want %d", got, size)
+	}
+}
+
+func TestFinishRun_NilTotalSize(t *testing.T) {
+	db := openDB(t)
+	jobID := JobID("ds-1", namespace.Root(), "vm", "100")
+	if err := UpsertJob(db, "ds-1", namespace.Root(), "vm", "100"); err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Unix(1735000000, 0)
+	runID, _ := InsertRunningRun(db, jobID, startedAt)
+
+	if err := FinishRun(db, runID, jobID, "failed", nil, nil, nil, startedAt, startedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	var got sql.NullInt64
+	_ = db.QueryRow(`SELECT total_size FROM backup_runs WHERE id = ?`, runID).Scan(&got)
+	if got.Valid {
+		t.Errorf("total_size: got valid %d, want NULL", got.Int64)
+	}
 }
