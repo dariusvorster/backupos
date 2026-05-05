@@ -44,6 +44,33 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# ── Self-reexec on update ────────────────────────────────────────────────────
+# When updating from a source dir, the rsync below will overwrite this very
+# script. Bash runs scripts lazily, so the OLD in-memory script keeps executing
+# even after the file on disk has been replaced — meaning any new logic added
+# below the rsync line silently fails on the first update.
+#
+# Fix: if running update with --source, sync the script first, then re-exec
+# the new version with the original arguments. A guard env var prevents
+# infinite loops. See #305.
+if [[ "$COMMAND" == "update" ]] && [[ -n "$SOURCE_DIR" ]] && [[ -z "$BACKUPOS_REEXECED" ]]; then
+  NEW_SCRIPT="$SOURCE_DIR/scripts/server-install.sh"
+  SELF_PATH="/opt/backupos/scripts/server-install.sh"
+  if [[ -f "$NEW_SCRIPT" ]] && [[ -f "$SELF_PATH" ]] && ! cmp -s "$NEW_SCRIPT" "$SELF_PATH"; then
+    echo "[backupos] Installer script changed — updating and re-executing..."
+    cp "$NEW_SCRIPT" "$SELF_PATH"
+    chmod +x "$SELF_PATH"
+    export BACKUPOS_REEXECED=1
+    REEXEC_ARGS=("$COMMAND")
+    [[ -n "$PUBLIC_URL" ]] && REEXEC_ARGS+=(--url "$PUBLIC_URL")
+    REEXEC_ARGS+=(--port "$PORT")
+    REEXEC_ARGS+=(--pbs-port "$PBS_PORT")
+    REEXEC_ARGS+=(--user "$SVC_USER")
+    REEXEC_ARGS+=(--source "$SOURCE_DIR")
+    exec bash "$SELF_PATH" "${REEXEC_ARGS[@]}"
+  fi
+fi
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 log()    { echo "[backupos] $*"; }
 ok()     { echo "[backupos] ✓ $*"; }
