@@ -369,37 +369,7 @@ void app.prepare().then(async () => {
       return
     }
 
-    // Cancel a run by runId
-    const cancelRunMatch = parsed.pathname?.match(/^\/api\/runs\/([^/]+)\/cancel$/)
-    if (req.method === 'POST' && cancelRunMatch) {
-      void (async () => {
-        const session = await requireSession(req)
-        if (!session) {
-          res.writeHead(401, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: 'unauthorized' }))
-          return
-        }
-        const runId = cancelRunMatch[1]!
-        const db2   = getDb()
-        const [run] = await db2.select().from(backupRuns).where(eq(backupRuns.id, runId)).limit(1)
-        if (!run || run.status !== 'running') {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ ok: true, note: 'run not active' }))
-          return
-        }
-        if (run.agentId) {
-          const sent = dispatch(run.agentId, { type: 'cancel_backup', jobId: run.jobId!, runId: run.id })
-          if (!sent) {
-            await db2.update(backupRuns).set({ status: 'cancelled', completedAt: new Date(), errorMessage: 'cancel: agent unreachable' }).where(eq(backupRuns.id, runId))
-          }
-        } else {
-          await db2.update(backupRuns).set({ status: 'cancelled', completedAt: new Date() }).where(eq(backupRuns.id, runId))
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: true }))
-      })()
-      return
-    }
+
 
     // Repository init-state — used by agent to check/set initializedAt (Fix A)
     if (req.method === 'GET' && /^\/internal\/repository\/[^/]+\/state$/.test(parsed.pathname ?? '')) {
