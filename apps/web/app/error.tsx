@@ -96,7 +96,7 @@ export default function ErrorPage({ error, reset }: Props) {
           {body}
         </p>
 
-        {error.digest && (
+        {error.digest && kind !== 'permission' && (
           <div
             style={{
               fontSize: 12,
@@ -114,22 +114,24 @@ export default function ErrorPage({ error, reset }: Props) {
         )}
 
         <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-          <button
-            onClick={reset}
-            style={{
-              background: 'var(--accent)',
-              color: 'var(--accent-fg)',
-              border: 'none',
-              borderRadius: 'var(--radius-sm)',
-              padding: '10px 16px',
-              fontSize: 14,
-              fontWeight: 500,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            Try again
-          </button>
+          {kind !== 'permission' && (
+            <button
+              onClick={reset}
+              style={{
+                background: 'var(--accent)',
+                color: 'var(--accent-fg)',
+                border: 'none',
+                borderRadius: 'var(--radius-sm)',
+                padding: '10px 16px',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Try again
+            </button>
+          )}
 
           <Link
             href="/"
