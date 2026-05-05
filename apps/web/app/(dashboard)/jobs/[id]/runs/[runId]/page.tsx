@@ -5,6 +5,7 @@ import { PhaseTimeline }   from '@/components/phase-timeline'
 import { CopyCommandButton } from '@/components/copy-command-button'
 import { AutoRefresh }     from '@/components/ui/auto-refresh'
 import type { PhaseData }  from '@/app/actions/runs'
+import { CancelRunButton } from './CancelRunButton'
 
 const STATUS_COLORS: Record<string, string> = {
   running:   'var(--accent)',
@@ -85,6 +86,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
             }}>
               {run.status}
             </span>
+            {run.status === 'running' && <CancelRunButton jobId={jobId} />}
           </div>
         </div>
         <div style={{ flex: 1 }} />

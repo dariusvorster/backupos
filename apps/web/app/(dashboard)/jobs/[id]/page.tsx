@@ -10,7 +10,7 @@ import { fmtLimit } from '@/lib/bandwidth'
 import { PreflightButton } from '@/components/preflight-modal'
 import { togglePreflight } from '@/app/actions/preflight'
 import { PreflightToggle } from '@/components/preflight-toggle'
-import { triggerJob, saveJobRetention, cancelJob, retryRun } from '@/app/actions/jobs'
+import { triggerJob, saveJobRetention, cancelJobFormAction, retryRun } from '@/app/actions/jobs'
 import { validateCron } from '@/lib/cron-validate'
 import { BreadcrumbOverride } from '@/components/breadcrumb-override'
 
@@ -96,7 +96,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </button>
         </form>
         {activeRun && (
-          <form action={cancelJob.bind(null, job.id)}>
+          <form action={cancelJobFormAction.bind(null, job.id)}>
             <button
               type="submit"
               style={{

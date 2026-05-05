@@ -362,7 +362,8 @@ export async function retryRun(jobId: string): Promise<void> {
   redirect(`/jobs/${jobId}`)
 }
 
-export async function cancelJob(jobId: string): Promise<void> {
+export async function cancelJob(jobId: string): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin()
   const db = getDb()
   const [run] = await db
     .select()
@@ -370,14 +371,14 @@ export async function cancelJob(jobId: string): Promise<void> {
     .where(and(eq(backupRuns.jobId, jobId), eq(backupRuns.status, 'running')))
     .limit(1)
 
-  if (!run) { revalidatePath(`/jobs/${jobId}`); return }
+  if (!run) { revalidatePath(`/jobs/${jobId}`); return { ok: true } }
 
   if (!run.agentId) {
     // Local run (no agent) — cancel directly
     await db.update(backupRuns).set({ status: 'cancelled', completedAt: new Date() }).where(eq(backupRuns.id, run.id))
     await db.update(backupJobs).set({ lastRunStatus: 'cancelled' }).where(eq(backupJobs.id, jobId))
     revalidatePath(`/jobs/${jobId}`)
-    return
+    return { ok: true }
   }
 
   // Agent run: dispatch cancel and let the agent's backup_cancelled response update the DB
@@ -389,9 +390,18 @@ export async function cancelJob(jobId: string): Promise<void> {
       errorMessage: `cancel: agent unreachable (${result.reason ?? 'unknown'})`,
     }).where(eq(backupRuns.id, run.id))
     await db.update(backupJobs).set({ lastRunStatus: 'cancelled' }).where(eq(backupJobs.id, jobId))
+    revalidatePath(`/jobs/${jobId}`)
+    return { ok: true, error: 'Agent unreachable — run marked cancelled locally' }
   }
 
   revalidatePath(`/jobs/${jobId}`)
+  return { ok: true }
+}
+
+// Form-action wrapper — discards the return value so it can be used as
+// `<form action={cancelJobFormAction.bind(null, id)}>` in server components.
+export async function cancelJobFormAction(jobId: string): Promise<void> {
+  await cancelJob(jobId)
 }
 
 export async function saveJobRetention(id: string, formData: FormData): Promise<void> {
