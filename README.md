@@ -77,7 +77,7 @@ The installer drops the agent at `/opt/backupos-agent/`, registers a `backupos-a
 
 For Windows, the agent detail page also shows a PowerShell snippet (`iwr ... | iex`) that installs `backupos-agent.exe` as a Windows Service.
 
-Full guide: [docs/getting-started/enrol-agent](packages/docs-content/content/getting-started/enrol-agent.mdx).
+Full guide: [docs/getting-started/enroll-agent](packages/docs-content/content/getting-started/enroll-agent.mdx).
 
 ---
 
