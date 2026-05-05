@@ -73,15 +73,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var totalBytes int64
+	if sc.WriterState != nil {
+		totalBytes = int64(sc.WriterState.TotalBytes())
+	}
+
 	// Insert / upsert the pbs_snapshots row. This is best-effort: if the
 	// DB write fails the files are still on disk and can be re-indexed later.
-	h.insertSnapshot(sc)
+	h.insertSnapshot(sc, totalBytes)
 
 	// Finalize the synthetic run row if one was created at upgrade time.
 	if sc.RunID != "" {
 		snapshotID := buildSnapshotID(sc.DatastoreID, sc.Namespace, sc.BackupType, sc.BackupID, sc.BackupTime)
 		if err := jobsync.FinishRun(h.db, sc.RunID, sc.JobID, "success",
-			&snapshotID, nil, sc.SessionStartedAt, time.Now()); err != nil {
+			&snapshotID, nil, &totalBytes, sc.SessionStartedAt, time.Now()); err != nil {
 			slog.Error("finish: FinishRun failed (backup still saved)",
 				"error", err, "run_id", sc.RunID)
 		}
@@ -121,7 +126,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // insertSnapshot upserts a pbs_snapshots row for the completed backup.
 // Errors are logged but do not affect the HTTP response — disk is the
 // source of truth and the row can be re-inserted later.
-func (h *Handler) insertSnapshot(sc *streamctx.SessionContext) {
+func (h *Handler) insertSnapshot(sc *streamctx.SessionContext, totalSizeBytes int64) {
 	snapshotID := buildSnapshotID(sc.DatastoreID, sc.Namespace, sc.BackupType, sc.BackupID, sc.BackupTime)
 	namespaceID := h.resolveNamespaceID(sc.DatastoreID, sc.Namespace)
 
@@ -144,7 +149,7 @@ func (h *Handler) insertSnapshot(sc *streamctx.SessionContext) {
 		snapshotID, sc.DatastoreID, namespaceID,
 		sc.BackupType, sc.BackupID, sc.BackupTime.UnixMilli(),
 		time.Now().UnixMilli(), manifest,
-		nil, nil, // total_size_bytes, unique_size_bytes — TODO when stats land
+		totalSizeBytes, nil, // total_size_bytes (filled); unique_size_bytes still TODO
 	)
 	if err != nil {
 		slog.Error("finish: pbs_snapshots insert failed (snapshot still on disk)",

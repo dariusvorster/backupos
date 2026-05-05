@@ -329,7 +329,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if updated && sessionCtx.RunID != "" {
 		errMsg := "connection closed without /finish"
 		if err := jobsync.FinishRun(h.db, sessionCtx.RunID, sessionCtx.JobID, "failed",
-			nil, &errMsg, sessionCtx.SessionStartedAt, time.Now()); err != nil {
+			nil, &errMsg, nil, sessionCtx.SessionStartedAt, time.Now()); err != nil {
 			slog.Error("upgrade: abort path FinishRun failed",
 				"error", err, "run_id", sessionCtx.RunID)
 		}

@@ -119,6 +119,34 @@ func (s *State) RegisterFixedWriter(name string, index FixedIndexWriter, size *u
 	return wid, nil
 }
 
+// TotalBytes returns the cumulative content size in bytes across all
+// fixed and dynamic writers registered in this session. Used by /finish
+// to populate backup_runs.total_size and pbs_snapshots.total_size_bytes.
+//
+// For fixed writers: uses the declared Size (set at registration). Skips
+// writers where Size is nil (should not happen on the success path, but
+// defensive).
+//
+// For dynamic writers: uses Offset, which is the cumulative end offset
+// after the last AppendChunk and equals total data size at close.
+//
+// Safe to call at any session phase. Lock is taken; do not call while
+// holding s.mu.
+func (s *State) TotalBytes() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var total uint64
+	for _, w := range s.fixedWriters {
+		if w.Size != nil {
+			total += *w.Size
+		}
+	}
+	for _, w := range s.dynamicWriters {
+		total += w.Offset
+	}
+	return total
+}
+
 // LookupChunk returns the plaintext size of a previously uploaded chunk, if any.
 func (s *State) LookupChunk(digest [32]byte) (uint32, bool) {
 	s.mu.Lock()
