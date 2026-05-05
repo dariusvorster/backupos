@@ -15,7 +15,7 @@
       "slug": "getting-started",
       "pages": [
         { "title": "Install (self-hosted)",   "slug": "install-self-hosted" },
-        { "title": "Enroll your first agent",  "slug": "enrol-agent" },
+        { "title": "Enroll your first agent",  "slug": "enroll-agent" },
         { "title": "Connect a repository",    "slug": "connect-repository" },
         { "title": "Run your first backup",   "slug": "run-first-backup" },
         { "title": "Run your first restore",  "slug": "run-first-restore" },
