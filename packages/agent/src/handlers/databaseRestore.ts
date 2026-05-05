@@ -1,4 +1,5 @@
 import { spawnAllowed } from '../exec-allowed'
+import { createReadStream } from 'fs'
 import type { AgentMessage, ServerMessage } from '@backupos/agent-protocol'
 import { resolveHostPrefix, applyHostPrefix } from '../lib/host-prefix'
 
@@ -9,7 +10,7 @@ export async function handleDatabaseRestore(
   msg: RunDatabaseRestoreMsg,
   send: SendFn,
 ): Promise<void> {
-  const { requestId, restoreId, app, dumpFilePath, targetDatabase, targetUsername, targetHost, targetPort, passwordEnv } = msg
+  const { requestId, restoreId, app, dumpFilePath, targetContainer, targetDatabase, targetUsername, targetHost, targetPort, passwordEnv } = msg
 
   console.log(`[agent] run_database_restore received: restoreId=${restoreId} app=${app} dumpFile=${dumpFilePath}`)
 
@@ -23,9 +24,9 @@ export async function handleDatabaseRestore(
     const password = passwordEnv ? process.env[passwordEnv] : undefined
 
     if (app === 'postgres') {
-      await runPostgresRestore({ dumpPath: resolvedDumpPath, host: targetHost, port: targetPort, database: targetDatabase, username: targetUsername, password })
+      await runPostgresRestore({ dumpPath: resolvedDumpPath, container: targetContainer, host: targetHost, port: targetPort, database: targetDatabase, username: targetUsername, password })
     } else if (app === 'mysql' || app === 'mariadb') {
-      await runMysqlRestore({ dumpPath: resolvedDumpPath, host: targetHost, port: targetPort, database: targetDatabase, username: targetUsername, password })
+      await runMysqlRestore({ dumpPath: resolvedDumpPath, container: targetContainer, host: targetHost, port: targetPort, database: targetDatabase, username: targetUsername, password })
     } else {
       throw new Error(`Unsupported database app: ${app}`)
     }
@@ -53,6 +54,7 @@ export async function handleDatabaseRestore(
 
 interface PgArgs {
   dumpPath: string
+  container?: string
   host?: string
   port?: number
   database?: string
@@ -61,39 +63,44 @@ interface PgArgs {
 }
 
 async function runPostgresRestore(opts: PgArgs): Promise<void> {
-  const { dumpPath, host, port, database, username, password } = opts
+  const { dumpPath, container, host, port, database, username, password } = opts
   if (!database) throw new Error('postgres restore: target.database is required')
 
   const isCustomFormat = /\.(dump|custom|pgdump)$/i.test(dumpPath)
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...(password ? { PGPASSWORD: password } : {}),
-  }
+  const innerCmd = isCustomFormat ? 'pg_restore' : 'psql'
+  const innerArgs: string[] = [
+    ...(host     ? ['-h', host]         : []),
+    ...(port     ? ['-p', String(port)] : []),
+    ...(username ? ['-U', username]     : []),
+    '-d', database,
+    ...(isCustomFormat ? ['--clean', '--if-exists'] : []),
+  ]
 
-  if (isCustomFormat) {
-    const args: string[] = [
-      ...(host     ? ['-h', host]         : []),
-      ...(port     ? ['-p', String(port)] : []),
-      ...(username ? ['-U', username]     : []),
-      '-d', database,
-      '--clean', '--if-exists',
-      dumpPath,
+  if (container) {
+    const dockerArgs = [
+      'exec', '-i',
+      ...(password ? ['-e', `PGPASSWORD=${password}`] : []),
+      container,
+      innerCmd,
+      ...innerArgs,
     ]
-    await spawnAllowed('pg_restore', args, { env })
+    await spawnAllowed('docker', dockerArgs, { stdin: createReadStream(dumpPath) })
   } else {
-    const args: string[] = [
-      ...(host     ? ['-h', host]         : []),
-      ...(port     ? ['-p', String(port)] : []),
-      ...(username ? ['-U', username]     : []),
-      '-d', database,
-      '-f', dumpPath,
-    ]
-    await spawnAllowed('psql', args, { env })
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...(password ? { PGPASSWORD: password } : {}),
+    }
+    if (isCustomFormat) {
+      await spawnAllowed('pg_restore', [...innerArgs, dumpPath], { env })
+    } else {
+      await spawnAllowed('psql', [...innerArgs, '-f', dumpPath], { env })
+    }
   }
 }
 
 interface MysqlArgs {
   dumpPath: string
+  container?: string
   host?: string
   port?: number
   database?: string
@@ -102,19 +109,31 @@ interface MysqlArgs {
 }
 
 async function runMysqlRestore(opts: MysqlArgs): Promise<void> {
-  const { dumpPath, host, port, database, username, password } = opts
+  const { dumpPath, container, host, port, database, username, password } = opts
   if (!database) throw new Error('mysql restore: target.database is required')
 
-  const args: string[] = [
+  const innerArgs: string[] = [
     ...(host     ? ['-h', host]         : []),
     ...(port     ? ['-P', String(port)] : []),
     ...(username ? ['-u', username]     : []),
     database,
-    '-e', `source ${dumpPath}`,
   ]
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...(password ? { MYSQL_PWD: password } : {}),
+
+  if (container) {
+    const dockerArgs = [
+      'exec', '-i',
+      ...(password ? ['-e', `MYSQL_PWD=${password}`] : []),
+      container,
+      'mysql',
+      ...innerArgs,
+    ]
+    await spawnAllowed('docker', dockerArgs, { stdin: createReadStream(dumpPath) })
+  } else {
+    // Host-side: pipe dump to stdin (replaces -e "source <path>" for symmetry)
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...(password ? { MYSQL_PWD: password } : {}),
+    }
+    await spawnAllowed('mysql', innerArgs, { env, stdin: createReadStream(dumpPath) })
   }
-  await spawnAllowed('mysql', args, { env })
 }
