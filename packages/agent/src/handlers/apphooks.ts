@@ -1,3 +1,10 @@
+// This module is the live agent-side implementation of compose service apphook
+// quiescence (postgres, mysql, redis, sqlite). It is invoked by composeBackup
+// when ComposeServiceConfig.quiescence === 'apphook'.
+//
+// Note: an earlier @backupos/app-hooks package exists/existed in the workspace
+// but was never wired in; this module is the canonical implementation.
+
 import { spawnAllowed } from '../exec-allowed'
 import type { ComposeApphookConfig, ComposeServiceConfig } from '@backupos/agent-protocol'
 import type { DockerContainer } from '../docker-client'
