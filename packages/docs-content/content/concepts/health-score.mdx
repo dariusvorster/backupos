@@ -5,7 +5,7 @@ description: A 0–100 score summarising the reliability of an agent or reposito
 
 # Health score
 
-The health score is a 0–100 number (displayed as A–F) that summarises how healthy a backup setup is. It's computed per agent and per repository.
+The health score is a 0–100 number (displayed as A–F) that summarises how healthy a backup setup is. It's computed per agent and per repository, refreshed after every run.
 
 ## Factors
 
@@ -15,4 +15,8 @@ The health score is a 0–100 number (displayed as A–F) that summarises how he
 
 <HealthGrades />
 
-A score below 70 triggers a warning badge. Below 50 triggers a critical alert if alert rules are configured.
+## Where the score appears
+
+The score is shown alongside agents and repositories in the UI as a coloured grade badge. Use it as an at-a-glance signal: a sudden drop from A to C usually means several recent runs failed, or verification has started failing.
+
+In V1, alerting on a health-score threshold is not yet a built-in alert trigger — the available triggers are growth spikes, cost thresholds, integrity errors, no-recent-backup, and approaching-limit. To act on health changes, watch the dashboard or rely on the underlying alerts (which fire on the symptoms — e.g. `no_recent_backup` — that drag the score down).

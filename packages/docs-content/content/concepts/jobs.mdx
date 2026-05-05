@@ -23,12 +23,10 @@ Each run moves through five ordered phases:
 
 <JobPhases />
 
-<Tip>Enable verification on at least your most critical jobs. A job that completes backup but fails verification is a sign your repository is degraded before you lose data.</Tip>
+<Tip>Enable verification on at least your most critical jobs. A job that completes the backup but fails verification is a sign your repository is degraded before you actually lose data.</Tip>
 
-## Job dependencies
+## Coverage entries
 
-Jobs can depend on other jobs. Set a dependency to ensure Job B only runs after Job A succeeds. Useful for: back up the database, then back up the application data that references it.
+A job can optionally be linked to a **coverage entry** — an Infra OS service registry record. This lets the dashboard show which services are protected by which jobs, and surfaces unprotected services that need a backup setup.
 
-## Templates
-
-Recurring job patterns (e.g. "nightly PostgreSQL backup") can be saved as templates and reused when adding new jobs of the same type.
+The link is optional and is set on the new-job form via the **Link to coverage entry** dropdown.
