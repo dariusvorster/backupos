@@ -165,6 +165,7 @@ export type AgentMessage =
   | { type: 'filesystem_restore_cancelled'; restoreId: string; reason: 'user_requested' | 'not_running' }
   | { type: 'database_restore_started'; requestId: string; restoreId: string }
   | { type: 'database_restore_complete'; restoreId: string; success: boolean; output?: string; error?: string; durationSec?: number }
+  | { type: 'list_snapshot_paths_result'; requestId: string; ok: boolean; paths?: string[]; error?: string }
 
 export interface DetectedResources {
   dockerVolumes?: string[]
@@ -192,3 +193,4 @@ export type ServerMessage =
   | { type: 'run_filesystem_restore'; requestId: string; restoreId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; targetPath: string; sourcePath: string; targetIsAgentLocal: boolean }
   | { type: 'cancel_filesystem_restore'; restoreId: string }
   | { type: 'run_database_restore'; requestId: string; restoreId: string; app: 'postgres' | 'mysql' | 'mariadb' | 'sqlite' | 'redis'; dumpFilePath: string; targetContainer?: string; targetDatabase?: string; targetUsername?: string; targetHost?: string; targetPort?: number; passwordEnv?: string; targetDbPath?: string }
+  | { type: 'list_snapshot_paths'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; pattern?: string }

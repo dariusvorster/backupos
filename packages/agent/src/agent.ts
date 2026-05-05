@@ -14,6 +14,7 @@ import { runInitRepository } from './handlers/initRepository'
 import { runTestMount } from './handlers/testMount'
 import { handleFilesystemRestore } from './handlers/filesystemRestore'
 import { handleDatabaseRestore } from './handlers/databaseRestore'
+import { handleListSnapshotPaths } from './handlers/listSnapshotPaths'
 
 function requireEnv(name: string): string {
   const v = process.env[name]
@@ -273,6 +274,9 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       restore.ctrl.abort()
       send({ type: 'filesystem_restore_cancelled', restoreId: msg.restoreId, reason: 'user_requested' })
     }
+
+  } else if (msg.type === 'list_snapshot_paths') {
+    void handleListSnapshotPaths(msg, send)
 
   } else if (msg.type === 'run_database_restore') {
     void handleDatabaseRestore(msg, send)

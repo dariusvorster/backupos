@@ -337,3 +337,44 @@ export function resolveDatabaseRestoreStarted(requestId: string): void {
 export function resolveDatabaseRestoreComplete(restoreId: string, result: DbRestoreResult): void {
   pendingDbRestoreComplete.get(restoreId)?.(result)
 }
+
+const pendingSnapshotPaths = new Map<string, (result: { ok: boolean; paths?: string[]; error?: string }) => void>()
+
+export function requestSnapshotPaths(
+  agentId: string,
+  args: { repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; pattern?: string },
+): Promise<{ ok: boolean; paths?: string[]; error?: string }> {
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID()
+    const timer = setTimeout(() => {
+      pendingSnapshotPaths.delete(requestId)
+      reject(new Error('Agent did not respond in time (60s) for list_snapshot_paths'))
+    }, 60_000)
+    pendingSnapshotPaths.set(requestId, (result) => {
+      clearTimeout(timer)
+      pendingSnapshotPaths.delete(requestId)
+      resolve(result)
+    })
+    const sent = dispatch(agentId, {
+      type:         'list_snapshot_paths',
+      requestId,
+      repoUrl:      args.repoUrl,
+      repoPassword: args.repoPassword,
+      envVars:      args.envVars,
+      snapshotId:   args.snapshotId,
+      pattern:      args.pattern,
+    })
+    if (!sent) {
+      clearTimeout(timer)
+      pendingSnapshotPaths.delete(requestId)
+      reject(new Error('Agent not connected'))
+    }
+  })
+}
+
+export function resolveSnapshotPaths(
+  requestId: string,
+  result: { ok: boolean; paths?: string[]; error?: string },
+): void {
+  pendingSnapshotPaths.get(requestId)?.(result)
+}

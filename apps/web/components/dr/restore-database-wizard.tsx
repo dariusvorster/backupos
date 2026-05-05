@@ -1,10 +1,12 @@
 // apps/web/components/dr/restore-database-wizard.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CheckCircle, AlertTriangle } from 'lucide-react'
 import { logDrAction } from '@/app/actions/dr-audit'
 import { StepIndicator, WizardCard, WizardNav, escHtml } from '@/components/dr/restore-file-wizard'
+import { getApphookServicesForJob, triggerDatabaseRestore, getLatestSnapshotForJob } from '@/app/actions/restore'
+import type { ApphookService } from '@/app/actions/restore'
 
 interface Props {
   jobs: { id: string; name: string }[]
@@ -12,16 +14,58 @@ interface Props {
 }
 
 export function RestoreDatabaseWizard({ jobs, onDone }: Props) {
-  const [step, setStep]             = useState(0)
-  const [jobId, setJobId]           = useState('')
-  const [dbName, setDbName]         = useState('')
-  const [dryRunOk, setDryRunOk]     = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [done, setDone]             = useState(false)
+  const [step, setStep]                     = useState(0)
+  const [jobId, setJobId]                   = useState('')
+  const [serviceName, setServiceName]       = useState('')
+  const [services, setServices]             = useState<ApphookService[]>([])
+  const [loadingServices, setLoadingServices] = useState(false)
+  const [dbName, setDbName]                 = useState('')
+  const [dryRunOk, setDryRunOk]             = useState(false)
+  const [submitting, setSubmitting]         = useState(false)
+  const [done, setDone]                     = useState(false)
+  const [error, setError]                   = useState<string | null>(null)
+  const [latestSnapshot, setLatestSnapshot] = useState<{ snapshotId: string; createdAt: Date | null } | null>(null)
+  const [loadingSnapshot, setLoadingSnapshot] = useState(false)
+
+  useEffect(() => {
+    if (!jobId) { setServices([]); setServiceName(''); setDbName(''); return }
+    setLoadingServices(true)
+    setError(null)
+    getApphookServicesForJob(jobId).then(result => {
+      setLoadingServices(false)
+      if (!result.ok) { setError(result.error); setServices([]); return }
+      setServices(result.services)
+      if (result.services.length === 1) {
+        const svc = result.services[0]!
+        setServiceName(svc.serviceName)
+        setDbName(svc.apphookConfig.database ?? '')
+      } else {
+        setServiceName('')
+        setDbName('')
+      }
+    }).catch(err => { setLoadingServices(false); setError(String(err)) })
+  }, [jobId])
+
+  useEffect(() => {
+    if (step !== 2 || !jobId) return
+    setLoadingSnapshot(true)
+    getLatestSnapshotForJob(jobId).then(result => {
+      setLoadingSnapshot(false)
+      if (result.ok) setLatestSnapshot({ snapshotId: result.snapshotId, createdAt: result.createdAt })
+      else setLatestSnapshot(null)
+    }).catch(() => { setLoadingSnapshot(false); setLatestSnapshot(null) })
+  }, [step, jobId])
 
   async function execute() {
     setSubmitting(true)
-    await logDrAction({ action: 'restore_database', jobId, target: dbName, dryRun: false })
+    setError(null)
+    const result = await triggerDatabaseRestore(jobId, serviceName, dbName)
+    if (!result.ok) {
+      setError(result.error)
+      setSubmitting(false)
+      return
+    }
+    await logDrAction({ action: 'restore_database', jobId, target: dbName, dryRun: false, metadata: { restoreId: result.restoreId, serviceName, dbName } })
     setSubmitting(false)
     setDone(true)
   }
@@ -109,20 +153,47 @@ export function RestoreDatabaseWizard({ jobs, onDone }: Props) {
 
   return (
     <div style={{ maxWidth: 540, width: '100%' }}>
-      <StepIndicator current={step} labels={['Job', 'Database', 'Dry run', 'Execute']} />
+      <StepIndicator current={step} labels={['Job', 'Service', 'Database', 'Dry run', 'Execute']} />
+
+      {error && (
+        <div style={{ backgroundColor: 'var(--err-dim)', border: '1px solid color-mix(in srgb, var(--err) 25%, transparent)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: 12, fontSize: 13, color: 'var(--err)' }}>
+          {error}
+        </div>
+      )}
 
       {step === 0 && (
         <WizardCard title="Which job contains the database backup?">
           <label style={labelStyle}>Backup job</label>
-          <select value={jobId} onChange={e => setJobId(e.target.value)} style={inputStyle}>
+          <select value={jobId} onChange={e => { setJobId(e.target.value); setError(null) }} style={inputStyle}>
             <option value="">— Select a job —</option>
             {jobs.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
           </select>
-          <WizardNav onBack={onDone} backLabel="Cancel" onNext={() => setStep(1)} nextDisabled={!jobId} />
+          <WizardNav onBack={onDone} backLabel="Cancel" onNext={() => setStep(1)} nextDisabled={!jobId || loadingServices} />
         </WizardCard>
       )}
 
       {step === 1 && (
+        <WizardCard title="Which service database needs to be restored?">
+          <label style={labelStyle}>Service</label>
+          {loadingServices ? (
+            <div style={{ fontSize: 13, color: 'var(--fg-mute)', padding: '8px 0' }}>Loading services…</div>
+          ) : services.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--fg-mute)', padding: '8px 0' }}>No apphook services found for this job.</div>
+          ) : (
+            <select value={serviceName} onChange={e => {
+              const svc = services.find(s => s.serviceName === e.target.value)
+              setServiceName(e.target.value)
+              setDbName(svc?.apphookConfig.database ?? '')
+            }} style={inputStyle}>
+              <option value="">— Select a service —</option>
+              {services.map(s => <option key={s.serviceName} value={s.serviceName}>{s.serviceName} ({s.apphookType})</option>)}
+            </select>
+          )}
+          <WizardNav onBack={() => setStep(0)} onNext={() => setStep(2)} nextDisabled={!serviceName} />
+        </WizardCard>
+      )}
+
+      {step === 2 && (
         <WizardCard title="Which database needs to be restored?">
           <label style={labelStyle}>Database name</label>
           <input
@@ -133,13 +204,13 @@ export function RestoreDatabaseWizard({ jobs, onDone }: Props) {
             style={inputStyle}
           />
           <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginTop: 6 }}>
-            Must match the database name used in the backup job configuration.
+            Auto-filled from apphook config. Edit if you need to restore to a different database name.
           </div>
-          <WizardNav onBack={() => setStep(0)} onNext={() => setStep(2)} nextDisabled={!dbName.trim()} />
+          <WizardNav onBack={() => setStep(1)} onNext={() => setStep(3)} nextDisabled={!dbName.trim()} />
         </WizardCard>
       )}
 
-      {step === 2 && (
+      {step === 3 && (
         <WizardCard title="What will this touch?">
           <div style={{
             backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
@@ -148,11 +219,16 @@ export function RestoreDatabaseWizard({ jobs, onDone }: Props) {
           }}>
             <div style={{ color: 'var(--ok)', marginBottom: 4 }}>DRY RUN — no data will be written</div>
             <div>Job: <span style={{ color: 'var(--fg)' }}>{selectedJob?.name}</span></div>
+            <div>Service: <span style={{ color: 'var(--fg)' }}>{serviceName}</span></div>
             <div>Database: <span style={{ color: 'var(--fg)' }}>{dbName}</span></div>
-            <div style={{ marginTop: 8, color: 'var(--fg-dim)' }}>Snapshot: most recent successful</div>
-            <div style={{ marginTop: 4 }}>Dump size: ~420 MB (estimated)</div>
+            <div style={{ marginTop: 8, color: 'var(--fg-dim)' }}>
+              Snapshot: {loadingSnapshot ? 'loading…' : latestSnapshot ? (latestSnapshot.createdAt ? new Date(latestSnapshot.createdAt).toLocaleString() : latestSnapshot.snapshotId.slice(0, 8)) : 'most recent successful'}
+            </div>
+            {latestSnapshot && (
+              <div style={{ marginTop: 2, color: 'var(--fg-dim)' }}>Snapshot ID: <span style={{ color: 'var(--fg)' }}>{latestSnapshot.snapshotId.slice(0, 12)}</span></div>
+            )}
             <div style={{ marginTop: 8, color: 'var(--warn)' }}>
-              ⚠ The existing database will be dropped and recreated. Use a staging target first.
+              Warning: The existing database will be dropped and recreated. Use a staging target first.
             </div>
           </div>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
@@ -161,11 +237,11 @@ export function RestoreDatabaseWizard({ jobs, onDone }: Props) {
               I have reviewed the dry-run output and understand what will be restored.
             </span>
           </label>
-          <WizardNav onBack={() => setStep(1)} onNext={() => setStep(3)} nextDisabled={!dryRunOk} nextLabel="Confirm and continue" />
+          <WizardNav onBack={() => setStep(2)} onNext={() => setStep(4)} nextDisabled={!dryRunOk} nextLabel="Confirm and continue" />
         </WizardCard>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
         <WizardCard title="Ready to restore">
           <div style={{
             backgroundColor: 'var(--err-dim)',
@@ -174,7 +250,11 @@ export function RestoreDatabaseWizard({ jobs, onDone }: Props) {
           }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg)', marginBottom: 4 }}>Restore summary</div>
             <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>Job: {selectedJob?.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>Service: {serviceName}</div>
             <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>Database: {dbName}</div>
+            {latestSnapshot && (
+              <div style={{ fontSize: 12, color: 'var(--fg-mute)' }}>Snapshot: {latestSnapshot.snapshotId.slice(0, 12)} ({latestSnapshot.createdAt ? new Date(latestSnapshot.createdAt).toLocaleString() : 'unknown date'})</div>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
             <AlertTriangle size={14} color="var(--warn)" style={{ flexShrink: 0, marginTop: 2 }} />
@@ -183,7 +263,7 @@ export function RestoreDatabaseWizard({ jobs, onDone }: Props) {
             </span>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setStep(2)} style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg)' }}>Back</button>
+            <button onClick={() => setStep(3)} style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg)' }}>Back</button>
             <button
               onClick={execute}
               disabled={submitting}
