@@ -278,22 +278,6 @@ export function FeatureComparison() {
   )
 }
 
-export function PlanComparison() {
-  return (
-    <PlanTable
-      highlight="Teams"
-      headers={['', 'Solo', 'Teams']}
-      rows={[
-        ['Agents',              'Up to 5',  'Unlimited'],
-        ['Users',               '1',        'Up to 20'],
-        ['Audit log retention', '90 days',  '7 years'],
-        ['SSO',                 '❌',       '✅'],
-        ['Price',               'Free',     '$12/month'],
-      ]}
-    />
-  )
-}
-
 export function JobPhases() {
   return (
     <PhaseList
@@ -669,7 +653,7 @@ export function getMdxComponents(): Record<string, any> {
   return {
     Tip, Warning, Danger, Note, Steps,
     ComparisonTable, PlanTable, PhaseList, SourceGrid,
-    FeatureComparison, PlanComparison, JobPhases, SourceTypes,
+    FeatureComparison, JobPhases, SourceTypes,
     GlossaryTable, RunPhases, StepTypes,
     HealthFactors, HealthGrades,
     RetentionPolicy, AlertTriggers, RepoFields, OtherBackends,
