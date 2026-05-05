@@ -5,14 +5,38 @@ description: Set up notifications for backup failures, storage thresholds, and m
 
 # Configure alerts
 
-Go to **Settings → Alerts → New alert rule**. Choose a trigger:
+Alerts in BackupOS have two halves: **alert rules** (what triggers a notification) and **alert channels** (how the notification is delivered). Both live under **Settings**.
+
+## 1. Configure at least one channel
+
+Go to **Settings → Alert channels** and add a channel. Available channel types:
+
+- **Email** (SMTP — configure server credentials at **Settings → Email SMTP**)
+- **Slack** (paste an incoming webhook URL)
+- **Discord** (paste a webhook URL)
+- **Telegram** (bot token + chat ID)
+- **Pushover** (user key + app token)
+- **Gotify** (server URL + app token)
+- **ntfy** (server URL + topic)
+- **Webhook** (POST JSON to any URL)
+- **Twilio SMS** (account SID + auth token + sender number + recipient number)
+
+All nine channel types are first-class — feature parity in formatting, retries, and the **Send test message** button. Pick whichever fits your existing on-call setup.
+
+## 2. Create an alert rule
+
+Go to **Settings → Alerts → New alert rule**. Pick a trigger:
 
 <AlertTriggers />
 
-<Tip>Start with "Job failed" and "No recent backup" — these two catch 90% of real incidents. Add storage threshold alerts once you know your typical growth rate.</Tip>
+Attach one or more channels to the rule. When the rule fires, the message is delivered to all attached channels in parallel.
 
-## Notification channels
+<Tip>Start with **Job failed** and **No recent backup** — these two catch 90% of real incidents. Add a **Storage growth spike** rule once you've established a baseline, and a **Cost threshold** rule once your monthly spend matters.</Tip>
 
-- **Email** — configure SMTP in Settings → Notifications
-- **Webhook** — POST JSON payload to any URL
-- **Slack / Discord** — paste your webhook URL
+## 3. Send a test
+
+On each channel's detail page, click **Send test message**. The test message includes the channel type and current timestamp so you can confirm end-to-end delivery before relying on the channel for real alerts.
+
+## What about health-score alerts?
+
+In V1, health-score thresholds aren't a built-in alert trigger. The available triggers fire on the underlying symptoms — `no_recent_backup`, `integrity_error`, etc. — that drag the score down, so a degrading score generally produces an alert through one of those paths.
