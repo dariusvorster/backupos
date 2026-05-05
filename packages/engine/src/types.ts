@@ -83,7 +83,7 @@ export interface ForgetResult {
 export interface RestoreResult {
   filesRestored: number
   totalSize: number   // bytes
-  duration: number    // seconds
+  durationMs: number  // milliseconds
 }
 
 export interface RepoStats {

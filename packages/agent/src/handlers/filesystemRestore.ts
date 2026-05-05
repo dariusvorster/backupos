@@ -39,13 +39,13 @@ export async function handleFilesystemRestore(
     })
     const shortId = snapshotId.slice(0, 8)
     const result = await engine.restore(shortId, prefixedTargetPath, [prefixedSourcePath], ctrl.signal)
-    console.log(`[agent] engine.restore returned: filesRestored=${result.filesRestored} duration=${result.duration} totalSize=${result.totalSize}`)
+    console.log(`[agent] engine.restore returned: filesRestored=${result.filesRestored} durationMs=${result.durationMs} totalSize=${result.totalSize}`)
     send({
       type:          'filesystem_restore_complete',
       restoreId,
       success:       true,
       filesRestored: result.filesRestored,
-      durationSec:   result.duration,
+      durationSec:   Math.round(result.durationMs / 1000),
       targetPath,
       sourcePath,
     })

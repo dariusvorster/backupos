@@ -36,6 +36,7 @@ export async function runComposeRestore(
 
   const logLines: string[] = []
   const tmpDir = path.join(os.tmpdir(), 'backupos-restore', jobId)
+  const restoreStats = { filesRestored: 0, bytesRestored: 0, durationMs: 0 }
 
   const setPhase = (phase: string): void => {
     const j = activeJobs.get(jobId)
@@ -102,7 +103,10 @@ export async function runComposeRestore(
         const sourcePath = `/var/lib/docker/volumes/${origVolName}/_data`
 
         if (mode === 'in_place') {
-          await makeEngine().restore(snapshotId, '/', [sourcePath], ctrl.signal)
+          const r = await makeEngine().restore(snapshotId, '/', [sourcePath], ctrl.signal)
+          restoreStats.filesRestored += r.filesRestored
+          restoreStats.bytesRestored += r.totalSize
+          restoreStats.durationMs    += r.durationMs
           logLines.push(`[restore] restored "${service.serviceName}" vol ${origVolName} (in-place)`)
         } else {
           // side_by_side: restore to tmpDir, create new volume, copy contents
@@ -118,7 +122,10 @@ export async function runComposeRestore(
 
           await spawnAllowed('docker', ['volume', 'create', newVolName])
 
-          await makeEngine().restore(snapshotId, tmpDir, [sourcePath], ctrl.signal)
+          const r = await makeEngine().restore(snapshotId, tmpDir, [sourcePath], ctrl.signal)
+          restoreStats.filesRestored += r.filesRestored
+          restoreStats.bytesRestored += r.totalSize
+          restoreStats.durationMs    += r.durationMs
 
           // tmpDir/<sourcePath> contains the restored files
           const restoreDest = path.join(tmpDir, 'var', 'lib', 'docker', 'volumes', origVolName, '_data')
@@ -133,7 +140,10 @@ export async function runComposeRestore(
     // Optional compose file restore
     if (composeFileSnapshotId && composeConfig.composeFilePath) {
       if (mode === 'in_place') {
-        await makeEngine().restore(composeFileSnapshotId, '/', [composeConfig.composeFilePath], ctrl.signal)
+        const r = await makeEngine().restore(composeFileSnapshotId, '/', [composeConfig.composeFilePath], ctrl.signal)
+        restoreStats.filesRestored += r.filesRestored
+        restoreStats.bytesRestored += r.totalSize
+        restoreStats.durationMs    += r.durationMs
         logLines.push(`[restore] restored compose file to ${composeConfig.composeFilePath}`)
       } else {
         logLines.push(`[restore] NOTE: compose file restore skipped for side-by-side mode — original file unchanged`)
@@ -166,9 +176,9 @@ export async function runComposeRestore(
         filesChanged:        0,
         filesUnmodified:     0,
         dataAdded:           0,
-        totalFilesProcessed: 0,
-        totalBytesProcessed: 0,
-        durationMs:          0,
+        totalFilesProcessed: restoreStats.filesRestored,
+        totalBytesProcessed: restoreStats.bytesRestored,
+        durationMs:          restoreStats.durationMs,
       },
       log: logLines.join('\n').slice(0, 1_000_000) || undefined,
     })
