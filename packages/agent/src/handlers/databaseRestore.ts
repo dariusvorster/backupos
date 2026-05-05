@@ -10,7 +10,7 @@ export async function handleDatabaseRestore(
   msg: RunDatabaseRestoreMsg,
   send: SendFn,
 ): Promise<void> {
-  const { requestId, restoreId, app, dumpFilePath, targetContainer, targetDatabase, targetUsername, targetHost, targetPort, passwordEnv } = msg
+  const { requestId, restoreId, app, dumpFilePath, targetContainer, targetDatabase, targetUsername, targetHost, targetPort, passwordEnv, targetDbPath } = msg
 
   console.log(`[agent] run_database_restore received: restoreId=${restoreId} app=${app} dumpFile=${dumpFilePath}`)
 
@@ -27,6 +27,8 @@ export async function handleDatabaseRestore(
       await runPostgresRestore({ dumpPath: resolvedDumpPath, container: targetContainer, host: targetHost, port: targetPort, database: targetDatabase, username: targetUsername, password })
     } else if (app === 'mysql' || app === 'mariadb') {
       await runMysqlRestore({ dumpPath: resolvedDumpPath, container: targetContainer, host: targetHost, port: targetPort, database: targetDatabase, username: targetUsername, password })
+    } else if (app === 'sqlite') {
+      await runSqliteRestore({ dumpPath: resolvedDumpPath, container: targetContainer, dbPath: targetDbPath })
     } else {
       throw new Error(`Unsupported database app: ${app}`)
     }
@@ -135,5 +137,27 @@ async function runMysqlRestore(opts: MysqlArgs): Promise<void> {
       ...(password ? { MYSQL_PWD: password } : {}),
     }
     await spawnAllowed('mysql', innerArgs, { env, stdin: createReadStream(dumpPath) })
+  }
+}
+
+interface SqliteArgs {
+  dumpPath: string
+  container?: string
+  dbPath?: string
+}
+
+async function runSqliteRestore(opts: SqliteArgs): Promise<void> {
+  const { dumpPath, container, dbPath } = opts
+  if (!dbPath) throw new Error('sqlite restore: targetDbPath is required')
+
+  if (container) {
+    console.warn(
+      `[agent] sqlite restore: copying ${dumpPath} into container ${container}:${dbPath}. ` +
+      `Note: container will continue running. Stop the container before restore for consistency.`,
+    )
+    await spawnAllowed('docker', ['cp', dumpPath, `${container}:${dbPath}`])
+  } else {
+    // Host-side copy. Caller is responsible for ensuring no writers hold the file.
+    await spawnAllowed('cp', [dumpPath, dbPath])
   }
 }
