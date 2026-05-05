@@ -3,12 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, alertChannels, eq, desc } from '@backupos/db'
+import type { ComposeProjectConfig } from '@backupos/agent-protocol'
 import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery, type DatabaseRestoreDelivery } from '@backupos/restore'
 import { requireAdmin } from '@/lib/user'
 import { dispatchToChannel, fireRestoreSucceeded, fireRestoreFailed } from '@/lib/alerts'
 import type { AlertType, AlertPayload } from '@/lib/alerts'
 import { decryptField } from '@/lib/repo-crypto'
-import { connectedAgentIds, requestFilesystemRestore, requestDatabaseRestore, dispatch } from '@/lib/ws-state'
+import { connectedAgentIds, requestFilesystemRestore, requestDatabaseRestore, requestSnapshotPaths, dispatch } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import { appendLog } from '@/lib/logger'
 
@@ -370,6 +371,191 @@ export async function getLatestSnapshotForJob(
   }
 
   return { ok: true, snapshotId: latest.id, createdAt: latest.createdAt }
+}
+
+export interface ApphookService {
+  serviceName: string
+  apphookType: 'postgres' | 'mysql' | 'redis' | 'sqlite'
+  apphookConfig: NonNullable<import('@backupos/agent-protocol').ComposeServiceConfig['apphookConfig']>
+}
+
+export async function getApphookServicesForJob(
+  jobId: string,
+): Promise<{ ok: true; services: ApphookService[] } | { ok: false; error: string }> {
+  await requireAdmin()
+  const db = getDb()
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (!job) return { ok: false, error: 'Job not found' }
+
+  let config: ComposeProjectConfig
+  try {
+    config = JSON.parse(job.sourceConfig) as ComposeProjectConfig
+  } catch {
+    return { ok: false, error: 'Job source config is not valid JSON' }
+  }
+
+  if (!config.services) return { ok: false, error: 'Job has no compose services' }
+
+  const apphookServices: ApphookService[] = config.services
+    .filter(s => s.quiescence === 'apphook' && s.apphookType && s.apphookConfig)
+    .map(s => ({
+      serviceName:  s.serviceName,
+      apphookType:  s.apphookType!,
+      apphookConfig: s.apphookConfig!,
+    }))
+
+  return { ok: true, services: apphookServices }
+}
+
+export async function findDumpInSnapshot(
+  agentId: string,
+  snapshotId: string,
+  repositoryId: string,
+  serviceName: string,
+): Promise<{ ok: true; dumpPath: string } | { ok: false; error: string }> {
+  await requireAdmin()
+  const db = getDb()
+
+  const [repo] = await db.select().from(repositories).where(eq(repositories.id, repositoryId)).limit(1)
+  if (!repo) return { ok: false, error: 'Repository not found' }
+
+  let repoConfig: RepoConfigShape
+  try {
+    repoConfig = JSON.parse(decryptField(repo.config)) as RepoConfigShape
+  } catch (err) {
+    return { ok: false, error: `Failed to decrypt repository config: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  const password = decryptField(repo.resticPassword)
+
+  const result = await requestSnapshotPaths(agentId, {
+    repoUrl:      repoConfig.repositoryUrl,
+    repoPassword: password,
+    envVars:      repoConfig.envVars,
+    snapshotId,
+    pattern:      `${serviceName}.dump`,
+  })
+
+  if (!result.ok) return { ok: false, error: result.error ?? 'list_snapshot_paths failed' }
+  if (!result.paths || result.paths.length === 0) {
+    return { ok: false, error: `No dump file found for service "${serviceName}" in snapshot` }
+  }
+
+  return { ok: true, dumpPath: result.paths[0]! }
+}
+
+async function waitForRestoreRun(
+  runId: string,
+  timeoutMs = 60_000,
+): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb()
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 1_500))
+    const [run] = await db.select({ status: restoreRuns.status }).from(restoreRuns).where(eq(restoreRuns.id, runId)).limit(1)
+    if (!run) return { ok: false, error: 'Restore run disappeared from DB' }
+    if (run.status === 'success') return { ok: true }
+    if (run.status === 'failed') return { ok: false, error: 'Filesystem restore failed' }
+  }
+  return { ok: false, error: 'Timed out waiting for filesystem restore to complete' }
+}
+
+export async function triggerDatabaseRestore(
+  jobId: string,
+  serviceName: string,
+  targetDatabase: string,
+): Promise<{ ok: true; restoreId: string } | { ok: false; error: string }> {
+  await requireAdmin()
+  const db = getDb()
+
+  // 1. Look up the job to get the agent and apphook config
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (!job) return { ok: false, error: 'Job not found' }
+  if (!job.agentId) return { ok: false, error: 'Job has no agent assigned' }
+  if (!connectedAgentIds().includes(job.agentId)) {
+    return { ok: false, error: `Agent ${job.agentId} is not currently connected` }
+  }
+
+  const agentId = job.agentId
+
+  let composeConfig: ComposeProjectConfig
+  try {
+    composeConfig = JSON.parse(job.sourceConfig) as ComposeProjectConfig
+  } catch {
+    return { ok: false, error: 'Job source config is not valid JSON' }
+  }
+
+  const serviceConfig = composeConfig.services.find(s => s.serviceName === serviceName)
+  if (!serviceConfig) return { ok: false, error: `Service "${serviceName}" not found in job config` }
+  if (!serviceConfig.apphookType || !serviceConfig.apphookConfig) {
+    return { ok: false, error: `Service "${serviceName}" has no apphook configuration` }
+  }
+
+  // 2. Find the latest snapshot for this job
+  const snapshotResult = await getLatestSnapshotForJob(jobId)
+  if (!snapshotResult.ok) return { ok: false, error: snapshotResult.error }
+
+  const [snap] = await db.select().from(snapshots).where(eq(snapshots.id, snapshotResult.snapshotId)).limit(1)
+  if (!snap || !snap.repositoryId) return { ok: false, error: 'Snapshot has no associated repository' }
+
+  // 3. Locate the dump file in the snapshot
+  const dumpResult = await findDumpInSnapshot(agentId, snapshotResult.snapshotId, snap.repositoryId, serviceName)
+  if (!dumpResult.ok) return { ok: false, error: dumpResult.error }
+
+  // 4. Restore the dump file from snapshot to agent-local temp dir
+  const tempRoot = `/tmp/backupos-dbr-${crypto.randomUUID().slice(0, 8)}`
+  const fsRestoreResult = await restoreFromSnapshot({
+    snapshotId: snapshotResult.snapshotId,
+    sourcePath: dumpResult.dumpPath,
+    targetType: 'custom',
+    customPath: tempRoot,
+  })
+  if (!fsRestoreResult.ok) return { ok: false, error: fsRestoreResult.error }
+
+  // 5. Wait for the filesystem restore to complete
+  const waitResult = await waitForRestoreRun(fsRestoreResult.runId)
+  if (!waitResult.ok) return { ok: false, error: waitResult.error ?? 'Filesystem restore did not complete' }
+
+  // 6. Dispatch run_database_restore
+  const dumpFilePath = `${tempRoot}${dumpResult.dumpPath}`
+  const apphook = serviceConfig.apphookConfig
+  const app = serviceConfig.apphookType
+
+  if (app !== 'postgres' && app !== 'mysql' && app !== 'mariadb') {
+    return { ok: false, error: `Unsupported database type for DR restore: ${app}` }
+  }
+
+  const dbRestoreId = crypto.randomUUID()
+
+  await db.insert(restoreRuns).values({
+    id:        dbRestoreId,
+    specId:    null,
+    snapshotId: snapshotResult.snapshotId,
+    status:    'running',
+    trigger:   'manual',
+    startedAt: new Date(),
+  })
+
+  const requestId = crypto.randomUUID()
+  const sent = dispatch(agentId, {
+    type:            'run_database_restore',
+    requestId,
+    restoreId:       dbRestoreId,
+    app,
+    dumpFilePath,
+    targetContainer: serviceName,
+    targetDatabase:  targetDatabase || apphook.database,
+    targetUsername:  apphook.username,
+    targetHost:      apphook.host,
+    targetPort:      apphook.port,
+    passwordEnv:     apphook.passwordEnv,
+  })
+
+  if (!sent) {
+    await db.update(restoreRuns).set({ status: 'failed', completedAt: new Date() }).where(eq(restoreRuns.id, dbRestoreId))
+    return { ok: false, error: 'Agent disconnected before database restore could be dispatched' }
+  }
+
+  return { ok: true, restoreId: dbRestoreId }
 }
 
 export async function cancelRestore(restoreId: string): Promise<{ ok: boolean; error?: string }> {
