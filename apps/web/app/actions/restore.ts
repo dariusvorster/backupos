@@ -520,10 +520,6 @@ export async function triggerDatabaseRestore(
   const apphook = serviceConfig.apphookConfig
   const app = serviceConfig.apphookType
 
-  if (app !== 'postgres' && app !== 'mysql' && app !== 'mariadb') {
-    return { ok: false, error: `Unsupported database type for DR restore: ${app}` }
-  }
-
   const dbRestoreId = crypto.randomUUID()
 
   await db.insert(restoreRuns).values({
@@ -548,6 +544,7 @@ export async function triggerDatabaseRestore(
     targetHost:      apphook.host,
     targetPort:      apphook.port,
     passwordEnv:     apphook.passwordEnv,
+    targetDbPath:    apphook.dbPath,
   })
 
   if (!sent) {
