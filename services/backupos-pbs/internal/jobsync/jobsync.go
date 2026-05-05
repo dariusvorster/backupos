@@ -121,7 +121,17 @@ func FinishRun(db *sql.DB, runID, jobID, status string, snapshotID, errorMessage
 	if _, err := db.Exec(updateJob, completedAt.UnixMilli(), status, jobID); err != nil {
 		return fmt.Errorf("update job: %w", err)
 	}
-	fireWebhook(runID, status, errorMessage)
+	// Fire-and-forget: webhook is best-effort, must not block FinishRun.
+	// See #304. Panic-recover guards against any future change in fireWebhook
+	// or its dependencies that could panic on bad input.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("jobsync: webhook goroutine panic", "panic", r, "runID", runID)
+			}
+		}()
+		fireWebhook(runID, status, errorMessage)
+	}()
 	return nil
 }
 
