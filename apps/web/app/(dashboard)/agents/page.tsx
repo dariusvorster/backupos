@@ -82,14 +82,22 @@ export default async function AgentsPage() {
             description="Install the BackupOS agent on your Linux or Windows hosts to start backing up."
           />
           <div style={{ padding: '0 24px 32px', display: 'flex', justifyContent: 'center' }}>
-            <code style={{
-              display: 'block',
-              backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)', padding: '10px 16px',
-              fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--fg)',
-            }}>
-              curl -fsSL http://localhost:3000/install.sh | bash
-            </code>
+            <Link
+              href="/agents/new"
+              style={{
+                display: 'inline-block',
+                padding: '10px 20px',
+                background: 'var(--accent)',
+                color: 'var(--bg)',
+                border: '1px solid var(--accent)',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 14,
+                fontWeight: 500,
+                textDecoration: 'none',
+              }}
+            >
+              Enroll your first agent
+            </Link>
           </div>
         </div>
       ) : (
