@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { TotpSetupModal } from '@/components/totp-setup-modal'
 import { changePassword }  from '@/app/actions/user'
+import { resetTwoFactorFlag } from '@/app/actions/two-factor'
 import { authClient }      from '@/lib/auth-client'
 
 interface Props {
@@ -38,6 +39,15 @@ export function SecurityClient({ twoFactorEnabled }: Props) {
     startDisableTransition(async () => {
       const result = await authClient.twoFactor.disable({ password: disablePassword })
       if (result.error) { setDisableError(result.error.message ?? 'Failed to disable 2FA'); return }
+
+      // better-auth removed the two_factor row but didn't reset
+      // user.two_factor_enabled. Do it server-side now.
+      const flagResult = await resetTwoFactorFlag()
+      if (flagResult.error) {
+        setDisableError(flagResult.error)
+        return
+      }
+
       setTfEnabled(false)
       setDisablePassword('')
     })
