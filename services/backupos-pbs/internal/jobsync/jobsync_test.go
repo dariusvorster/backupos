@@ -229,8 +229,8 @@ func TestFinishRun_DurationCalculation(t *testing.T) {
 
 	var duration int64
 	_ = db.QueryRow(`SELECT duration FROM backup_runs WHERE id = ?`, runID).Scan(&duration)
-	if duration != 90 {
-		t.Errorf("duration: got %d, want 90", duration)
+	if duration != 90000 {
+		t.Errorf("duration: got %d, want 90000", duration)
 	}
 }
 

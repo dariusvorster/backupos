@@ -140,7 +140,7 @@ export const backupRuns = sqliteTable('backup_runs', {
   filesUnmodified: integer('files_unmodified'),
   dataAdded:       integer('data_added'),   // bytes
   totalSize:       integer('total_size'),   // bytes
-  duration:        integer('duration'),     // seconds
+  duration:        integer('duration'),     // milliseconds
 
   // Errors
   errorMessage: text('error_message'),
