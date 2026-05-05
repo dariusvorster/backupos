@@ -71,15 +71,18 @@ export async function detectCapabilities(): Promise<Capability[]> {
 
   if (process.platform === 'win32') caps.push('vss')
 
-  // Postgres / MySQL: host binary OR a reachable Docker daemon (hook code already
-  // branches on config.containerName to choose docker exec vs direct invocation).
-  if (await binaryExists('pg_dump')   || dockerOk) caps.push('apphook:postgres')
-  if (await binaryExists('mysqldump') || dockerOk) caps.push('apphook:mysql')
+  // Postgres / MySQL: runApphook calls pg_dump/mysqldump host-side over TCP.
+  // Host binary is required.
+  if (await binaryExists('pg_dump'))   caps.push('apphook:postgres')
+  if (await binaryExists('mysqldump')) caps.push('apphook:mysql')
 
-  // Redis hook uses ioredis over TCP — no host binary required.
-  // Sqlite hook uses better-sqlite3 native library — no host binary required.
-  caps.push('apphook:redis')
-  caps.push('apphook:sqlite')
+  // Redis hook calls redis-cli BGSAVE then docker cp's the dump.rdb out.
+  // Requires both redis-cli (host binary) AND docker.
+  if ((await binaryExists('redis-cli')) && dockerOk) caps.push('apphook:redis')
+
+  // SQLite hook runs sqlite3 inside the container via docker exec, then docker cp's
+  // the result out. Requires docker only.
+  if (dockerOk) caps.push('apphook:sqlite')
 
   return caps
 }
