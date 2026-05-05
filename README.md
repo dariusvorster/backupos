@@ -2,262 +2,176 @@
 
 **One backup platform for your entire homelab.**
 
-BackupOS is a self-hosted backup management platform built on [Restic](https://restic.net). Back up Proxmox VMs and LXCs, Linux hosts, Windows machines, Docker containers, databases, and NAS devices — from one dashboard, to one or more repositories, with YAML-defined restore specs that actually work.
+BackupOS is a self-hosted backup management platform built on [Restic](https://restic.net). Back up Proxmox VMs and LXCs, Linux hosts, Windows machines, Docker / Compose stacks, databases, and NAS shares — from one dashboard, to one or more repositories, with YAML-defined restore specs that actually work when you need them.
+
+> **Status: V1 launch candidate.** Active development. See [release notes](packages/docs-content/content/release-notes/index.mdx).
 
 ---
 
 ## Features
 
-- **Unified dashboard** — all repositories, jobs, agents, and restore specs in one place
-- **Restic-native** — content-addressed storage, SHA-256 verified, deduplication, incremental-forever
-- **Multi-backend** — S3, Cloudflare R2, Backblaze B2, SFTP, local filesystem, Rclone
-- **Lightweight agents** — single Node.js bundle for Linux and macOS remote hosts, auto-installs as a system service
-- **Hypervisor integration** — Proxmox VMs and LXCs via API
-- **YAML restore specs** — define, version, and test your recovery procedure as code
-- **DR Mode** — guided recovery wizard for files, databases, and full hosts
-- **Monitors** — track backup health scores, detect missed jobs, alert on failures
-- **Alert channels** — Discord, Slack, generic webhooks, email via SMTP
-- **Snapshot browser** — browse and compare repository snapshots
-- **Retention policies** — per-job or global keep-last/daily/weekly/monthly/yearly with automatic prune
-- **Verification** — scheduled integrity checks with `restic check`
-- **API tokens** — for CI/CD and scripting
-- **Audit log** — full activity history
+- **Unified dashboard** — every repository, job, agent, and restore spec in one place
+- **Restic-native** — content-addressed storage, deduplication, incremental-forever, fully readable by the `restic` CLI on its own
+- **Eight repository backends** — local filesystem, NFS, SMB / CIFS, SFTP, Amazon S3 (and S3-compatible), Cloudflare R2, Backblaze B2, Rclone
+- **Eight source types** — filesystem, Compose project, Docker volume, database (PostgreSQL / MySQL / MariaDB / SQLite / Redis / MongoDB), Proxmox VM, Proxmox LXC, Windows VSS, NAS share
+- **Cross-platform agents** — Linux (Node bundle, systemd) and Windows (native binary, Windows Service)
+- **Hypervisor integration** — Proxmox VMs and LXCs via the Proxmox API
+- **PBS protocol target** — point Proxmox VE at BackupOS as a Proxmox Backup Server-compatible target, no agent install on the Proxmox host required
+- **YAML restore specs** — define, version, and rehearse your recovery procedure as code
+- **DR Mode** — guided checklist that walks you through restore specs during an incident
+- **Verification** — scheduled restore tests that prove backups are actually usable, not just present
+- **Nine alert channels** — email, Slack, Discord, Telegram, Pushover, Gotify, ntfy, generic webhook, Twilio SMS
+- **Cost forecasting** — per-repository storage growth tracking with projected monthly spend
+- **Tamper-evident audit log** — SHA-256 hash chain across every privileged action, with forensic mode
+- **OIDC SSO** — Authentik, Okta, Duo, plus local password + TOTP fallback
+- **Encryption at rest** — every stored credential (alert channel secrets, repository passwords, OIDC client secrets, SMTP passwords) encrypted with a per-instance key
 
 ---
 
-## Quick start (Docker)
+## Install
 
-**1. Copy the environment file and fill in the required values:**
+The recommended deployment is the **native installer** — it sets up both the web app and the PBS protocol service as systemd units. A Docker image is also provided for hosts where systemd isn't an option, but it ships only the web app (no PBS protocol service).
+
+### Native installer (recommended)
+
+Requirements: Linux host, root or sudo, Node.js 20+, pnpm 9+, Go 1.22+, restic 0.16+, openssl, rsync.
+
+```bash
+git clone https://github.com/dariusvorster/backupos.git ~/backupos
+cd ~/backupos
+sudo bash scripts/server-install.sh
+```
+
+The installer creates the `backupos` system user, builds the web app and the Go-based PBS protocol service, generates `/etc/backupos/server.env` with random secrets, and installs systemd units for `backupos` (web, port 3093) and `backupos-pbs` (PBS protocol, port 8007).
+
+Open `http://<host>:3093` and create your admin account — the first signup is automatically the admin. After that, additional users join via invite from **Settings → Users**.
+
+Full guide: [docs/getting-started/install-self-hosted](packages/docs-content/content/getting-started/install-self-hosted.mdx).
+
+### Docker (web app only, no PBS protocol)
 
 ```bash
 cp .env.example .env
-```
-
-Edit `.env`:
-
-```env
-ENCRYPTION_KEY=        # openssl rand -hex 32
-BETTER_AUTH_SECRET=    # openssl rand -hex 32
-BETTER_AUTH_URL=http://localhost:3000
-```
-
-**2. Start the container:**
-
-```bash
+# Edit .env — set ENCRYPTION_KEY, BETTER_AUTH_SECRET, BETTER_AUTH_URL
 docker compose up -d
 ```
 
-**3. Open BackupOS:**
+Open `http://localhost:3000`.
 
-```
-http://localhost:3000
-```
-
-On first load you'll be prompted to create the admin account. After that, signup is disabled — additional users are managed from within the app.
+Use this if you don't need to back up Proxmox via the PBS protocol target. For agent-driven and hypervisor-API backups it's identical to the native install.
 
 ---
 
-## Environment variables
+## Enroll your first agent
 
-| Variable | Required | Description |
-|---|---|---|
-| `ENCRYPTION_KEY` | Yes | 32-byte hex key for encrypting stored credentials. Generate: `openssl rand -hex 32` |
-| `BETTER_AUTH_SECRET` | Yes | Secret for signing auth sessions. Generate: `openssl rand -hex 32` |
-| `BETTER_AUTH_URL` | Yes | Public URL of your BackupOS instance (used for auth callbacks) |
-| `DATABASE_URL` | No | SQLite path. Defaults to `file:/app/data/backupos.db` |
-| `RESTIC_BINARY_PATH` | No | Path to restic binary. Defaults to `restic` in PATH |
-| `RESEND_API_KEY` | No | [Resend](https://resend.com) API key for email alerts |
-| `ALERT_TO_EMAIL` | No | Default recipient address for email alerts |
+In the BackupOS UI: **Agents → Enroll agent**. Name the agent (typically the hostname), click **Generate token & enroll**, and copy the install command shown on the next page.
 
----
-
-## Exposing to the internet
-
-If you want to access BackupOS outside your local network, put it behind a reverse proxy with HTTPS. Example with Caddy:
-
-```
-backupos.example.com {
-    reverse_proxy localhost:3000
-}
-```
-
-Update `BETTER_AUTH_URL` to match your public domain:
-
-```env
-BETTER_AUTH_URL=https://backupos.example.com
-```
-
----
-
-## Installing agents on remote hosts
-
-The BackupOS agent is a lightweight Node.js process that runs on a remote server or container, executes backup jobs locally using a local restic binary, and streams results back to your BackupOS instance over a WebSocket connection.
-
-### Prerequisites
-
-- The remote host must be able to reach your BackupOS instance over HTTP/HTTPS
-- Node.js 18+ (the installer will install it if missing)
-- `restic` (the installer will install it if missing on Linux)
-
-### 1. Generate an API token
-
-In the BackupOS dashboard go to **Settings → API Tokens** and create a token. Copy it — you'll pass it to the installer.
-
-### 2. Run the one-liner installer
-
-On the remote host (Linux or macOS):
+Run it on the host you want to back up:
 
 ```bash
-curl -fsSL https://your-backupos-url/install.sh | \
-  BACKUPOS_URL=wss://your-backupos-url/ws/agent \
-  BACKUPOS_TOKEN=<your-api-token> \
-  bash
+curl -fsSL https://your-backupos-host:3093/install.sh \
+  | sudo BACKUPOS_TOKEN=<token-from-ui> bash
 ```
 
-Replace `your-backupos-url` with the URL of your BackupOS instance (e.g. `backupos.example.com`).
+The installer drops the agent at `/opt/backupos-agent/`, registers a `backupos-agent.service` systemd unit, and connects out to the BackupOS server over WebSocket. No inbound firewall rules are required on the agent host.
 
-The installer will:
-1. Download the agent binary from your BackupOS instance
-2. Install Node.js and restic if they are not already present
-3. Register the agent as a **systemd** service (Linux) or **launchd** service (macOS) that starts on boot and auto-restarts on failure
+For Windows, the agent detail page also shows a PowerShell snippet (`iwr ... | iex`) that installs `backupos-agent.exe` as a Windows Service.
 
-### 3. Verify the agent connected
+Full guide: [docs/getting-started/enrol-agent](packages/docs-content/content/getting-started/enrol-agent.mdx).
 
-Back in the dashboard, go to **Agents** — the new host should appear within a few seconds with its hostname, IP, and live CPU/memory metrics.
+---
 
-### Installing in a Docker container
+## Add a repository
 
-Add the agent to your container's entrypoint or as a sidecar service. The agent needs the `BACKUPOS_URL` and `BACKUPOS_TOKEN` environment variables:
+**Repositories → Add repository** in the UI. Pick a backend, fill in the credentials, click **Test connection** (or **Test mount** for NFS / SMB). Save, then click into the new repository and **Initialize repository** with a strong password.
 
-```dockerfile
-FROM node:20-slim
-RUN apt-get update && apt-get install -y restic curl
-RUN curl -fsSL https://your-backupos-url/backupos-agent.cjs -o /usr/local/bin/backupos-agent.cjs
-CMD ["node", "/usr/local/bin/backupos-agent.cjs"]
-```
+Strongly recommended: enable **escrow** on the repository detail page after initialization. It encrypts the repository password with a master passphrase you set; if you ever lose the password, you can recover it from **Settings**. Without escrow, a forgotten repository password means every snapshot in that repository is permanently unreadable.
 
-Or with Docker Compose alongside your application:
-
-```yaml
-services:
-  app:
-    image: your-app
-
-  backupos-agent:
-    image: node:20-slim
-    environment:
-      BACKUPOS_URL: wss://backupos.example.com/ws/agent
-      BACKUPOS_TOKEN: <your-api-token>
-    volumes:
-      - app_data:/data:ro   # mount the data you want to back up
-    command: >
-      sh -c "apt-get update -q && apt-get install -y -q restic &&
-             curl -fsSL https://backupos.example.com/backupos-agent.cjs -o /agent.cjs &&
-             node /agent.cjs"
-    restart: unless-stopped
-
-volumes:
-  app_data:
-```
-
-### Manual install (no installer)
-
-If you prefer to manage the process yourself:
-
-```bash
-# Download the agent
-curl -fsSL https://your-backupos-url/backupos-agent.cjs -o backupos-agent.cjs
-
-# Run it
-BACKUPOS_URL=wss://your-backupos-url/ws/agent \
-BACKUPOS_TOKEN=<your-api-token> \
-node backupos-agent.cjs
-```
-
-The agent reconnects automatically with exponential backoff (1 s → 60 s) if the connection drops.
+Full guide: [docs/getting-started/connect-repository](packages/docs-content/content/getting-started/connect-repository.mdx).
 
 ---
 
 ## Updating
 
+### Native install
+
 ```bash
-docker compose pull && docker compose up -d
+cd ~/backupos
+git pull origin main
+sudo bash /opt/backupos/scripts/server-install.sh update --source ~/backupos
 ```
 
-BackupOS runs database migrations automatically on startup. Agents update themselves on next install by re-running the one-liner.
+The installer self-updates, stops the services, rebuilds, and restarts. Existing data, secrets, and config are preserved.
+
+### Docker
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Database migrations run automatically on startup.
+
+### Agents
+
+Re-run the original install command on the agent host. The install script is idempotent — it upgrades in place and preserves the existing token. Or, on Linux:
+
+```bash
+sudo bash /opt/backupos-agent/install.sh update
+```
+
+---
+
+## Architecture
+
+- **Web app** — Next.js + tRPC, runs as `backupos.service`. Stores everything in a single SQLite file at `/var/lib/backupos/backupos.db`.
+- **PBS protocol service** — Go binary, runs as `backupos-pbs.service` on port 8007. Speaks the [Proxmox Backup Server](https://pbs.proxmox.com) wire protocol so PVE can write backups directly to BackupOS without an agent on the Proxmox host. Shares the SQLite database with the web app.
+- **Agents** — Linux: Node.js bundle (`agent.js`) at `/opt/backupos-agent/`. Windows: native binary (`backupos-agent.exe`) under Program Files. Both speak the same WebSocket protocol.
+- **Repositories** — standard Restic-compatible storage. BackupOS does not introduce a proprietary format.
+
+Full architecture: [docs/introduction/architecture-overview](packages/docs-content/content/introduction/architecture-overview.mdx).
 
 ---
 
 ## Building from source
 
-**Requirements:** Node.js 22+, pnpm 9+
-
 ```bash
 git clone https://github.com/dariusvorster/backupos
 cd backupos
 pnpm install
-pnpm build
-cp .env.example .env  # fill in required values
-pnpm --filter @backupos/web start
+pnpm --filter @backupos/db build
+pnpm --filter @backupos/engine build
+pnpm --filter @backupos/agent build
+pnpm --filter @backupos/web exec next build
 ```
 
-### Build the Docker image locally
+The Go-based PBS protocol service is built separately:
 
 ```bash
-docker build -t backupos .
+cd services/backupos-pbs
+go build -o ../../bin/backupos-pbs ./cmd/backupos-pbs
 ```
 
-Multi-arch (requires Docker Buildx):
-
-```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t backupos .
-```
-
----
-
-## Data & backups
-
-All BackupOS data lives in a single SQLite database at `/app/data/backupos.db` (mounted as a named volume by default). Back this up regularly — it holds your job configs, agent registrations, restore specs, and alert settings.
-
-```bash
-# One-line backup of the BackupOS database itself
-docker exec backupos sqlite3 /app/data/backupos.db ".backup '/app/data/backupos.db.bak'"
-```
-
----
-
-## Releasing
-
-Releases are tagged with semantic version (e.g. `v0.2.0`). Pushing a tag in `vX.Y.Z` format triggers two GitHub Actions workflows:
-
-- `release-container-agent.yml` builds and publishes the agent image
-- `docker-release.yml` builds and publishes the BackupOS server image
-
-Both publish multi-arch (linux/amd64 + linux/arm64) to GitHub Container Registry:
-
-- `ghcr.io/dariusvorster/backupos-agent:vX.Y.Z`
-- `ghcr.io/dariusvorster/backupos-web:vX.Y.Z`
-
-### First-publish visibility
-
-When a container package is first created on ghcr.io, GitHub creates it with **private visibility** by default — even when the source repo is public. After the first successful publish of a new package name, the maintainer must manually change visibility to public:
-
-1. Go to https://github.com/users/dariusvorster/packages/container/PACKAGE_NAME/settings
-2. Scroll to the "Danger Zone" section
-3. Click "Change visibility" → select "Public" → confirm by typing the package name
-
-Subsequent publishes inherit public visibility — this is a one-time step per package.
-
-### Cutting a release
-
-1. Update `CHANGELOG.md` — move "Unreleased" entries to a new dated `## [X.Y.Z] - YYYY-MM-DD` section
-2. Commit: `git commit -am "chore: update CHANGELOG for vX.Y.Z release"`
-3. Tag and push: `git tag vX.Y.Z && git push --tags`
-4. Wait for both workflows to complete (~5 min for agent, ~25 min for server image)
-5. Create the GitHub Release: `gh release create vX.Y.Z --title "vX.Y.Z — YYYY-MM-DD" --notes-file <changelog-section> --latest`
+The native installer wraps both build paths in `scripts/server-install.sh`.
 
 ---
 
 ## License
 
-MIT
+To be confirmed before V1 GA. The planned licence is AGPL-3.0 (open source) plus a commercial license for organizations that prefer not to comply with AGPL terms.
+
+---
+
+## Status and roadmap
+
+V1 launch candidate. Tracked in [issue #73](https://github.com/dariusvorster/backupos/issues/73) and the V1 milestone on the issue tracker.
+
+Known scope deferred to V1.x:
+
+- XCP-ng support via XAPI / CBT
+- Cloud sync tier (currently no managed cloud product — BackupOS is self-hosted only)
+- Licensing / paid tier infrastructure
+- macOS agent
+- Restore feature gaps tracked in issues #30–#32, #230, #231
+
+Issues and feedback welcome at [github.com/dariusvorster/backupos/issues](https://github.com/dariusvorster/backupos/issues).
