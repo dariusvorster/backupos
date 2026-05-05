@@ -29,6 +29,8 @@ export async function handleDatabaseRestore(
       await runMysqlRestore({ dumpPath: resolvedDumpPath, container: targetContainer, host: targetHost, port: targetPort, database: targetDatabase, username: targetUsername, password })
     } else if (app === 'sqlite') {
       await runSqliteRestore({ dumpPath: resolvedDumpPath, container: targetContainer, dbPath: targetDbPath })
+    } else if (app === 'redis') {
+      await runRedisRestore({ dumpPath: resolvedDumpPath, container: targetContainer, dbPath: targetDbPath })
     } else {
       throw new Error(`Unsupported database app: ${app}`)
     }
@@ -138,6 +140,37 @@ async function runMysqlRestore(opts: MysqlArgs): Promise<void> {
     }
     await spawnAllowed('mysql', innerArgs, { env, stdin: createReadStream(dumpPath) })
   }
+}
+
+interface RedisArgs {
+  dumpPath: string
+  container?: string
+  dbPath?: string
+}
+
+async function runRedisRestore(opts: RedisArgs): Promise<void> {
+  const { dumpPath, container, dbPath } = opts
+  if (!container) {
+    throw new Error('redis restore: targetContainer is required (host-side restore is not supported)')
+  }
+
+  // Default to the standard redis container RDB path; allow override via dbPath.
+  const inContainerPath = dbPath && dbPath.length > 0 ? dbPath : '/data/dump.rdb'
+
+  console.log(`[agent] redis restore: stop → cp → start for container "${container}", target ${inContainerPath}`)
+
+  // Stop the container so Redis isn't writing while we replace the RDB.
+  await spawnAllowed('docker', ['stop', container])
+
+  try {
+    await spawnAllowed('docker', ['cp', dumpPath, `${container}:${inContainerPath}`])
+  } catch (err) {
+    // If the cp fails, attempt to start the container so we don't leave it stopped.
+    await spawnAllowed('docker', ['start', container]).catch(() => { /* best-effort restart */ })
+    throw err
+  }
+
+  await spawnAllowed('docker', ['start', container])
 }
 
 interface SqliteArgs {
