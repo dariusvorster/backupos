@@ -21,9 +21,9 @@ BackupOS is a unified backup management platform for homelabs and small business
 ## What it adds
 
 - **Verification** — scheduled restore tests that prove backups actually work
-- **Cost forecasting** — storage growth tracking and projected spend per repository
+- **Cost forecasting** — storage growth tracking with projected monthly spend per repository
 - **DR Mode** — guided recovery interface with restore specs for whole-host incidents
-- **Cross-platform agents** — single binary for Linux and Windows
+- **Cross-platform agents** — agents for Linux and Windows, sharing one protocol
 - **Tamper-evident audit log** — SHA-256 hash-chained event log for compliance
 - **Operational logs** — structured per-job and per-agent log stream with filtering
 
@@ -32,17 +32,18 @@ BackupOS is a unified backup management platform for homelabs and small business
 ## Architecture at a glance
 
 ```
-┌─────────────┐     ┌──────────────────────────────────┐
-│  BackupOS   │────▶│  Agents (Linux / Windows)        │
-│  Web UI     │     │  ├── Filesystem sources           │
-└─────────────┘     │  ├── Docker / database sources    │
-                    │  └── Proxmox VM / LXC sources     │
-                    └──────────────┬───────────────────┘
+┌─────────────┐     ┌──────────────────────────────────────┐
+│  BackupOS   │────▶│  Agents (Linux / Windows)            │
+│  Web UI     │     │  ├── Filesystem & NAS share sources  │
+└─────────────┘     │  ├── Docker / Compose / database     │
+                    │  └── Proxmox VM / LXC / Windows VSS  │
+                    └──────────────┬───────────────────────┘
                                    │
-                    ┌──────────────▼───────────────────┐
-                    │  Restic repositories              │
-                    │  (R2 · B2 · S3 · local NAS)      │
-                    └───────────────────────────────────┘
+                    ┌──────────────▼───────────────────────┐
+                    │  Restic repositories                 │
+                    │  (Local · NFS · SMB · SFTP ·          │
+                    │   S3 · R2 · B2 · Rclone)              │
+                    └───────────────────────────────────────┘
 ```
 
-The web app runs as a Docker container on any Linux host. Agents run on each machine that has sources to back up. Repositories are standard Restic-compatible object-storage buckets — no proprietary format.
+The web app and the PBS protocol service run as native systemd units on a Linux host. Agents run on each machine that has sources to back up — a Node.js bundle on Linux, a native `.exe` on Windows. Repositories are standard Restic-compatible buckets — no proprietary format, fully readable by the `restic` CLI on its own.

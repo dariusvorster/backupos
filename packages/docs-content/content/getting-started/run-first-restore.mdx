@@ -5,47 +5,81 @@ description: Restore a single file from a snapshot to verify your backup works.
 
 # Run your first restore
 
-Do this every time you onboard a new source. Knowing a backup exists is not the same as knowing it's usable.
+> Untested backups aren't backups — they're hopes.
+
+Run a restore test at least once per source when you set it up. This page walks through the simplest possible test: pick a snapshot, restore one file or directory to a temporary path, and confirm the contents look right.
+
+## Two restore paths
+
+BackupOS has two restore models:
+
+- **Quick restore from a snapshot** — pick a snapshot, choose what to restore and where, click Restore. Used for single files, directories, or ad-hoc recovery.
+- **Restore specs** — YAML-defined multi-step orchestration (database restore + filesystem + container restart + HTTP health-check). Used for service-level disaster recovery. See [Restore specs](/docs/concepts/restore-specs).
+
+This page uses the quick path. It's the right tool for "did my backup work?" — and it's what you should reach for first when you actually need to recover.
 
 ## 1. Find the snapshot
 
-Go to **Snapshots**. Click the snapshot created by your first backup run.
+Go to **Snapshots** in the sidebar. The page lists hosts; click your host, then the job, to drill down to its snapshots. Pick the snapshot from the run you just did.
 
-## 2. Start a file restore
+## 2. Click Restore
 
-Click **Restore → Restore file**. The restore wizard opens.
+On the snapshot row, click **Restore**. A modal opens.
 
-**Step 1 — Select file:**
-- Browse the snapshot's file tree
-- Pick any file you recognise (e.g. `/home/yourname/.bashrc`)
+<Note>The Restore button is disabled if no agent is currently connected — restore work runs on an agent, so one has to be online to receive the job.</Note>
 
-**Step 2 — Destination:**
-- Target path: `/tmp/restore-test` (a safe temporary directory)
-- Agent: the agent that has access to the destination
+## 3. Configure the restore
 
-**Step 3 — Confirm:**
-- Review the details and click **Start restore**
+The modal asks for three things:
 
-## 3. Verify the restored file
+**Source path** — which path within the snapshot to restore. Defaults to the first path the job backed up. For a Filesystem-source job that backed up `/home`, you'd typically restore the whole tree or a sub-path like `/home/yourname`.
 
-The restore runs as a job. When it completes:
+**Target type** — where to put the restored data. Three options:
+
+- **Temporary path** (default) — restores into a fresh path under the agent's `/tmp/`. Safe: nothing existing is overwritten.
+- **In place** — restores back to the original path. Overwrites the current files at that location. Don't use this for the first test.
+- **Custom path** — pick any path on the agent host. Useful for restoring into a side-by-side directory for comparison.
+
+**Custom path** (only shown when target type is **Custom**) — the destination path on the agent.
+
+Leave target type as **Temporary path** for your first test. Click **Restore**.
+
+## 4. Watch it run
+
+The modal redirects you to **Restore → Runs**. The new run appears at the top with status **Running**. Click into it to see the live log — Restic restoring chunks and writing files.
+
+When the run is **Success**, the page shows:
+
+- The exact target path the data landed at (e.g. `/tmp/restore-<run-id>/home/yourname/...`)
+- File and byte counts
+
+## 5. Verify on the agent host
+
+SSH into the agent host (or use whatever access you normally use) and inspect the restored data:
 
 ```bash
-# On the target machine
-cat /tmp/restore-test/.bashrc
-# Should show your actual .bashrc content
+# Use the path from the run detail page
+ls -la /tmp/restore-<run-id>/
+cat /tmp/restore-<run-id>/some-file-you-recognize
 ```
 
-If the file is there and correct: your backup is confirmed restorable.
+If a file you recognize is there with the right contents, your backup is confirmed restorable.
 
-## 4. Clean up
+## 6. Clean up
 
 ```bash
-rm -rf /tmp/restore-test
+rm -rf /tmp/restore-<run-id>/
 ```
 
-## Why this matters
+## Database snapshots
 
-> "Untested backups are not backups. They are hopes."
+If the snapshot looks like it contains database dumps (the modal detects path patterns like `.sql`, `.dump`, `pg_dump`, `/var/lib/postgresql`, etc.), the modal flags it. Quick restore drops the files at the target path — it does **not** automatically reload them into a database. To replay a dump into a running database, use a [restore spec](/docs/concepts/restore-specs) with a `database_restore` step.
 
-Run a restore test at least once per source when you set it up. Then set up **Verification** to automate this — BackupOS can schedule restore tests on a cadence and alert you if they fail.
+## What's next
+
+- **Automate this.** [Verification](/docs/concepts/verification) runs a sampled restore on a schedule and alerts you if it fails. Set this up for every job once you trust the setup.
+- **Plan the disaster scenario.** When you actually need to restore, you don't want to be reading docs. Write a [restore spec](/docs/concepts/restore-specs) for each critical service while you have time, and rehearse it.
+
+## Next steps
+
+- [What's next](/docs/getting-started/what-next) — recommendations after the first job + restore are working

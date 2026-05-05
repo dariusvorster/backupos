@@ -5,16 +5,29 @@ description: The processes that run on source machines and execute backup jobs.
 
 # Agents
 
-The BackupOS agent (`ios-agent`) is a single binary that runs as a system service on Linux and Windows machines. It executes jobs on behalf of the web app, streams logs back in real time, and reports health status.
+The BackupOS agent runs as a system service on each source machine. It executes jobs on behalf of the web app, streams logs back in real time, and reports health status.
+
+- **Linux agents** are a Node.js bundle (`agent.js`) installed at `/opt/backupos-agent/`, run by a systemd unit named `backupos-agent`.
+- **Windows agents** are a native binary (`backupos-agent.exe`) installed under `C:\Program Files\BackupOS Agent\` and registered as a Windows Service.
+
+Both share the same agent protocol, so the server treats them uniformly.
 
 ## Capabilities
 
-An agent reports its available capabilities on enrolment: source types it can serve (filesystem, Docker, Proxmox, databases), available disk space, and OS/architecture.
+An agent reports its available capabilities on enrollment: source types it can serve (filesystem, Compose project, database, Proxmox, Windows VSS, NAS share), app-hook tools detected on the host (`pg_dump`, `mysqldump`, etc.), available disk space, and OS / architecture.
 
 ## Communication
 
-Agents connect outbound to the BackupOS web app over HTTPS. No inbound firewall rules required on agent machines.
+Agents connect outbound to the BackupOS server over a WebSocket (`ws://` or `wss://` depending on whether you've fronted the server with TLS). No inbound firewall rules are required on agent hosts.
 
 ## Updates
 
-Agents check for updates and can be updated from the BackupOS UI without manual SSH. Self-update uses the same binary signing as the initial install.
+Linux agents can be updated by re-running the install script in update mode:
+
+```bash
+sudo bash /opt/backupos-agent/install.sh update
+```
+
+This pulls the latest agent bundle from the server, replaces it in place, and restarts the systemd unit. The token in `/opt/backupos-agent/.env` is preserved.
+
+Windows agents update via the same PowerShell installer pattern — re-run with the original token and the service is upgraded in place.

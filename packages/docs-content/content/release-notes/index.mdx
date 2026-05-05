@@ -5,14 +5,23 @@ description: Version history and changelog for BackupOS.
 
 # Release notes
 
-## v2.0.0
+## Unreleased — V1 launch candidate
 
-- Full logging layer: operational logs, expanded audit log with SHA-256 hash chain, forensic mode
-- Grid Shield logo and branding update
-- Dynamic favicon (idle / running / alert states)
-- Log retention settings
-- Per-entity log sections on job and agent detail pages
+The V1 launch is in active preparation. Highlights of recent work:
 
-## v1.x
+- OIDC SSO with admin config UI (Authentik, Okta, Duo)
+- Local password + TOTP 2FA via better-auth
+- Password reset flow with email-based recovery
+- Repository password escrow with Argon2id key derivation
+- Tamper-evident audit log: SHA-256 hash chain across all privileged events
+- Forensic mode on the audit page for investigating suspicious activity
+- RBAC v1 — viewer role gating across destructive actions
+- Verification edit/delete UI
+- Datastore management UI for PBS-protocol backups
+- Read-only integration API at `/api/v1/integration/*` (Bearer auth, scopes, rate limiting)
+- Encryption-at-rest for stored credentials, with key rotation tooling
+- Native systemd installer with self-update on `update --source`
+- Per-channel UX for all 9 alert channels (email, Slack, Discord, Telegram, Pushover, Gotify, ntfy, generic webhook, Twilio SMS)
+- Grid Shield logo and dynamic favicon (idle / running / alert states)
 
-See the [GitHub releases page](https://github.com/backupos/backupos/releases) for the full v1 changelog.
+A full changelog will be published with V1 GA.

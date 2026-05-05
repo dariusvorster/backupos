@@ -1,46 +1,67 @@
 ---
-title: What next
+title: What's next
 description: Where to go after your first backup and restore.
 ---
 
-# What next
+# What's next
 
-You've installed BackupOS, enrolled an agent, connected a repository, and confirmed a backup is restorable. Here are the natural next steps:
+You've installed BackupOS, enrolled an agent, connected a repository, run a backup, and confirmed a restore works. From here, the priorities depend on whether you're protecting one host or many.
 
-## Set up verification
+## Set up automated verification
 
-Automated restore tests prove your backups work without manual effort. Go to **Jobs → [job] → Verification** to schedule periodic restore tests.
+Verification runs a sampled restore on a schedule and alerts you if it fails. It's the cheapest insurance against silent backup corruption. Set this up before you add many more jobs.
+
+In the sidebar: **Verification → New verification**. Pick the job you just created, choose a schedule (weekly is a sensible default), and pick a target — typically a single small file.
 
 → [Set up restore verification](/docs/how-to/setup-verification)
 
 ## Add more sources
 
-Back up databases, Docker volumes, other machines. Each source gets its own job.
+Each thing you back up gets its own job. Common next sources:
 
-→ [Back up PostgreSQL](/docs/how-to/postgresql)
-→ [Back up a Docker container](/docs/how-to/docker-container)
-→ [Back up a Proxmox VM](/docs/how-to/proxmox-vm)
+→ [Back up PostgreSQL](/docs/how-to/postgresql) — consistent dumps via app-hooks
+→ [Back up a Docker container or Compose project](/docs/how-to/docker-container)
+→ [Back up a Proxmox VM](/docs/how-to/proxmox-vm) — via the Proxmox API
+→ [Back up a Windows host](/docs/how-to/windows-vss) — VSS-aware system backups
+→ [Back up a NAS share](/docs/how-to/nas-share)
 
 ## Configure alerts
 
-Get notified when a job fails, a snapshot is overdue, or storage costs exceed a threshold.
+Backups silently failing for a month is the classic disaster. Wire alerts now, while there are only one or two jobs to keep track of.
+
+BackupOS supports nine alert channels: email, Slack, Discord, Telegram, Pushover, Gotify, ntfy, generic webhook, and SMS via Twilio. Each is configured under **Settings → Alerts**.
 
 → [Configure alerts](/docs/how-to/configure-alerts)
 
-## Enable escrow for your repositories
+## Enable escrow on every repository
 
-If you haven't already, enable key escrow so you can recover encryption passwords if they're lost.
+If you skipped escrow during repository setup, do it now. A forgotten repository password without escrow means every snapshot in that repository is permanently unreadable.
 
 → [Recover a lost repository password](/docs/how-to/recover-password)
 
-## Understand the health score
+## Plan for the bad day
 
-The health score summarises the reliability of each agent and repository. Aim for A.
+Quick file-restore is great for "did the backup work?" — it isn't great for "the database server is down at 3am and I need to recover the whole stack." For that, write a [restore spec](/docs/concepts/restore-specs) — a YAML recipe that runs through database restore, filesystem restore, container restarts, and health checks in sequence. Then **DR Mode** presents that spec as a guided checklist when you actually need it.
 
-→ [Health score](/docs/concepts/health-score)
+Don't write specs in a panic; write them while it's calm and rehearse.
 
-## Explore DR Mode
-
-Create restore specs for your most critical services so you're ready for a real incident.
-
+→ [Restore specs](/docs/concepts/restore-specs)
 → [Use DR Mode during an incident](/docs/how-to/dr-mode)
+
+## Concepts worth reading
+
+A few BackupOS concepts have non-obvious behavior. Skim these once and you'll save yourself surprise later:
+
+→ [Jobs](/docs/concepts/jobs) — the unit of "back up X to Y on schedule Z"
+→ [Runs](/docs/concepts/runs) — phases of a single execution: pre-flight → pre-hook → backup → post-hook → optional verification
+→ [Snapshots](/docs/concepts/snapshots) — what's in them, how retention prunes them
+→ [Health score](/docs/concepts/health-score) — how BackupOS summarises the reliability of each job, agent, and repository
+→ [Verification](/docs/concepts/verification) — how the sampled-restore checks work and what they prove
+
+## Common next moves by setup size
+
+**One server you care about** — set up verification, configure email alerts, enable escrow, write a one-step restore spec. You're done in an afternoon.
+
+**Multiple homelab hosts** — enrol an agent on each, set up at least one job per host, configure Slack or ntfy alerts, and set up [retention](/docs/how-to/retention) per repository.
+
+**Small business / multiple environments** — read [How to switch backends](/docs/how-to/switch-backend) and [How to use multiple backends](/docs/how-to/multi-backend) before scaling out.
