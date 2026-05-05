@@ -52,11 +52,32 @@ export async function runComposeRestore(
 
   const services = composeConfig.services?.filter(s => s.included) ?? []
 
-  // The compose file snapshot, if present, is appended after all service snapshots
   const serviceSnapshotIds = snapshotIds.slice(0, services.length)
-  const composeFileSnapshotId = restoreComposeFile && snapshotIds.length > services.length
-    ? snapshotIds[services.length]
-    : undefined
+
+  // Compose-file snapshot lookup by tag (replaces positional indexing per #31).
+  // We filter by both meta:compose-file AND compose:<projectName> so we don't pick
+  // up a compose-file snapshot from a different project in the same repo, then
+  // take the most-recent matching snapshot.
+  let composeFileSnapshotId: string | undefined
+  if (restoreComposeFile) {
+    try {
+      const matches = await makeEngine().snapshots([
+        'meta:compose-file',
+        `compose:${composeConfig.projectName}`,
+      ])
+      if (matches.length > 0) {
+        // Most-recent snapshot wins (restic returns ascending time order)
+        composeFileSnapshotId = matches[matches.length - 1]?.id
+        logLines.push(`[restore] compose-file snapshot resolved: ${composeFileSnapshotId?.slice(0, 8)} (tag lookup)`)
+      } else {
+        logLines.push(`[restore] WARN: restoreComposeFile=true but no snapshot tagged meta:compose-file for project "${composeConfig.projectName}"`)
+      }
+    } catch (err) {
+      const e = err instanceof Error ? err.message : String(err)
+      logLines.push(`[restore] WARN: failed to look up compose-file snapshot by tag: ${e}`)
+      // Fall through with undefined; downstream guard at line 141 handles this
+    }
+  }
 
   if (serviceSnapshotIds.length !== services.length) {
     send({
