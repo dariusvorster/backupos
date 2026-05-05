@@ -89,7 +89,7 @@ export async function runComposeRestore(
       }
     }
 
-    setPhase('uploading')
+    setPhase('restoring')
 
     for (let i = 0; i < services.length; i++) {
       const service = services[i]!
