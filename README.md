@@ -158,7 +158,19 @@ The native installer wraps both build paths in `scripts/server-install.sh`.
 
 ## License
 
-To be confirmed before V1 GA. The planned licence is AGPL-3.0 (open source) plus a commercial license for organizations that prefer not to comply with AGPL terms.
+BackupOS is licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0-or-later). The full license text is in the [LICENSE](LICENSE) file at
+the repo root.
+
+A commercial license is available for organizations that prefer not to comply with
+the terms of the AGPL-3.0 (e.g. proprietary forks, white-label deployments, SaaS
+relicensing). Contact licensing@homelabos.app for details.
+
+The Pro tier (paid features such as unlimited agents, RBAC, SSO, and integration
+tokens) is a separate commercial product gated by a JWT license key — see
+[docs/design/licensing.md](docs/design/licensing.md). The Pro tier is independent
+of the source-code license: AGPL-3.0 source + Pro tier features is the supported
+self-hosted commercial offering.
 
 ---
 
