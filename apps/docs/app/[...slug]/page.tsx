@@ -16,7 +16,6 @@ const HealthFactors   = makeStub('HealthFactors')
 const HealthGrades    = makeStub('HealthGrades')
 const JobPhases       = makeStub('JobPhases')
 const OtherBackends   = makeStub('OtherBackends')
-const PlanComparison  = makeStub('PlanComparison')
 const RepoFields      = makeStub('RepoFields')
 const RetentionPolicy = makeStub('RetentionPolicy')
 const RunPhases       = makeStub('RunPhases')
@@ -27,7 +26,7 @@ const mdxComponents = {
   Note, Tip, FeatureComparison, GlossaryTable,
   Warning,
   AlertTriggers, HealthFactors, HealthGrades, JobPhases, OtherBackends,
-  PlanComparison, RepoFields, RetentionPolicy, RunPhases, SourceTypes, StepTypes,
+  RepoFields, RetentionPolicy, RunPhases, SourceTypes, StepTypes,
 }
 
 const DOCS_ROOT = resolve(process.cwd(), '../../packages/docs-content/content')
