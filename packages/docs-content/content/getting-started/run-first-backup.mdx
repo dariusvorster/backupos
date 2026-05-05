@@ -5,44 +5,86 @@ description: Create a backup job and run it manually for the first time.
 
 # Run your first backup
 
-## 1. Open the new job wizard
+By this point you should have:
 
-Go to **Jobs → New job**.
+- BackupOS installed and an admin account created
+- An agent enrolled and showing **Connected**
+- A repository connected and **Ready**
 
-## 2. Configure the job
+If any of those isn't true, finish [Enroll your first agent](/docs/getting-started/enrol-agent) and [Connect a repository](/docs/getting-started/connect-repository) first.
 
-**Step 1 — Source:**
-- Agent: select the agent you enrolled
-- Source type: **Filesystem**
-- Path: `/home` (a safe first target — not too large, easy to verify)
+## 1. Open the new job form
 
-**Step 2 — Repository:**
-- Select the repository you connected
+In the sidebar, go to **Jobs** and click **New backup job**.
 
-**Step 3 — Schedule:**
-- Keep the default (daily at 02:00). You can change this later.
-- Enable **Auto pre-flight** — runs checks 15 minutes before each scheduled run
+## 2. Fill in the form
 
-**Step 4 — Review:**
-- Give the job a name (e.g. "Home directory — server-01")
-- Click **Create job**
+The form is a single page — fill from top to bottom.
+
+**Job name.** Something descriptive — `nightly-postgres`, `home-dirs-server01`, etc. Used in alert messages and the activity feed.
+
+**Source type.** Pick what the agent should back up. BackupOS supports:
+
+- **Filesystem** — directories and files on the agent host
+- **Compose project** — Docker Compose stack including volumes and app-aware hooks (recommended over Docker volume)
+- **Docker volume** — single named volume (deprecated; use Compose project for new jobs)
+- **Database** — PostgreSQL, MySQL, SQLite, or Redis with consistent dumps
+- **Proxmox VM** — virtual machine via Proxmox API
+- **Proxmox LXC** — container via Proxmox API
+- **Windows system** — full system backup using VSS
+- **NAS share** — backs up an SMB or NFS share
+
+For a first backup, **Filesystem** is easiest to verify.
+
+**Source-specific fields.** The form re-renders fields for the source type you picked. For Filesystem: select an agent first, then click **Detect** to scan the host for mount points. You'll get a checklist of detected paths plus a textarea for custom paths.
+
+<Tip>For a small first backup, pick a single small directory like `/home` or `/etc` rather than the entire root. It's faster to verify and easier to restore from.</Tip>
+
+**Agent.** Select the agent that will run the job. Only agents currently enrolled appear in the dropdown.
+
+**Repository.** Select the repository where the snapshots will be stored. Only repositories with status **Ready** are usable.
+
+**Coverage entry (optional).** If you've linked Infra OS or imported a service registry, you can attach this job to a tracked service for coverage reporting. Skip for now.
+
+**Schedule.** A cron expression — the form has a helper that translates plain English presets ("Every day at 2am") into cron syntax. Default suggestion is daily; you can also leave the schedule empty for a manual-only job.
+
+Click **Create job**.
 
 ## 3. Run it manually
 
-On the job detail page, click **Run now**. The job moves to **Running** status.
+Open the job detail page (you'll be redirected after create, or click the job from the **Jobs** list). Click **Run now**.
 
-Watch the log stream update in real time on the **Jobs → [job name] → Runs → [run]** page. You'll see Restic output as it scans and uploads data.
+The run appears at the top of the **Recent runs** section with status **Running**. Click into it to see the live log stream — Restic output as it scans and uploads.
 
-## 4. See the snapshot
+## 4. Auto pre-flight (optional)
 
-When the run completes (status: **Success**), go to **Snapshots**. Filter by your repository. You should see a new snapshot with today's date and your source path.
+Below the recent runs section, the job detail page has an **Auto pre-flight** toggle. When enabled (it is by default for new jobs), BackupOS runs a set of checks 15 minutes before each scheduled run:
 
-## What "success" means
+- Repository is reachable and not full
+- Agent is connected
+- Source paths exist
+- App-hook prerequisites (e.g. `pg_dump` on PATH) are met
 
-A successful run means:
+If any check fails, an alert fires and the run is skipped. You can also click **Run pre-flight** at any time to test on demand.
+
+Pre-flight only runs ahead of **scheduled** runs — manual **Run now** triggers backup immediately without pre-flight.
+
+## 5. See the snapshot
+
+When the run completes (status **Success**), go to **Snapshots** in the sidebar. The new snapshot appears at the top, tagged with the job name and host. Click into it to see the file list, byte total, and the path that was backed up.
+
+## What "success" actually means
+
+A **Success** status means:
+
 - Restic completed without error
-- All source files were scanned
-- New/changed files were uploaded to the repository
-- The snapshot ID was recorded in BackupOS
+- Every requested source path was scanned
+- New and changed data was uploaded to the repository
+- A snapshot ID was recorded against this run
 
-It does **not** mean the backup is restorable — that's what verification is for.
+It does **not** mean the backup is restorable. To prove that, set up [verification](/docs/concepts/verification) — BackupOS can periodically restore a sampled subset of files into a sandbox and compare hashes.
+
+## Next steps
+
+- [Run your first restore](/docs/getting-started/run-first-restore) — recover a file from the snapshot you just created
+- [Set up verification](/docs/how-to/setup-verification) — automated proof that backups are restorable

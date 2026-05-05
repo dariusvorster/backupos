@@ -5,38 +5,80 @@ description: Add a Restic repository to BackupOS.
 
 # Connect a repository
 
-A repository is where backup data is stored. BackupOS uses [Restic](https://restic.net) as its storage engine — all repositories are standard Restic repositories.
+A repository is where backup data is stored. BackupOS uses [Restic](https://restic.net) as its storage engine — every repository is a standard Restic repository, fully readable by the `restic` CLI on its own.
 
-## Recommended: Cloudflare R2
+## Backend types
 
-Cloudflare R2 has zero egress fees, making it the cheapest option for most homelab setups. You pay only for storage (currently $0.015/GB/month).
+BackupOS supports eight backend types. Pick whichever fits your environment; the workflow is the same for all of them.
 
-### 1. Create an R2 bucket
+| Backend | Use it for |
+| --- | --- |
+| **Local filesystem** | Backups to a local disk on the BackupOS host |
+| **NFS share** | Backups to an NFS export (the BackupOS host mounts it for you) |
+| **SMB / CIFS share** | Backups to a Windows share or a SMB-capable NAS |
+| **Amazon S3** | Backups to S3 or any S3-compatible service (MinIO, Wasabi, Storj S3) |
+| **Cloudflare R2** | Backups to R2 — zero egress fees, S3-compatible API |
+| **Backblaze B2** | Backups to B2 (native API, not S3-compat) |
+| **SFTP** | Backups over SSH to any host with a writable directory |
+| **Rclone** | Backups via an rclone remote you've configured separately |
 
-1. Log into the Cloudflare dashboard
-2. Go to **R2 → Create bucket**, name it (e.g. `homelab-backups`), choose a region
-3. Go to **R2 → Manage R2 API tokens → Create API token**
-4. Scope: **Object Read & Write** on your bucket
-5. Note the **Access Key ID** and **Secret Access Key**
+For most homelab setups, **Cloudflare R2** is the cheapest cloud option (zero egress, ~$0.015/GB/month at the time of writing). For purely local setups, **NFS** to a NAS is the simplest.
 
-### 2. Add the repository in BackupOS
+## 1. Open the repository form
 
-Go to **Repositories → Add repository** and fill in these fields:
+Go to **Repositories** in the sidebar and click **Add repository**.
+
+Pick a backend from the dropdown. The form re-renders with the fields each backend needs:
 
 <RepoFields />
 
-<Warning>Store the encryption password somewhere safe before clicking Initialise. If it is lost, the backup data is permanently inaccessible — Restic has no password recovery.</Warning>
+<Tip>For NFS and SMB backends, the form has a **Test mount** button that mounts the share at a temporary path under `/mnt/backupos/` and reports success or the exact mount error. For S3, R2, B2, and Rclone, **Test connection** verifies the credentials by listing the bucket.</Tip>
 
-### 3. Enable escrow (strongly recommended)
+## 2. Save the repository
 
-BackupOS can encrypt the password with your master passphrase and store it. You can recover it later via **Settings → Recover repository password**.
+Click **Save** (or the equivalent submit button — the label depends on backend). BackupOS stores the connection details with the credentials encrypted at rest using `ENCRYPTION_KEY`.
 
-Click **Initialise repository**. BackupOS calls `restic init` and stores the connection details.
+At this point, the repository row exists in the database but Restic itself hasn't been initialized yet — i.e. the bucket / share might still be empty.
 
-## Other backends
+## 3. Initialize the repository
 
-<OtherBackends />
+Click the new repository in the list to open its detail page. Click **Initialize repository**.
+
+You'll be prompted for a **repository password**. This is the Restic encryption password — it protects every snapshot in the repository.
+
+<Warning>Save the repository password somewhere safe before continuing. Restic has no password recovery — if the password is lost and escrow is not enabled, every snapshot in the repository is permanently unreadable.</Warning>
+
+BackupOS calls `restic init` against the configured backend, then marks the repository **ready**.
+
+## 4. Enable password escrow (strongly recommended)
+
+After initializing, the detail page shows an **Escrow** section. Click **Enable escrow** and enter a **recovery passphrase** (different from the repository password — this one is the master that protects all your escrowed repository passwords).
+
+Escrow encrypts the repository password with your recovery passphrase using strong key derivation (Argon2id) and stores the result in the database. The plaintext repository password is never saved.
+
+To recover a forgotten repository password later: go to **Settings**. The escrow section there lists every repository with escrow enabled. Pick the repository, enter your recovery passphrase, and the original password is decrypted and shown.
+
+<Tip>Use the same recovery passphrase for every repository so you only have to remember one. The recovery flow itself is per-repository.</Tip>
 
 ## Verify
 
-After adding: the repository card shows **Accessible** with green status. If it shows **Error**, check the credentials and endpoint URL.
+The repository card on the **Repositories** page shows status:
+
+- **Ready** — initialized and reachable
+- **Pending** — saved but not yet initialized (click into it)
+- **Error** — last connection attempt failed; the card shows the error
+
+If you see **Error**, the most common causes are:
+
+- Wrong endpoint URL (especially for R2 — the endpoint is `https://<account-id>.r2.cloudflarestorage.com`, not `r2.cloudflarestorage.com`)
+- Access keys without the right scope (R2 needs **Object Read & Write** on the bucket)
+- For NFS / SMB: the BackupOS host can't reach the NAS, the export isn't allowed for that IP, or credentials are wrong
+
+## Other backend specifics
+
+<OtherBackends />
+
+## Next steps
+
+- [Run your first backup](/docs/getting-started/run-first-backup)
+- [Run your first restore](/docs/getting-started/run-first-restore)

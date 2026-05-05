@@ -1,86 +1,167 @@
 ---
 title: Install BackupOS (self-hosted)
-description: Run BackupOS on your own hardware using Docker Compose.
+description: Install BackupOS on a Linux host using the native installer.
 ---
 
 # Install BackupOS (self-hosted)
 
+BackupOS runs as two native systemd services on a single Linux host: the web app (`backupos`) and the PBS protocol service (`backupos-pbs`). The installer is a single bash script that builds from source.
+
+<Warning>An official Docker image is on the V1.x roadmap. Until then, the native installer below is the only supported path.</Warning>
+
 ## Prerequisites
 
-- Docker 24+ and Docker Compose v2
+- Linux host (Debian/Ubuntu tested; other systemd-based distros likely fine)
+- Root or sudo access
 - 2 GB RAM (4 GB recommended)
-- 10 GB disk for the application (backup data lives in your repositories, not here)
-- A Linux host (x86_64 or arm64)
+- 10 GB disk for the application (backup data lives in your repositories, not on this host)
+- These tools available on `PATH`:
+  - **Node.js 20+** and **pnpm 9+**
+  - **Go 1.22+** (to build the PBS service binary)
+  - **restic 0.16+**
+  - **openssl** and **rsync**
+  - **git** (if cloning the repo) or a downloaded source tarball
 
-## 1. Create a project directory
+The installer checks each of these on startup and exits early if any are missing.
 
-```bash
-mkdir backupos && cd backupos
-```
+## 1. Get the source
 
-## 2. Create docker-compose.yml
-
-```yaml
-services:
-  web:
-    image: backupos/web:latest
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    volumes:
-      - backupos-data:/data
-    environment:
-      - DATABASE_URL=file:/data/backupos.db
-      - ENCRYPTION_KEY=change-this-to-a-random-64-char-hex-string
-      - NEXTAUTH_SECRET=change-this-to-a-random-32-char-string
-      - NEXTAUTH_URL=http://localhost:3000
-
-volumes:
-  backupos-data:
-```
-
-<Warning>Replace `ENCRYPTION_KEY` and `NEXTAUTH_SECRET` with randomly generated values before starting. Leaving the defaults means anyone who reads the compose file can decrypt your stored credentials.</Warning>
-
-Generate secure values with:
+Clone the repository to a directory of your choice. The installer copies the source into `/opt/backupos`, so the clone location is just a build cache — keep it somewhere convenient for future updates.
 
 ```bash
-openssl rand -hex 32   # NEXTAUTH_SECRET
-openssl rand -hex 32   # ENCRYPTION_KEY (use 64 hex chars = 32 bytes)
+git clone https://github.com/dariusvorster/backupos.git ~/backupos
+cd ~/backupos
 ```
 
-## 3. Start the container
+## 2. Run the installer
 
 ```bash
-docker compose up -d
+sudo bash scripts/server-install.sh
 ```
 
-## 4. Open the setup wizard
+By default this:
 
-Navigate to `http://localhost:3000`. On first boot you'll see the setup wizard:
+- Creates the `backupos` system user
+- Builds all packages (`pnpm install`, `pnpm build`, then `next build` for the web app and `go build` for the PBS service)
+- Generates `/etc/backupos/server.env` with random secrets (`BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, internal API secret)
+- Installs systemd units for `backupos` (web, port 3093) and `backupos-pbs` (PBS protocol, port 8007)
+- Starts both services
 
-1. **Create admin account** — enter your email and a strong password
-2. **Instance name** — a friendly name shown in the UI (e.g. "Homelab")
-3. **Enable TOTP** — strongly recommended; scan the QR code with your authenticator app
+The full install takes 3–5 minutes on modest hardware (build time dominates).
 
-<Tip>Put BackupOS behind a reverse proxy (Nginx, Caddy, Traefik) with TLS before exposing it beyond localhost. The app itself does not terminate TLS.</Tip>
+### Common options
 
-## Verify
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--url <https://host>` | Auto-detected LAN IP | Public URL for the web app — sets `BETTER_AUTH_URL` and is shown in invite links |
+| `--port <n>` | `3093` | Listen port for the web app |
+| `--pbs-port <n>` | `8007` | Listen port for the PBS protocol service |
+| `--user <name>` | `backupos` | System user that runs the services |
+| `--source <path>` | (auto-detect repo) | Source directory to install from |
+
+Example with a public URL set up front:
 
 ```bash
-docker compose ps
-# Should show: web   running
+sudo bash scripts/server-install.sh --url https://backups.example.com
 ```
 
-Check the logs if the container is unhealthy:
+The URL can be changed later by editing `/etc/backupos/server.env` and restarting the services.
+
+## 3. Create your admin account
+
+Open the dashboard URL printed at the end of the install (e.g. `http://192.168.1.50:3093`) and go to `/signup`.
+
+Because the database has no users yet, signup is open. The first account created is automatically the admin. After that, `/signup` is closed for direct registration — additional users join via invite from **Settings → Users**.
+
+After creating the account:
+
+1. Go to **Settings → Security** to enable TOTP (strongly recommended)
+2. Go to **Settings → General** to set the instance name shown in the UI
+
+<Tip>Put BackupOS behind a reverse proxy (Caddy, Nginx, Traefik) with TLS before exposing it beyond your LAN. The app does not terminate TLS itself.</Tip>
+
+## File and service layout
+
+| Path / unit | Purpose |
+| --- | --- |
+| `/opt/backupos` | Application source and built artifacts |
+| `/var/lib/backupos/backupos.db` | SQLite database |
+| `/etc/backupos/server.env` | Environment file (mode 600, owned by `backupos`) |
+| `/var/log/backupos/` | Log directory (also rotated via `/etc/logrotate.d/backupos`) |
+| `systemctl status backupos` | Web app service |
+| `systemctl status backupos-pbs` | PBS protocol service |
+| `journalctl -u backupos -f` | Live web app logs |
+| `journalctl -u backupos-pbs -f` | Live PBS service logs |
+
+## Environment variables
+
+The installer generates `/etc/backupos/server.env` on first run. Useful entries:
+
+- `PORT` — web app listen port (default `3093`)
+- `HOSTNAME` — bind address (default `0.0.0.0`)
+- `BACKUPOS_PBS_BIND` — PBS service bind address (default `0.0.0.0:8007`)
+- `DATABASE_URL` — SQLite path (default `file:/var/lib/backupos/backupos.db`)
+- `RESTIC_BINARY_PATH` — path to the `restic` binary, set automatically
+- `BETTER_AUTH_SECRET` — session secret (auto-generated; rotate to invalidate all sessions)
+- `BETTER_AUTH_URL` — public URL used for callbacks
+- `ENCRYPTION_KEY` — 32-byte key used for field-level encryption of stored credentials (alert channels, repository passwords, OIDC client secrets, SMTP passwords). Required.
+
+After editing the env file:
 
 ```bash
-docker compose logs -f web
+sudo systemctl restart backupos backupos-pbs
+```
+
+<Warning>If you lose `ENCRYPTION_KEY`, all encrypted fields in the database become unrecoverable. Back it up alongside the database. Rotation is supported via `scripts/rotate-key.ts` — see [Encryption key management](/docs/operations/encryption-keys).</Warning>
+
+## Updating
+
+To pull and apply the latest changes:
+
+```bash
+cd ~/backupos
+git pull origin main
+sudo bash /opt/backupos/scripts/server-install.sh update --source ~/backupos
+```
+
+The `update` subcommand stops the services, syncs source, rebuilds, and restarts. Existing data, secrets, and config are preserved. The installer self-updates on each `update` run.
+
+## Uninstalling
+
+```bash
+sudo bash /opt/backupos/scripts/server-install.sh uninstall
+```
+
+This stops and removes the systemd units and the application directory. The database (`/var/lib/backupos`), config (`/etc/backupos`), and logs (`/var/log/backupos`) are kept by default — remove them manually if you want a fully clean uninstall.
+
+## Verify the install
+
+```bash
+systemctl is-active backupos backupos-pbs
+# Both should print: active
+
+curl -fsS http://localhost:3093/api/health
+# Should return JSON with status:"ok"
 ```
 
 ## Troubleshooting
 
-**Port 3000 already in use:** Change the left side of the port mapping to any free port, e.g. `"8080:3000"`.
+**`Run from inside the repo, or pass --source /path/to/repo`** — you ran the installer from outside the cloned source tree. Either `cd` into the repo first or pass `--source /path/to/clone`.
 
-**ENCRYPTION_KEY error on startup:** The key must be exactly 64 hex characters (32 bytes). Use `openssl rand -hex 32` to generate one.
+**`/var/lib/backupos/backupos.db still held after 30s wait`** — a stuck process is holding the SQLite file. Find and stop it before re-running the update:
 
-**Database permission error:** The `/data` volume must be writable. On some hosts you may need to `chown -R 1000:1000 backupos-data`.
+```bash
+sudo lsof /var/lib/backupos/backupos.db
+```
+
+**Build fails on `go build`** — confirm Go 1.22+ is on `PATH` for the root user (`sudo go version`). System Go installs sometimes don't end up in root's `PATH`.
+
+**Port 3093 already in use** — pass `--port <n>` on install, or set `PORT=` in `/etc/backupos/server.env` and restart.
+
+**Permission errors writing to `/var/lib/backupos`** — re-run the installer; it heals ownership on every run.
+
+## Next steps
+
+- [Enroll your first agent](/docs/getting-started/enrol-agent)
+- [Connect a backup repository](/docs/getting-started/connect-repository)
+- [Run your first backup](/docs/getting-started/run-first-backup)

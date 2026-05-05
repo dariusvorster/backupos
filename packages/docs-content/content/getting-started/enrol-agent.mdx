@@ -1,57 +1,110 @@
 ---
-title: Enrol your first agent
-description: Install the BackupOS agent on a Linux or Windows machine.
+title: Enroll your first agent
+description: Install the BackupOS agent on a Linux or Windows host so it can run backup jobs.
 ---
 
-# Enrol your first agent
+# Enroll your first agent
 
-The BackupOS agent is a single binary (`ios-agent`) that runs as a system service and executes backup jobs on behalf of the web app.
+The BackupOS agent runs as a system service on each host you want to back up. It connects outbound over WebSocket to the BackupOS server, picks up jobs, runs `restic` against the destination repository, and reports progress.
+
+Linux agents are a Node.js bundle (`agent.js`) installed at `/opt/backupos-agent/`. Windows agents are a native binary (`backupos-agent.exe`) under `Program Files`. Both expose the same agent protocol.
 
 ## Linux
 
-### 1. Get the enrolment token
+### 1. Generate an enrollment token
 
-In the BackupOS UI, go to **Agents → Enrol agent**. Copy the enrolment token shown.
+In the BackupOS UI, go to **Agents** and click **Enroll agent**.
 
-### 2. Run the one-line installer
+Give the agent a name (typically the hostname, e.g. `web01` or `nas`), pick a default repository if you want one auto-attached, and click **Generate token & enroll**.
+
+The next page shows the agent's detail view with a one-line install command, pre-filled with the new token.
+
+### 2. Run the install command on the target host
+
+Copy the command from the agent detail page and run it on the host you're enrolling. It looks like this:
 
 ```bash
-curl -fsSL https://your-backupos-host:3000/install/agent | \
-  sudo sh -s -- --token <enrolment-token>
+curl -fsSL https://your-backupos-host:3093/install.sh | sudo BACKUPOS_TOKEN=<token> bash
 ```
 
-The installer:
-1. Downloads the `ios-agent` binary to `/usr/local/bin/ios-agent`
-2. Creates a systemd service `ios-agent.service`
-3. Starts the service and connects to the web app
+The script:
 
-### 3. Verify in the UI
+1. Validates that `node` is on `PATH` (Node.js 20+ required) and installs it via your package manager if not.
+2. Downloads the agent bundle to `/opt/backupos-agent/agent.js`.
+3. Writes `/opt/backupos-agent/.env` with the server URL and token.
+4. Creates the systemd unit `/etc/systemd/system/backupos-agent.service`.
+5. Enables and starts the unit.
 
-Refresh the **Agents** page. Your new agent should appear within 30 seconds with status **Connected**.
-
-### 4. Check capabilities
-
-Click the agent row to see its detected capabilities:
-- Available source types (filesystem, Docker, Proxmox, etc.)
-- Free disk space on key mount points
-- OS and architecture
-
-## Windows
-
-### 1. Download the installer
-
-From the BackupOS UI: **Agents → Enrol agent → Windows**. Download `ios-agent-setup.exe`.
-
-### 2. Run the installer
-
-Double-click `ios-agent-setup.exe`. Enter the enrolment token when prompted. The installer registers a Windows Service named **BackupOS Agent**.
+<Tip>The token is a one-time secret — once the agent has connected, it's exchanged for a long-lived credential held in `.env`. Treat the install command like an SSH key: paste it into the target host's terminal, don't share it.</Tip>
 
 ### 3. Verify
 
-Check **Services** (services.msc) — `BackupOS Agent` should be Running. Then verify in the UI.
+On the BackupOS UI, the **Agents** page should show the new agent with status **Connected** within a few seconds.
+
+On the host:
+
+```bash
+systemctl is-active backupos-agent
+# Should print: active
+
+journalctl -u backupos-agent -f
+# Watch for: "[agent] connected to <ws-url>"
+```
+
+### Updating a Linux agent
+
+The install script is idempotent — re-running it upgrades in place. You can also run the script's update mode without re-piping from curl:
+
+```bash
+sudo bash /opt/backupos-agent/install.sh update
+```
+
+This re-fetches the latest installer from the server, replaces the agent bundle, and restarts the unit. Existing token and config are preserved.
+
+## Windows
+
+### 1. Generate an enrollment token
+
+Same flow as Linux: **Agents → Enroll agent → Generate token & enroll**. The agent detail page shows both Linux and Windows install snippets.
+
+### 2. Run the PowerShell installer
+
+Copy the PowerShell snippet from the agent detail page and run it in an **elevated PowerShell** prompt on the Windows host. It looks like this:
+
+```powershell
+iex ((iwr "https://your-backupos-host:3093/install.ps1").Content) -EnrollmentToken "<token>"
+```
+
+The script downloads `backupos-agent-windows-x64.exe` to `C:\Program Files\BackupOS Agent\`, registers a Windows Service named **BackupOS Agent**, and starts it.
+
+### 3. Verify
+
+In **services.msc**, **BackupOS Agent** should be **Running**. The agent should also appear in the BackupOS UI as **Connected**.
+
+## Capabilities and what each agent can back up
+
+Once connected, click an agent in the UI to see its capabilities. The agent self-reports:
+
+- Available source types (filesystem, Docker containers, Docker volumes, databases, hypervisor APIs)
+- Free disk space on key mount points
+- OS, architecture, kernel version
+- App-aware hooks present on the host (e.g. `pg_dumpall` for PostgreSQL, `mysqldump` for MySQL)
+
+This is what the **Job creation** form uses to decide which sources you can pick for a job running on this agent.
 
 ## Troubleshooting
 
-**Agent appears but shows Disconnected:** Check that the agent machine can reach the BackupOS host on port 3000 (or your configured port).
+**Agent appears but shows Disconnected** — the agent host can't reach the BackupOS server's WebSocket port. Confirm the host can reach `https://your-backupos-host:3093/` over HTTPS. If you're using a self-signed cert, see the next item.
 
-**curl: SSL certificate error:** If you're using a self-signed cert, add `--insecure` to the curl command. In production, use a valid certificate.
+**`curl: SSL certificate problem: self signed certificate`** — for testing only, add `-k` to the curl command. For production, put BackupOS behind a reverse proxy with a real TLS cert (Let's Encrypt, internal CA, etc.). The agent will refuse self-signed certs once connected unless you explicitly configure trust.
+
+**Agent connects, then drops every few seconds** — usually a token mismatch. The agent's `.env` file might have an old token. Regenerate from the UI (delete the agent, run a fresh enrollment) or edit `/opt/backupos-agent/.env` and `systemctl restart backupos-agent`.
+
+**`node: command not found` during install** — the install script tries to install Node automatically via `apt` / `dnf` / `yum`. If your distro isn't covered, install Node 20+ manually and re-run the script.
+
+**Windows agent fails to start** — check the Windows Event Log under **Applications and Services Logs → BackupOS Agent** for the error. Typical causes are firewall blocking outbound 443/3093, or an antivirus quarantining `backupos-agent.exe`.
+
+## Next steps
+
+- [Connect a backup repository](/docs/getting-started/connect-repository)
+- [Run your first backup](/docs/getting-started/run-first-backup)
