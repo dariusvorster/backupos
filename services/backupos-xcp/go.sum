@@ -1,0 +1,4 @@
+github.com/amfranz/go-xmlrpc-client v0.0.0-20190612172737-76858463955d h1:39lR6Kg+GsvDpLMD2Mb7gkjXmmLexqfr7SPy4iQWDTE=
+github.com/amfranz/go-xmlrpc-client v0.0.0-20190612172737-76858463955d/go.mod h1:2NlXXRCkTbr/vZtUjcHKhbrESE4a3CDqVrgOROB16dg=
+github.com/terra-farm/go-xen-api-client v0.0.2 h1:EREW0N6XqU935b005yCwbPjm8F6582j2rI5C4ew3ZTQ=
+github.com/terra-farm/go-xen-api-client v0.0.2/go.mod h1:L7+Ea6rxzK7AL4DhcEPDQxdLKb4wKq0sYbxHS2ag9YE=

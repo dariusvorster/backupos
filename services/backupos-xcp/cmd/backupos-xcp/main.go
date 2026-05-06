@@ -22,6 +22,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/dariusvorster/backupos/services/backupos-xcp/internal/xapi"
 )
 
 // Build-time variables, set via -ldflags during go build.
@@ -37,8 +39,21 @@ func main() {
 		certPath = flag.String("cert", "/var/lib/backupos/xcp/cert.pem", "TLS certificate path")
 		keyPath  = flag.String("key", "/var/lib/backupos/xcp/key.pem", "TLS private key path")
 		dbPath   = flag.String("db", "/var/lib/backupos/backupos.db", "SQLite database path")
+
+		// XAPI connection flags. If xapiURL is empty, the service starts but
+		// XAPI features are disabled — useful for the placeholder Phase 1 deploy.
+		xapiURL      = flag.String("xapi-url", "", "XAPI pool master URL (e.g. https://192.168.69.2)")
+		xapiUser     = flag.String("xapi-user", "root", "XAPI username")
+		xapiPass     = flag.String("xapi-pass", "", "XAPI password (or set BACKUPOS_XCP_PASS env var)")
+		xapiFP       = flag.String("xapi-cert-fingerprint", "", "XAPI host TLS cert SHA256 fingerprint (optional)")
+		xapiInsecure = flag.Bool("xapi-insecure", false, "Disable TLS verification for XAPI (dev only)")
 	)
 	flag.Parse()
+
+	// Password can also come from env var (preferred for systemd EnvironmentFile).
+	if *xapiPass == "" {
+		*xapiPass = os.Getenv("BACKUPOS_XCP_PASS")
+	}
 
 	_ = dbPath // reserved for future use
 
@@ -67,6 +82,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	// serverCtx is the parent context for all incoming HTTP request contexts
+	// (via http.Server.BaseContext). Cancelled on SIGINT/SIGTERM so in-flight
+	// requests can react to shutdown. Phase 2 will also use serverCtx to stop
+	// background goroutines (XAPI session reaper, CBT chain GC scheduler).
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	defer serverCancel()
+
+	var xapiClient *xapi.Client
+	if *xapiURL != "" {
+		cfg := xapi.Config{
+			PoolMasterURL:      *xapiURL,
+			Username:           *xapiUser,
+			Password:           *xapiPass,
+			CertFingerprint:    *xapiFP,
+			InsecureSkipVerify: *xapiInsecure,
+		}
+		xc, err := xapi.New(cfg, logger)
+		if err != nil {
+			logger.Error("xapi: invalid config", "error", err)
+			os.Exit(1)
+		}
+		if err := xc.Connect(serverCtx); err != nil {
+			logger.Error("xapi: initial connect failed", "error", err)
+			// Non-fatal: service still starts, but XAPI endpoints will return 503.
+		} else {
+			xapiClient = xc
+			defer xapiClient.Close() //nolint:gocritic
+		}
+	} else {
+		logger.Warn("xapi-url not set; XAPI endpoints will return 503")
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", func(w http.ResponseWriter, r *http.Request) {
 		slog.Info("version",
@@ -83,14 +130,44 @@ func main() {
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	})
-	mux.HandleFunc("/", notFound)
+	mux.HandleFunc("/api2/json/pool", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("pool",
+			"method", r.Method,
+			"path",   r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
 
-	// serverCtx is the parent context for all incoming HTTP request contexts
-	// (via http.Server.BaseContext). Cancelled on SIGINT/SIGTERM so in-flight
-	// requests can react to shutdown. Phase 2 will also use serverCtx to stop
-	// background goroutines (XAPI session reaper, CBT chain GC scheduler).
-	serverCtx, serverCancel := context.WithCancel(context.Background())
-	defer serverCancel()
+		if xapiClient == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "xapi client not configured",
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+
+		uuid, name, err := xapiClient.PoolName(ctx)
+		if err != nil {
+			slog.Error("pool query failed", "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"uuid": uuid,
+			"name": name,
+		})
+	})
+	mux.HandleFunc("/", notFound)
 
 	server := &http.Server{
 		Addr:    *bind,
