@@ -16,6 +16,7 @@ import (
 	"errors"
 	"flag"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -84,15 +85,19 @@ func main() {
 	})
 	mux.HandleFunc("/", notFound)
 
-	// serverCtx is cancelled on SIGINT/SIGTERM. Phase 2 will use it to stop
+	// serverCtx is the parent context for all incoming HTTP request contexts
+	// (via http.Server.BaseContext). Cancelled on SIGINT/SIGTERM so in-flight
+	// requests can react to shutdown. Phase 2 will also use serverCtx to stop
 	// background goroutines (XAPI session reaper, CBT chain GC scheduler).
-	// For now there are no background goroutines, so the cancel is a no-op.
 	serverCtx, serverCancel := context.WithCancel(context.Background())
 	defer serverCancel()
 
 	server := &http.Server{
 		Addr:    *bind,
 		Handler: mux,
+		BaseContext: func(_ net.Listener) context.Context {
+			return serverCtx
+		},
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
