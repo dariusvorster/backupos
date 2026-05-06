@@ -76,11 +76,15 @@ export interface XCPNGConfig {
 }
 
 export interface XCPNGTarget {
-  uuid: string
-  nameLabel: string
-  powerState: 'Running' | 'Halted' | 'Suspended' | 'Paused'
-  hostUuid: string | null
-  poolUuid: string
+  // Unified fields consumed by app/actions/hypervisors.ts
+  uuid:   string                                            // also used as externalId at the call site
+  name:   string                                            // from XAPI name_label
+  node:   string                                            // resolved host name_label, or '' if no resident host
+  status: 'running' | 'stopped' | 'suspended' | 'paused'
+
+  // XCP-specific fields retained for Phase 2 (CBT, snapshot chains, host-targeted ops)
+  hostUuid:     string | null   // raw XAPI host UUID, null if halted
+  poolUuid:     string
   isCbtCapable: boolean
 }
 
