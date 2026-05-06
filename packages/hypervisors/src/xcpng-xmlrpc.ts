@@ -21,6 +21,19 @@ function xmlrpcCall(
   params: string[],
   verifySsl: boolean,
 ): Promise<string> {
+  // SECURITY NOTE: This function makes HTTPS requests to user-supplied URLs
+  // (XCP-ng pool master). Currently safe because:
+  //   - Caller is admin-only (gated by requireAdmin())
+  //   - BackupOS legitimately needs to reach private/RFC1918 addresses
+  //     since hypervisors are typically internal
+  //
+  // Before Phase 2 expands the surface (scheduled jobs, retry loops, agent
+  // callbacks), revisit:
+  //   - Should we refuse loopback (127.0.0.0/8, ::1)?
+  //   - Should we honor the same SSRF coercion fix as PR #331?
+  //   - Should certFingerprint pinning be required for non-localhost?
+  //
+  // See #185 / #305 / #331 for related SSRF work.
   return new Promise((resolve, reject) => {
     const paramXml = params
       .map(p => `<param><value><string>${escapeXml(p)}</string></value></param>`)

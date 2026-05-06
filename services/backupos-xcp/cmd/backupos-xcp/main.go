@@ -84,6 +84,9 @@ func main() {
 	})
 	mux.HandleFunc("/", notFound)
 
+	// serverCtx is cancelled on SIGINT/SIGTERM. Phase 2 will use it to stop
+	// background goroutines (XAPI session reaper, CBT chain GC scheduler).
+	// For now there are no background goroutines, so the cancel is a no-op.
 	serverCtx, serverCancel := context.WithCancel(context.Background())
 	defer serverCancel()
 
@@ -110,8 +113,6 @@ func main() {
 			logger.Error("graceful shutdown failed", "error", err)
 		}
 	}()
-
-	_ = serverCtx
 
 	logger.Info("listening", "bind", *bind)
 	err = server.ListenAndServeTLS("", "")

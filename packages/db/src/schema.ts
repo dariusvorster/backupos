@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, index, uniqueIndex, primaryKey } from 'drizzle-orm/sqlite-core'
 
 // ── Agents ────────────────────────────────────────────────────────────────
 // An agent is the backupos-agent binary running on a source host
@@ -717,7 +717,9 @@ export const xcpPools = sqliteTable('xcp_pools', {
   lastTestStatus: text('last_test_status'),  // 'ok' | 'error'
   lastTestError:  text('last_test_error'),
   createdAt:      integer('created_at',      { mode: 'timestamp_ms' }).notNull(),
-})
+}, t => ({
+  poolMasterUrlIdx: uniqueIndex('xcp_pools_pool_master_url_idx').on(t.poolMasterUrl),
+}))
 
 export const xcpVms = sqliteTable('xcp_vms', {
   uuid:          text('uuid').primaryKey(),
@@ -733,8 +735,11 @@ export const xcpVms = sqliteTable('xcp_vms', {
 }))
 
 export const xcpBackupChains = sqliteTable('xcp_backup_chains', {
-  vdiUuid:          text('vdi_uuid').primaryKey(),
+  jobId:            text('job_id').notNull(),
+  vdiUuid:          text('vdi_uuid').notNull(),
   lastSnapshotUuid: text('last_snapshot_uuid'),
   lastBitmapBase:   text('last_bitmap_base'),
   lastBackupAt:     integer('last_backup_at', { mode: 'timestamp_ms' }),
-})
+}, t => ({
+  pk: primaryKey({ columns: [t.jobId, t.vdiUuid] }),
+}))
