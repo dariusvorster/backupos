@@ -29,7 +29,7 @@ export class XCPNGHypervisorDriver {
 
       // Use the first pool's uuid as poolUuid for all VMs (single pool per master)
       const poolEntries = Object.values(poolRecords)
-      const poolUuid = poolEntries.length > 0 ? (poolEntries[0].uuid as string) : ''
+      const poolUuid = poolEntries[0]?.uuid as string ?? ''
 
       const targets: XCPNGTarget[] = []
       for (const vm of Object.values(vmRecords)) {
