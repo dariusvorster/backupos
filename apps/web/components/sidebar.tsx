@@ -50,6 +50,14 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    label: 'XCP-NG',
+    items: [
+      { href: '/xcp-ng/connect', label: 'Connect', icon: <PlugZap   size={15} /> },
+      { href: '/xcp-ng/pools',   label: 'Pools',   icon: <Server    size={15} /> },
+      { href: '/xcp-ng/vms',     label: 'VMs',     icon: <HardDrive size={15} /> },
+    ],
+  },
+  {
     label: 'Restore',
     items: [
       { href: '/restore',      label: 'Restore specs', icon: <RotateCcw size={15} /> },

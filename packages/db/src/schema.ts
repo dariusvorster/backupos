@@ -700,3 +700,41 @@ export const pbsActiveWrites = sqliteTable('pbs_active_writes', {
   digestList:   text('digest_list'),
   sizeList:     text('size_list'),
 })
+
+// ── XCP-ng ────────────────────────────────────────────────────────────────
+// Tables for XCP-ng pool/VM discovery and CBT backup chain state.
+// Phase 1 ships scaffolding; backup execution lands in Phase 2.
+
+export const xcpPools = sqliteTable('xcp_pools', {
+  id:             text('id').primaryKey(),
+  name:           text('name').notNull(),
+  poolMasterUrl:  text('pool_master_url').notNull(),
+  username:       text('username').notNull(),
+  passwordEnc:    text('password_enc').notNull(),
+  verifySsl:      integer('verify_ssl', { mode: 'boolean' }).default(true),
+  certFingerprint: text('cert_fingerprint'),
+  lastSeenAt:     integer('last_seen_at',    { mode: 'timestamp_ms' }),
+  lastTestStatus: text('last_test_status'),  // 'ok' | 'error'
+  lastTestError:  text('last_test_error'),
+  createdAt:      integer('created_at',      { mode: 'timestamp_ms' }).notNull(),
+})
+
+export const xcpVms = sqliteTable('xcp_vms', {
+  uuid:          text('uuid').primaryKey(),
+  poolId:        text('pool_id').notNull().references(() => xcpPools.id, { onDelete: 'cascade' }),
+  nameLabel:     text('name_label').notNull(),
+  powerState:    text('power_state').notNull(), // 'Running' | 'Halted' | 'Suspended' | 'Paused'
+  hostUuid:      text('host_uuid'),
+  isCbtCapable:  integer('is_cbt_capable', { mode: 'boolean' }).default(false),
+  vdiUuidsJson:  text('vdi_uuids_json').notNull().default('[]'),
+  lastSeenAt:    integer('last_seen_at', { mode: 'timestamp_ms' }),
+}, t => ({
+  poolIdIdx: index('xcp_vms_pool_id_idx').on(t.poolId),
+}))
+
+export const xcpBackupChains = sqliteTable('xcp_backup_chains', {
+  vdiUuid:          text('vdi_uuid').primaryKey(),
+  lastSnapshotUuid: text('last_snapshot_uuid'),
+  lastBitmapBase:   text('last_bitmap_base'),
+  lastBackupAt:     integer('last_backup_at', { mode: 'timestamp_ms' }),
+})

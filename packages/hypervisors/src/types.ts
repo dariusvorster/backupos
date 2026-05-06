@@ -68,20 +68,27 @@ export interface PveTaskStatus {
 // ── XCP-ng ────────────────────────────────────────────────────────────────
 
 export interface XCPNGConfig {
-  url: string    // Xen Orchestra URL
+  poolMasterUrl: string  // https://xcp-pool-master.local
   username: string
   password: string
-}
-
-export interface XCPNGBackupOptions {
-  vmUuid: string
+  verifySsl?: boolean    // default true
+  certFingerprint?: string
 }
 
 export interface XCPNGTarget {
   uuid: string
-  name: string
-  status: 'running' | 'halted' | 'suspended' | 'paused'
-  node: string
+  nameLabel: string
+  powerState: 'Running' | 'Halted' | 'Suspended' | 'Paused'
+  hostUuid: string | null
+  poolUuid: string
+  isCbtCapable: boolean
+}
+
+export interface XCPNGBackupChainState {
+  vdiUuid: string
+  lastSnapshotUuid: string | null
+  lastBitmapBase: string | null
+  lastBackupAt: number | null
 }
 
 // ── VMware ────────────────────────────────────────────────────────────────
