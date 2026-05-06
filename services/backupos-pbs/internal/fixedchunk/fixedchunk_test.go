@@ -88,7 +88,10 @@ func TestFixedChunk_MissingStreamCtx_Returns500(t *testing.T) {
 	srv := httptest.NewServer(NewHandler())
 	defer srv.Close()
 
-	resp, _ := http.Post(srv.URL+"/fixed_chunk", "", nil)
+	resp, err := http.Post(srv.URL+"/fixed_chunk", "", nil)
+	if err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", resp.StatusCode)
@@ -101,7 +104,10 @@ func TestFixedChunk_MissingParams_Returns400(t *testing.T) {
 	defer srv.Close()
 
 	// No query params at all.
-	resp, _ := http.Post(srv.URL+"/fixed_chunk", "", nil)
+	resp, err := http.Post(srv.URL+"/fixed_chunk", "", nil)
+	if err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for missing params, got %d", resp.StatusCode)
@@ -114,7 +120,10 @@ func TestFixedChunk_BadDigestHex_Returns400(t *testing.T) {
 	defer srv.Close()
 
 	url := fmt.Sprintf("%s/fixed_chunk?wid=%d&digest=notvalidhex&size=4&encoded-size=16", srv.URL, wid)
-	resp, _ := http.Post(url, "application/octet-stream", bytes.NewReader(make([]byte, 16)))
+	resp, err := http.Post(url, "application/octet-stream", bytes.NewReader(make([]byte, 16)))
+	if err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for bad digest, got %d", resp.StatusCode)
@@ -139,7 +148,10 @@ func TestFixedChunk_DigestMismatch_Returns400(t *testing.T) {
 	wrongDigest[0] = 0xFF
 	url := fmt.Sprintf("%s/fixed_chunk?wid=%d&digest=%s&size=%d&encoded-size=%d",
 		srv.URL, wid, hex.EncodeToString(wrongDigest[:]), len(payload), len(blob))
-	resp, _ := http.Post(url, "application/octet-stream", bytes.NewReader(blob))
+	resp, err := http.Post(url, "application/octet-stream", bytes.NewReader(blob))
+	if err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for digest mismatch, got %d", resp.StatusCode)

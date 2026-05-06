@@ -103,7 +103,10 @@ func TestFixedAppend_MismatchedLists_Returns400(t *testing.T) {
 	}
 	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/fixed_index", bodyJSON(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for mismatched lists, got %d", resp.StatusCode)
@@ -124,7 +127,10 @@ func TestFixedAppend_DigestNotInKnownChunks_Returns400(t *testing.T) {
 	}
 	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/fixed_index", bodyJSON(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for unknown digest, got %d", resp.StatusCode)

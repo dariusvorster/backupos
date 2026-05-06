@@ -150,7 +150,10 @@ func TestFixedIndex_SecondCall_ReturnsWid2(t *testing.T) {
 
 	for i := 1; i <= 2; i++ {
 		url := srv.URL + "/fixed_index?archive-name=drive-" + string(rune('0'+i-1)) + ".fidx&size=4194304"
-		resp, _ := http.Post(url, "", nil)
+		resp, err := http.Post(url, "", nil)
+		if err != nil {
+			t.Fatalf("Post failed: %v", err)
+		}
 		defer resp.Body.Close()
 		var body struct{ Data int `json:"data"` }
 		_ = json.NewDecoder(resp.Body).Decode(&body)
