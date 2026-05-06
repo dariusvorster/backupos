@@ -39,8 +39,9 @@ export function startAgent(config: AgentConfig): void {
         hostname:     hostname(),
         ip,
         osInfo:       { os: 'windows', arch: process.arch, kernel: release() },
-        agentVersion: AGENT_VERSION,
-        platform:     'windows',
+        agentVersion:    AGENT_VERSION,
+        platform:        'windows',
+        protocolVersion: '1.0',
       })
       pingTimer = setInterval(() => send({ type: 'ping' }), 30_000)
     }
@@ -129,7 +130,7 @@ async function handleBackup(
         dataAdded:           (summary['data_added'] as number | undefined)            ?? 0,
         totalFilesProcessed: (summary['total_files_processed'] as number | undefined) ?? 0,
         totalBytesProcessed: (summary['total_bytes_processed'] as number | undefined) ?? 0,
-        durationSeconds:     (summary['total_duration'] as number | undefined)        ?? 0,
+        durationMs:          (summary['total_duration'] as number | undefined)        ?? 0,
       },
     })
   } catch (err) {
