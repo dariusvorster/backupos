@@ -57,11 +57,17 @@ export class XCPNGHypervisorDriver {
           ? ((hostRecords[residentRef]?.uuid as string | undefined) ?? null)
           : null
 
+        const nameLabel  = vm.name_label as string
+        const powerState = capitalisePowerState(vm.power_state as string)
+        const status     = lowercaseStatus(powerState)
+
         targets.push({
           uuid:         vm.uuid as string,
-          name:         vm.name_label as string,
+          name:         nameLabel,
           node,
-          status:       normaliseStatus(vm.power_state as string),
+          status,
+          nameLabel,
+          powerState,
           hostUuid,
           poolUuid,
           isCbtCapable: false, // Phase 2 will detect CBT capability via VDI flags
@@ -75,11 +81,21 @@ export class XCPNGHypervisorDriver {
   }
 }
 
-function normaliseStatus(s: string): 'running' | 'stopped' | 'suspended' | 'paused' {
+function capitalisePowerState(s: string): 'Running' | 'Halted' | 'Suspended' | 'Paused' {
   const lower = s.toLowerCase()
-  if (lower === 'running')   return 'running'
-  if (lower === 'suspended') return 'suspended'
-  if (lower === 'paused')    return 'paused'
-  // 'halted' and any unknown XAPI value collapse to 'stopped'
-  return 'stopped'
+  if (lower === 'running')   return 'Running'
+  if (lower === 'suspended') return 'Suspended'
+  if (lower === 'paused')    return 'Paused'
+  return 'Halted'
+}
+
+function lowercaseStatus(
+  capitalised: 'Running' | 'Halted' | 'Suspended' | 'Paused',
+): 'running' | 'stopped' | 'suspended' | 'paused' {
+  switch (capitalised) {
+    case 'Running':   return 'running'
+    case 'Suspended': return 'suspended'
+    case 'Paused':    return 'paused'
+    case 'Halted':    return 'stopped'
+  }
 }
