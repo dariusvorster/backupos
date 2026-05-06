@@ -303,6 +303,17 @@ mkdir -p "$INSTALL_DIR/bin"
 chmod 755 "$INSTALL_DIR/bin/backupos-pbs"
 ok "backupos-pbs binary built"
 
+log "Building backupos-xcp Go service..."
+(
+  cd "$INSTALL_DIR/services/backupos-xcp" || die "Go XCP service source not found"
+  GOFLAGS=-mod=mod go build \
+    -ldflags="-s -w" \
+    -o "$INSTALL_DIR/bin/backupos-xcp" \
+    ./cmd/backupos-xcp
+) || die "Go XCP build failed"
+chmod 755 "$INSTALL_DIR/bin/backupos-xcp"
+ok "backupos-xcp binary built"
+
 ok "Build complete"
 
 # Fix ownership so the service user can write to data dirs
@@ -463,8 +474,56 @@ SyslogIdentifier=$SERVICE_NAME-pbs
 WantedBy=multi-user.target
 PBSSVCEOF
 
+# ── 8c. systemd service for the Go XCP sidecar ───────────────────────────────
+XCP_BIND="${BACKUPOS_XCP_BIND:-0.0.0.0:8009}"
+
+# Ensure cert directory exists
+mkdir -p "$DATA_DIR/xcp"
+chown "$SVC_USER:$SVC_USER" "$DATA_DIR/xcp"
+
+cat > /etc/systemd/system/${SERVICE_NAME}-xcp.service <<XCPSVCEOF
+[Unit]
+Description=BackupOS XCP-ng protocol service
+Documentation=https://github.com/dariusvorster/backupos
+After=network-online.target $SERVICE_NAME.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$SVC_USER
+Group=$SVC_USER
+EnvironmentFile=$ENV_FILE
+ExecStart=$INSTALL_DIR/bin/backupos-xcp \\
+  --bind $XCP_BIND \\
+  --cert $DATA_DIR/xcp/cert.pem \\
+  --key $DATA_DIR/xcp/key.pem \\
+  --db $DATA_DIR/backupos.db
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=$DATA_DIR
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=$SERVICE_NAME-xcp
+
+[Install]
+WantedBy=multi-user.target
+XCPSVCEOF
+
+# Add XCP bind address to env file if not already present
+if ! grep -q '^BACKUPOS_XCP_BIND=' "$ENV_FILE" 2>/dev/null; then
+  echo "BACKUPOS_XCP_BIND=0.0.0.0:8009" >> "$ENV_FILE"
+  echo "[backupos] Set BACKUPOS_XCP_BIND"
+fi
+
 systemctl daemon-reload
-systemctl enable "$SERVICE_NAME" "$SERVICE_NAME-pbs"
+systemctl enable "$SERVICE_NAME" "$SERVICE_NAME-pbs" "$SERVICE_NAME-xcp"
 
 # Flush all OS write buffers before starting the service. Without this the
 # Next.js process can start reading .next/ before the kernel has written the
@@ -474,6 +533,7 @@ sleep 2
 
 systemctl restart "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME-pbs"
+systemctl restart "$SERVICE_NAME-xcp"
 
 # Give them a moment to start
 sleep 2
@@ -487,6 +547,11 @@ if systemctl is-active --quiet "$SERVICE_NAME-pbs"; then
 else
   log "Service $SERVICE_NAME-pbs may have failed. Check:  journalctl -u $SERVICE_NAME-pbs -n 50"
 fi
+if systemctl is-active --quiet "$SERVICE_NAME-xcp"; then
+  ok "Service $SERVICE_NAME-xcp started"
+else
+  log "Service $SERVICE_NAME-xcp may have failed. Check:  journalctl -u $SERVICE_NAME-xcp -n 50"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 PUBLIC_URL_ACTUAL="$(grep '^BETTER_AUTH_URL=' "$ENV_FILE" | cut -d= -f2-)"
@@ -497,9 +562,11 @@ echo "  BackupOS installed successfully"
 echo ""
 echo "  Dashboard:    $PUBLIC_URL_ACTUAL"
 echo "  PBS service:  https://<host>:8007/api2/json/version"
+echo "  XCP service:  https://<host>:8009/api2/json/version"
 echo "  Logs (web):   journalctl -u $SERVICE_NAME -f"
 echo "  Logs (pbs):   journalctl -u $SERVICE_NAME-pbs -f"
-echo "  Status:       systemctl status $SERVICE_NAME $SERVICE_NAME-pbs"
+echo "  Logs (xcp):   journalctl -u $SERVICE_NAME-xcp -f"
+echo "  Status:       systemctl status $SERVICE_NAME $SERVICE_NAME-pbs $SERVICE_NAME-xcp"
 echo "  Config:       $ENV_FILE"
 echo "  Data:         $DATA_DIR"
 echo ""

@@ -337,6 +337,13 @@
       "when": 1778112000000,
       "tag": "0047_add_oidc_config",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1778198400000,
+      "tag": "0048_xcp_foundation",
+      "breakpoints": true
     }
   ]
 }
