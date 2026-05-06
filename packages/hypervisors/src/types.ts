@@ -76,11 +76,17 @@ export interface XCPNGConfig {
 }
 
 export interface XCPNGTarget {
-  uuid: string
-  nameLabel: string
-  powerState: 'Running' | 'Halted' | 'Suspended' | 'Paused'
-  hostUuid: string | null
-  poolUuid: string
+  // ── Unified fields (consumed by app/actions/hypervisors.ts → targets table) ──
+  uuid:   string                     // also used as externalId at the call site
+  name:   string                     // mirrors nameLabel; same string value
+  node:   string                     // resolved host name_label, or '' if no resident host
+  status: 'running' | 'stopped' | 'suspended' | 'paused'
+
+  // ── Raw XAPI fields (consumed by app/actions/xcp-pools.ts → xcp_vms table) ──
+  nameLabel:    string                                          // same string as `name`
+  powerState:   'Running' | 'Halted' | 'Suspended' | 'Paused'  // capitalised XAPI value
+  hostUuid:     string | null                                   // raw XAPI host UUID, null if halted
+  poolUuid:     string
   isCbtCapable: boolean
 }
 

@@ -15,6 +15,11 @@ export interface PoolRecord {
   name_label: string
 }
 
+export interface HostRecord {
+  uuid:       string
+  name_label: string
+}
+
 function xmlrpcCall(
   url: string,
   methodName: string,
@@ -139,6 +144,20 @@ export async function poolGetAllRecords(
   const xml = await xmlrpcCall(url, 'pool.get_all_records', [session], verifySsl)
   checkXapiStatus(xml)
   return parseStructOfStructs(xml) as unknown as Record<string, PoolRecord>
+}
+
+/**
+ * Fetch all host records from a pool. Used to resolve VM.resident_on
+ * (a host OpaqueRef) to the host's human-readable name_label.
+ */
+export async function hostGetAllRecords(
+  url: string,
+  session: string,
+  verifySsl: boolean,
+): Promise<Record<string, HostRecord>> {
+  const xml = await xmlrpcCall(url, 'host.get_all_records', [session], verifySsl)
+  checkXapiStatus(xml)
+  return parseStructOfStructs(xml) as unknown as Record<string, HostRecord>
 }
 
 // ── Simple XML struct parser ──────────────────────────────────────────────────
