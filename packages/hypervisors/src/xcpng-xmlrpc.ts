@@ -82,7 +82,7 @@ function checkXapiStatus(xml: string): void {
   const statusMatch = xml.match(/<name>Status<\/name>\s*<value>\s*<string>([^<]+)<\/string>/)
   if (statusMatch && statusMatch[1] !== 'Success') {
     const errMatch = xml.match(/<name>ErrorDescription<\/name>([\s\S]*?)<\/member>/)
-    const desc = errMatch ? errMatch[1].replace(/<[^>]+>/g, ' ').trim() : 'XAPI error'
+    const desc = errMatch?.[1]?.replace(/<[^>]+>/g, ' ').trim() ?? 'XAPI error'
     throw new Error(`XAPI failure: ${desc}`)
   }
 }
@@ -101,7 +101,7 @@ export async function loginWithPassword(
   // Extract Value member (session ref)
   const match = xml.match(/<name>Value<\/name>\s*<value>\s*<string>([^<]+)<\/string>/)
   if (!match) throw new Error('XAPI: could not parse session ref from login response')
-  return match[1]
+  return match[1] ?? ''
 }
 
 /**
@@ -125,7 +125,7 @@ export async function vmGetAllRecords(
 ): Promise<Record<string, VMRecord>> {
   const xml = await xmlrpcCall(url, 'VM.get_all_records', [session], verifySsl)
   checkXapiStatus(xml)
-  return parseStructOfStructs(xml) as Record<string, VMRecord>
+  return parseStructOfStructs(xml) as unknown as Record<string, VMRecord>
 }
 
 /**
@@ -138,7 +138,7 @@ export async function poolGetAllRecords(
 ): Promise<Record<string, PoolRecord>> {
   const xml = await xmlrpcCall(url, 'pool.get_all_records', [session], verifySsl)
   checkXapiStatus(xml)
-  return parseStructOfStructs(xml) as Record<string, PoolRecord>
+  return parseStructOfStructs(xml) as unknown as Record<string, PoolRecord>
 }
 
 // ── Simple XML struct parser ──────────────────────────────────────────────────
@@ -150,7 +150,7 @@ function parseStructOfStructs(xml: string): Record<string, Record<string, unknow
   const valueBlockMatch = xml.match(/<name>Value<\/name>\s*<value>([\s\S]*?)<\/value>\s*<\/member>/)
   if (!valueBlockMatch) return {}
 
-  const outer = valueBlockMatch[1]
+  const outer = valueBlockMatch[1] ?? ''
   const result: Record<string, Record<string, unknown>> = {}
 
   // Each top-level member is a keyed record (opaque ref to struct)
@@ -159,6 +159,7 @@ function parseStructOfStructs(xml: string): Record<string, Record<string, unknow
   while ((m = memberRe.exec(outer)) !== null) {
     const ref = m[1]
     const inner = m[2]
+    if (ref === undefined || inner === undefined) continue
     result[ref] = parseStruct(inner)
   }
 
@@ -171,8 +172,9 @@ function parseStruct(xml: string): Record<string, unknown> {
   let m: RegExpExecArray | null
   while ((m = memberRe.exec(xml)) !== null) {
     const key = m[1]
-    const valXml = m[2].trim()
-    obj[key] = parseValue(valXml)
+    const valXml = m[2]
+    if (key === undefined || valXml === undefined) continue
+    obj[key] = parseValue(valXml.trim())
   }
   return obj
 }
@@ -185,16 +187,18 @@ function parseValue(xml: string): unknown {
   if (boolMatch) return boolMatch[1] === '1'
 
   const intMatch = xml.match(/^<int>([\s\S]*?)<\/int>$/)
-  if (intMatch) return parseInt(intMatch[1], 10)
+  if (intMatch?.[1] !== undefined) return parseInt(intMatch[1], 10)
 
   if (xml.includes('<array>')) {
     const arrayItems: unknown[] = []
     const dataMatch = xml.match(/<data>([\s\S]*?)<\/data>/)
     if (dataMatch) {
+      const dataInner = dataMatch[1]
+      if (dataInner === undefined) return []
       const itemRe = /<value>([\s\S]*?)<\/value>/g
       let m: RegExpExecArray | null
-      while ((m = itemRe.exec(dataMatch[1])) !== null) {
-        arrayItems.push(parseValue(m[1].trim()))
+      while ((m = itemRe.exec(dataInner)) !== null) {
+        arrayItems.push(parseValue(m[1]?.trim() ?? ''))
       }
     }
     return arrayItems
