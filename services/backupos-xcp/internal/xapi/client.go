@@ -44,7 +44,10 @@ type Config struct {
 	// exclusive with CertFingerprint.
 	InsecureSkipVerify bool
 
-	// Timeout for individual HTTP calls. Defaults to 30s if zero.
+	// Timeout caps how long an XAPI call waits for response headers from the
+	// host. Defaults to 30s if zero. Note: this is ResponseHeaderTimeout, not
+	// total request timeout — long-running calls (e.g. CBT bitmap streaming)
+	// can still take longer than this once data starts flowing.
 	Timeout time.Duration
 }
 
@@ -92,9 +95,9 @@ func (c *Client) Connect(ctx context.Context) error {
 		return nil // already connected
 	}
 
-	httpClient, err := c.buildHTTPClient()
+	transport, err := c.buildTransport()
 	if err != nil {
-		return fmt.Errorf("xapi: build http client: %w", err)
+		return fmt.Errorf("xapi: build http transport: %w", err)
 	}
 
 	rawURL, err := c.xmlrpcURL()
@@ -102,7 +105,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("xapi: parse pool master url: %w", err)
 	}
 
-	raw, err := xenapi.NewClient(rawURL, httpClient)
+	raw, err := xenapi.NewClient(rawURL, transport)
 	if err != nil {
 		return fmt.Errorf("xapi: new generated client: %w", err)
 	}
@@ -197,8 +200,10 @@ func (c *Client) xmlrpcURL() (string, error) {
 	return u.String(), nil
 }
 
-// buildHTTPClient constructs an *http.Client with the configured TLS settings.
-func (c *Client) buildHTTPClient() (*http.Client, error) {
+// buildTransport constructs an *http.Transport with the configured TLS settings
+// (cert pinning OR insecure-skip OR system trust store). The library wraps this
+// transport in its own *http.Client internally.
+func (c *Client) buildTransport() (*http.Transport, error) {
 	tlsCfg := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 	}
@@ -211,7 +216,7 @@ func (c *Client) buildHTTPClient() (*http.Client, error) {
 		if err != nil {
 			return nil, err
 		}
-		tlsCfg.InsecureSkipVerify = true // we verify manually via VerifyPeerCertificate
+		tlsCfg.InsecureSkipVerify = true // we verify manually below
 		tlsCfg.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			for _, raw := range rawCerts {
 				cert, parseErr := x509.ParseCertificate(raw)
@@ -227,11 +232,9 @@ func (c *Client) buildHTTPClient() (*http.Client, error) {
 		}
 	}
 
-	return &http.Client{
-		Timeout: c.cfg.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsCfg,
-		},
+	return &http.Transport{
+		TLSClientConfig:       tlsCfg,
+		ResponseHeaderTimeout: c.cfg.Timeout,
 	}, nil
 }
 
