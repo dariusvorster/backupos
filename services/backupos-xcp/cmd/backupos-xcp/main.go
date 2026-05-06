@@ -167,6 +167,63 @@ func main() {
 			"name": name,
 		})
 	})
+	mux.HandleFunc("/api2/json/changed-blocks", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("changed-blocks",
+			"method", r.Method,
+			"path",   r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
+
+		if xapiClient == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "xapi client not configured",
+			})
+			return
+		}
+
+		fromUUID := r.URL.Query().Get("from")
+		toUUID := r.URL.Query().Get("to")
+		if fromUUID == "" || toUUID == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "from and to query parameters required",
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+
+		regions, err := xapiClient.ChangedRegions(ctx, fromUUID, toUUID)
+		if err != nil {
+			slog.Error("changed-blocks query failed", "error", err, "from", fromUUID, "to", toUUID)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		var totalBytes int64
+		for _, rg := range regions {
+			totalBytes += rg.Length
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"from":         fromUUID,
+			"to":           toUUID,
+			"block_size":   xapi.BlockSize,
+			"region_count": len(regions),
+			"total_bytes":  totalBytes,
+			"regions":      regions,
+		})
+	})
 	mux.HandleFunc("/", notFound)
 
 	server := &http.Server{

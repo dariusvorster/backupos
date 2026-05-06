@@ -198,7 +198,13 @@ func (c *Client) PoolName(ctx context.Context) (uuid string, name string, err er
 
 // xmlrpcURL constructs the XML-RPC endpoint URL from PoolMasterURL.
 func (c *Client) xmlrpcURL() (string, error) {
-	u, err := url.Parse(c.cfg.PoolMasterURL)
+	raw := c.cfg.PoolMasterURL
+	// url.Parse treats a bare host (no scheme) as a path, leaving Host empty.
+	// Prepend the scheme so the host is parsed correctly before we normalise.
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
 	if err != nil {
 		return "", err
 	}
