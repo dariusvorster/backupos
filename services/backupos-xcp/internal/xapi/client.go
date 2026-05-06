@@ -178,11 +178,22 @@ func (c *Client) PoolName(ctx context.Context) (uuid string, name string, err er
 	if len(poolRefs) == 0 {
 		return "", "", errors.New("xapi: no pool found")
 	}
-	rec, err := raw.Pool.GetRecord(sess, poolRefs[0])
+	poolRef := poolRefs[0]
+
+	// Use primitive getters instead of GetRecord. The library's PoolRecord
+	// struct includes allowed_operations as a strict enum, but XCP-ng 8.3
+	// returns enum values (e.g. "cluster_create") that the 2021-era library
+	// doesn't know. GetUUID and GetNameLabel return scalar strings and
+	// bypass the problematic enum entirely.
+	uuid, err = raw.Pool.GetUUID(sess, poolRef)
 	if err != nil {
-		return "", "", fmt.Errorf("xapi: pool.get_record: %w", err)
+		return "", "", fmt.Errorf("xapi: pool.get_uuid: %w", err)
 	}
-	return rec.UUID, rec.NameLabel, nil
+	name, err = raw.Pool.GetNameLabel(sess, poolRef)
+	if err != nil {
+		return "", "", fmt.Errorf("xapi: pool.get_name_label: %w", err)
+	}
+	return uuid, name, nil
 }
 
 // xmlrpcURL constructs the XML-RPC endpoint URL from PoolMasterURL.
