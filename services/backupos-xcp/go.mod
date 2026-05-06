@@ -1,6 +1,6 @@
 module github.com/dariusvorster/backupos/services/backupos-xcp
 
-go 1.23
+go 1.26
 
 require modernc.org/sqlite v1.34.1
 

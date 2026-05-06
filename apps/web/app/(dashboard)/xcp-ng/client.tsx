@@ -138,7 +138,7 @@ export function ConnectForm({ onSuccess }: ConnectFormProps) {
           <input name="certFingerprint" style={inputStyle} placeholder="SHA256:..." />
         </div>
         {error && (
-          <div style={{ fontSize: 12, color: 'var(--red, #e53e3e)', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+          <div style={{ fontSize: 12, color: 'var(--err)', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
             {error}
           </div>
         )}
@@ -213,8 +213,8 @@ export function PoolList({ initialPools }: { initialPools: PoolRow[] }) {
                 <td style={td}>
                   <span style={{
                     fontSize: 11, padding: '2px 6px', borderRadius: 4,
-                    backgroundColor: p.lastTestStatus === 'ok' ? 'var(--green-dim, #c6f6d5)' : p.lastTestStatus === 'error' ? 'var(--red-dim, #fed7d7)' : 'var(--border)',
-                    color: p.lastTestStatus === 'ok' ? 'var(--green-deep, #276749)' : p.lastTestStatus === 'error' ? 'var(--red-deep, #9b2c2c)' : 'var(--fg-dim)',
+                    backgroundColor: p.lastTestStatus === 'ok' ? 'var(--ok-dim)' : p.lastTestStatus === 'error' ? 'var(--err-dim)' : 'var(--border)',
+                    color: p.lastTestStatus === 'ok' ? 'var(--ok)' : p.lastTestStatus === 'error' ? 'var(--err)' : 'var(--fg-dim)',
                   }}>
                     {p.lastTestStatus ?? 'unknown'}
                   </span>
@@ -233,7 +233,7 @@ export function PoolList({ initialPools }: { initialPools: PoolRow[] }) {
                   >
                     {pending && busyId === p.id ? 'Refreshing…' : 'Refresh'}
                   </button>
-                  <button onClick={() => handleDelete(p.id)} disabled={pending} style={{ ...btnDanger, color: 'var(--red, #e53e3e)' }}>
+                  <button onClick={() => handleDelete(p.id)} disabled={pending} style={{ ...btnDanger, color: 'var(--err)' }}>
                     Delete
                   </button>
                 </td>
@@ -285,8 +285,8 @@ export function VmList({ vms }: { vms: VmRow[] }) {
                 <td style={td}>
                   <span style={{
                     fontSize: 11, padding: '2px 6px', borderRadius: 4,
-                    backgroundColor: v.powerState === 'Running' ? 'var(--green-dim, #c6f6d5)' : 'var(--border)',
-                    color: v.powerState === 'Running' ? 'var(--green-deep, #276749)' : 'var(--fg-dim)',
+                    backgroundColor: v.powerState === 'Running' ? 'var(--ok-dim)' : 'var(--border)',
+                    color: v.powerState === 'Running' ? 'var(--ok)' : 'var(--fg-dim)',
                   }}>
                     {v.powerState}
                   </span>

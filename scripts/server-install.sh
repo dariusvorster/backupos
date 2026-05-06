@@ -314,6 +314,42 @@ log "Building backupos-xcp Go service..."
 chmod 755 "$INSTALL_DIR/bin/backupos-xcp"
 ok "backupos-xcp binary built"
 
+# ── 7b. Self-signed certs for backupos-pbs and backupos-xcp ──────────────────
+# Both services serve HTTPS. Certs are self-signed because they're consumed
+# either locally (web app -> Go service via internal endpoint) or by trusted
+# external clients (PVE -> backupos-pbs) which pin the fingerprint.
+#
+# Idempotent: existing certs are not regenerated. Servers with a cert already
+# in place (e.g. created by an earlier ad-hoc openssl call) keep theirs.
+
+generate_cert() {
+  local dir="$1"
+  local cn="$2"
+
+  if [[ -f "$dir/cert.pem" && -f "$dir/key.pem" ]]; then
+    log "Cert already exists at $dir, skipping"
+    return 0
+  fi
+
+  mkdir -p "$dir"
+  openssl req -x509 -nodes -newkey rsa:2048 \
+    -keyout "$dir/key.pem" \
+    -out "$dir/cert.pem" \
+    -days 3650 \
+    -subj "/CN=$cn" \
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+    2>/dev/null \
+    || die "Failed to generate cert at $dir"
+
+  chown "$SVC_USER:$SVC_USER" "$dir/cert.pem" "$dir/key.pem"
+  chmod 600 "$dir/key.pem"
+  chmod 644 "$dir/cert.pem"
+  ok "Generated cert at $dir (CN=$cn)"
+}
+
+generate_cert "$DATA_DIR/pbs" "BackupOS PBS-compatible endpoint"
+generate_cert "$DATA_DIR/xcp" "BackupOS XCP-ng endpoint"
+
 ok "Build complete"
 
 # Fix ownership so the service user can write to data dirs

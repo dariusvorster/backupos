@@ -3,7 +3,7 @@ import { requireAdmin } from '@/lib/user'
 import { getDb, xcpPools, xcpVms, eq } from '@backupos/db'
 import { XCPNGHypervisorDriver } from '@backupos/hypervisors'
 import type { XCPNGConfig } from '@backupos/hypervisors'
-import { encryptField } from '@/lib/repo-crypto'
+import { encryptField, decryptField } from '@/lib/repo-crypto'
 
 interface AddXcpPoolInput {
   name: string
@@ -31,16 +31,24 @@ export async function addXcpPool(
 
   const db = getDb()
   const poolId = crypto.randomUUID()
-  await db.insert(xcpPools).values({
-    id:              poolId,
-    name:            input.name,
-    poolMasterUrl:   input.poolMasterUrl,
-    username:        input.username,
-    passwordEnc:     encryptField(input.password),
-    verifySsl:       input.verifySsl ?? true,
-    certFingerprint: input.certFingerprint ?? null,
-    createdAt:       new Date(),
-  })
+  try {
+    await db.insert(xcpPools).values({
+      id:              poolId,
+      name:            input.name,
+      poolMasterUrl:   input.poolMasterUrl,
+      username:        input.username,
+      passwordEnc:     encryptField(input.password),
+      verifySsl:       input.verifySsl ?? true,
+      certFingerprint: input.certFingerprint ?? null,
+      createdAt:       new Date(),
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('UNIQUE constraint failed: xcp_pools.pool_master_url')) {
+      return { ok: false, error: 'A pool with this master URL is already registered' }
+    }
+    throw err
+  }
   return { ok: true, poolId }
 }
 
@@ -52,7 +60,6 @@ export async function refreshXcpPool(
   const [pool] = await db.select().from(xcpPools).where(eq(xcpPools.id, poolId)).limit(1)
   if (!pool) return { ok: false, error: 'Pool not found' }
 
-  const { decryptField } = await import('@/lib/repo-crypto')
   const password = decryptField(pool.passwordEnc)
   const driver = new XCPNGHypervisorDriver({
     poolMasterUrl:   pool.poolMasterUrl,
