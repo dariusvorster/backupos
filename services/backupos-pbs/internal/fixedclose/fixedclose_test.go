@@ -80,7 +80,10 @@ func TestFixedClose_MissingStreamCtx_Returns500(t *testing.T) {
 	defer srv.Close()
 
 	var csum [32]byte
-	resp, _ := http.Post(closeURL(srv.URL, 1, 0, 0, csum), "", nil)
+	resp, err := http.Post(closeURL(srv.URL, 1, 0, 0, csum), "", nil)
+	if err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", resp.StatusCode)
@@ -94,7 +97,10 @@ func TestFixedClose_WrongChunkCount_Returns400(t *testing.T) {
 	defer srv.Close()
 
 	// Server appended 1 chunk; client claims 2.
-	resp, _ := http.Post(closeURL(srv.URL, wid, 2, 4194304, serverCsum), "", nil)
+	resp, err := http.Post(closeURL(srv.URL, wid, 2, 4194304, serverCsum), "", nil)
+	if err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for chunk count mismatch, got %d", resp.StatusCode)
@@ -110,7 +116,10 @@ func TestFixedClose_CsumMismatch_Returns400(t *testing.T) {
 
 	var wrongCsum [32]byte
 	wrongCsum[0] = 0xBB
-	resp, _ := http.Post(closeURL(srv.URL, wid, 1, 4194304, wrongCsum), "", nil)
+	resp, err := http.Post(closeURL(srv.URL, wid, 1, 4194304, wrongCsum), "", nil)
+	if err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for csum mismatch, got %d", resp.StatusCode)
@@ -142,7 +151,10 @@ func TestFixedClose_MissingParams_Returns400(t *testing.T) {
 	srv := httptest.NewServer(injectCtx(sc, NewHandler()))
 	defer srv.Close()
 
-	resp, _ := http.Post(srv.URL+"/fixed_close", "", nil)
+	resp, err := http.Post(srv.URL+"/fixed_close", "", nil)
+	if err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for missing params, got %d", resp.StatusCode)
