@@ -1,4 +1,4 @@
-import { getDb, repositories, agents, infraOsServices } from '@backupos/db'
+import { getDb, repositories, agents, infraOsServices, hypervisorTargets, eq } from '@backupos/db'
 import { Button } from '@/components/ui/button'
 import { createJob } from '@/app/actions/jobs'
 import { SourceConfigSection } from '@/components/source-config-section'
@@ -17,10 +17,12 @@ export default async function NewJobPage({
   const composeError        = params.composeError
 
   const db      = getDb()
-  const [repos, agentList, services] = await Promise.all([
+  const [repos, agentList, services, xcpngTargets] = await Promise.all([
     db.select().from(repositories).all(),
     db.select().from(agents).all(),
     db.select().from(infraOsServices).all(),
+    db.select({ id: hypervisorTargets.id, name: hypervisorTargets.name, externalId: hypervisorTargets.externalId })
+      .from(hypervisorTargets).where(eq(hypervisorTargets.type, 'xcpng_vm')).all(),
   ])
 
   return (
@@ -67,6 +69,7 @@ export default async function NewJobPage({
           <SourceConfigSection
             defaultSourceType={prefillSourceType || 'filesystem'}
             composeError={composeError}
+            xcpngTargets={xcpngTargets}
           />
 
           <div style={{ marginBottom: 20 }}>

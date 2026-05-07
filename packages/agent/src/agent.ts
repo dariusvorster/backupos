@@ -257,6 +257,12 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       await runComposeBackup(msg, send, activeJobs, BINARY, ensureRepoInitialized)
     })()
 
+  } else if (msg.type === 'run_xcp_backup') {
+    void (async () => {
+      const { runXcpngBackup } = await import('./handlers/xcpngBackup')
+      await runXcpngBackup(msg, send, activeJobs, BINARY, ensureRepoInitialized)
+    })()
+
   } else if (msg.type === 'run_compose_restore') {
     void (async () => {
       const { runComposeRestore } = await import('./handlers/composeRestore')

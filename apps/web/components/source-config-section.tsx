@@ -9,6 +9,7 @@ const SOURCE_TYPES = [
   { value: 'database',       label: 'Database',        desc: 'PostgreSQL, MySQL, SQLite, Redis' },
   { value: 'proxmox_vm',     label: 'Proxmox VM',      desc: 'Virtual machine via Proxmox API' },
   { value: 'proxmox_lxc',    label: 'Proxmox LXC',     desc: 'Container via Proxmox API' },
+  { value: 'xcpng_vm',       label: 'XCP-ng VM',       desc: 'Virtual machine via XCP-ng / XAPI (CBT streaming)' },
   { value: 'windows_system', label: 'Windows system',  desc: 'Full system backup via VSS' },
   { value: 'nas_share',      label: 'NAS share',       desc: 'SMB or NFS share' },
 ]
@@ -312,6 +313,27 @@ function NasShareFields({ cfg }: { cfg: Cfg }) {
   )
 }
 
+function XcpngVmFields({ cfg, targets }: { cfg: Cfg; targets: Array<{ id: string; name: string; externalId: string }> }) {
+  return (
+    <div style={{ marginTop: 16 }}>
+      <label style={labelStyle}>XCP-ng VM</label>
+      {targets.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginTop: 4 }}>
+          No XCP-ng VMs found.{' '}
+          <a href="/hypervisors" style={{ color: 'var(--accent)' }}>Add a hypervisor and sync.</a>
+        </div>
+      ) : (
+        <select name="xcpng_target_id" required style={inputStyle} defaultValue={(cfg.targetId as string | undefined) ?? ''}>
+          <option value="">— Select a VM —</option>
+          {targets.map(t => (
+            <option key={t.id} value={t.id}>{t.name} ({t.externalId.slice(0, 8)})</option>
+          ))}
+        </select>
+      )}
+    </div>
+  )
+}
+
 function WindowsFields({ cfg }: { cfg: Cfg }) {
   return (
     <div style={{ marginTop: 16 }}>
@@ -334,10 +356,12 @@ export function SourceConfigSection({
   defaultSourceType,
   initialConfig,
   composeError,
+  xcpngTargets = [],
 }: {
   defaultSourceType?: string
   initialConfig?: string
   composeError?: string
+  xcpngTargets?: Array<{ id: string; name: string; externalId: string }>
 }) {
   const cfg: Cfg = (() => {
     try { return JSON.parse(initialConfig ?? '{}') as Cfg } catch { return {} }
@@ -437,6 +461,7 @@ export function SourceConfigSection({
         {selected === 'database'       && <DatabaseFields cfg={cfg} detected={detected} />}
         {selected === 'proxmox_vm'     && <ProxmoxFields label="VM" cfg={cfg} />}
         {selected === 'proxmox_lxc'    && <ProxmoxFields label="LXC" cfg={cfg} />}
+        {selected === 'xcpng_vm'       && <XcpngVmFields cfg={cfg} targets={xcpngTargets} />}
         {selected === 'windows_system' && <WindowsFields cfg={cfg} />}
         {selected === 'nas_share'      && <NasShareFields cfg={cfg} />}
       </div>
