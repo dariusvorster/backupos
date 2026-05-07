@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -32,6 +33,16 @@ var (
 	releaseString = "1"
 	repoIDString  = "backupos-xcp"
 )
+
+func respondJSON(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+func respondJSONError(w http.ResponseWriter, status int, msg string) {
+	respondJSON(w, status, map[string]string{"error": msg})
+}
 
 func main() {
 	var (
@@ -222,6 +233,102 @@ func main() {
 			"region_count": len(regions),
 			"total_bytes":  totalBytes,
 			"regions":      regions,
+		})
+	})
+	mux.HandleFunc("/api2/json/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("snapshot",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
+
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if xapiClient == nil {
+			respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
+			return
+		}
+
+		var body struct {
+			SourceUUID string `json:"source_uuid"`
+			NameLabel  string `json:"name_label"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			respondJSONError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+			return
+		}
+		if body.SourceUUID == "" {
+			respondJSONError(w, http.StatusBadRequest, "source_uuid required")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+
+		info, err := xapiClient.Snapshot(ctx, body.SourceUUID, body.NameLabel)
+		if err != nil {
+			slog.Error("snapshot failed", "error", err, "source_uuid", body.SourceUUID)
+			respondJSONError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+
+		respondJSON(w, http.StatusOK, info)
+	})
+	mux.HandleFunc("/api2/json/snapshot/", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("snapshot-delete",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
+
+		if r.Method != http.MethodDelete {
+			w.Header().Set("Allow", "DELETE")
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if xapiClient == nil {
+			respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
+			return
+		}
+
+		uuid := strings.TrimPrefix(r.URL.Path, "/api2/json/snapshot/")
+		if uuid == "" || strings.Contains(uuid, "/") {
+			respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
+			return
+		}
+
+		mode := r.URL.Query().Get("mode")
+		if mode == "" {
+			mode = "destroy"
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+
+		var err error
+		switch mode {
+		case "destroy":
+			err = xapiClient.DestroySnapshot(ctx, uuid)
+		case "data_destroy":
+			err = xapiClient.DataDestroySnapshot(ctx, uuid)
+		default:
+			respondJSONError(w, http.StatusBadRequest, "mode must be 'destroy' or 'data_destroy'")
+			return
+		}
+
+		if err != nil {
+			slog.Error("snapshot delete failed", "error", err, "uuid", uuid, "mode", mode)
+			respondJSONError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]any{
+			"uuid":   uuid,
+			"mode":   mode,
+			"status": "ok",
 		})
 	})
 	mux.HandleFunc("/", notFound)
