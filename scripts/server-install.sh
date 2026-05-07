@@ -620,6 +620,95 @@ else
   log "Service $SERVICE_NAME-xcp may have failed. Check:  journalctl -u $SERVICE_NAME-xcp -n 50"
 fi
 
+# ── 9. Built-in BackupOS server agent ────────────────────────────────────────
+# A local agent instance running on this server.
+# Used as the recommended agent for xcpng_vm jobs — VM disk streams are piped
+# through the XCP service which runs here, so the agent must be co-located.
+
+AGENT_DIR=/opt/backupos-agent
+AGENT_SERVICE=backupos-agent
+AGENT_ENV_FILE="$AGENT_DIR/.env"
+NODE_BIN="$(command -v node)"
+DB_PATH="$DATA_DIR/backupos.db"
+
+# Ensure sqlite3 is available for the DB enrollment step
+if ! command -v sqlite3 &>/dev/null; then
+  if command -v apt-get &>/dev/null; then apt-get install -y sqlite3
+  elif command -v yum &>/dev/null; then yum install -y sqlite; fi
+fi
+
+mkdir -p "$AGENT_DIR"
+chown "$SVC_USER:$SVC_USER" "$AGENT_DIR"
+
+cp "$INSTALL_DIR/apps/web/public/agent/bundle.js" "$AGENT_DIR/agent.js"
+chown "$SVC_USER:$SVC_USER" "$AGENT_DIR/agent.js"
+
+# Stable ID: 00000000-0000-0000-0000-<first 12 hex chars of sha256(machine-id)>
+MACHINE_ID="$(cat /etc/machine-id 2>/dev/null || hostname)"
+AGENT_SUFFIX="$(printf '%s' "$MACHINE_ID" | sha256sum | cut -c1-12)"
+BUILTIN_AGENT_ID="00000000-0000-0000-0000-${AGENT_SUFFIX}"
+
+EXISTING="$(sqlite3 "$DB_PATH" "SELECT id FROM agents WHERE id='${BUILTIN_AGENT_ID}';" 2>/dev/null || true)"
+if [[ -z "$EXISTING" ]]; then
+  AGENT_TOKEN="$(openssl rand -hex 32)"
+  NOW_MS="$(date +%s)000"
+  sqlite3 "$DB_PATH" \
+    "INSERT INTO agents (id, name, status, platform, public_key, enrolled_at) \
+     VALUES ('${BUILTIN_AGENT_ID}', 'BackupOS Server (built-in)', 'disconnected', 'linux', '${AGENT_TOKEN}', ${NOW_MS});"
+  log "Enrolled built-in agent ${BUILTIN_AGENT_ID}"
+else
+  AGENT_TOKEN="$(sqlite3 "$DB_PATH" "SELECT public_key FROM agents WHERE id='${BUILTIN_AGENT_ID}';")"
+  log "Built-in agent already enrolled"
+fi
+
+cat > "$AGENT_ENV_FILE" <<AGENTENV
+BACKUPOS_URL=ws://127.0.0.1:${PORT}
+BACKUPOS_TOKEN=${AGENT_TOKEN}
+RESTIC_BINARY_PATH=${RESTIC_BIN}
+AGENTENV
+chmod 600 "$AGENT_ENV_FILE"
+chown "$SVC_USER:$SVC_USER" "$AGENT_ENV_FILE"
+
+cat > /etc/systemd/system/${AGENT_SERVICE}.service <<AGENTSVCEOF
+[Unit]
+Description=BackupOS Agent (built-in server agent)
+After=network-online.target ${SERVICE_NAME}.service
+Requires=${SERVICE_NAME}.service
+
+[Service]
+Type=simple
+User=$SVC_USER
+Group=$SVC_USER
+WorkingDirectory=$AGENT_DIR
+EnvironmentFile=$AGENT_ENV_FILE
+ExecStart=${NODE_BIN} ${AGENT_DIR}/agent.js
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=$DATA_DIR
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=$AGENT_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+AGENTSVCEOF
+
+systemctl daemon-reload
+systemctl enable "$AGENT_SERVICE"
+systemctl restart "$AGENT_SERVICE"
+
+sleep 1
+if systemctl is-active --quiet "$AGENT_SERVICE"; then
+  ok "Service $AGENT_SERVICE started"
+else
+  log "Service $AGENT_SERVICE may have failed. Check:  journalctl -u $AGENT_SERVICE -n 50"
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 PUBLIC_URL_ACTUAL="$(grep '^BETTER_AUTH_URL=' "$ENV_FILE" | cut -d= -f2-)"
 
@@ -633,7 +722,8 @@ echo "  XCP service:  https://<host>:8009/api2/json/version"
 echo "  Logs (web):   journalctl -u $SERVICE_NAME -f"
 echo "  Logs (pbs):   journalctl -u $SERVICE_NAME-pbs -f"
 echo "  Logs (xcp):   journalctl -u $SERVICE_NAME-xcp -f"
-echo "  Status:       systemctl status $SERVICE_NAME $SERVICE_NAME-pbs $SERVICE_NAME-xcp"
+echo "  Logs (agent): journalctl -u $AGENT_SERVICE -f"
+echo "  Status:       systemctl status $SERVICE_NAME $SERVICE_NAME-pbs $SERVICE_NAME-xcp $AGENT_SERVICE"
 echo "  Config:       $ENV_FILE"
 echo "  Data:         $DATA_DIR"
 echo ""
