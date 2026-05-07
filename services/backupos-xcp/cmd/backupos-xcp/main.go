@@ -11,7 +11,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,10 +22,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/dariusvorster/backupos/services/backupos-xcp/internal/nbdread"
 	"github.com/dariusvorster/backupos/services/backupos-xcp/internal/xapi"
 )
 
@@ -58,6 +62,8 @@ func main() {
 		xapiPass     = flag.String("xapi-pass", "", "XAPI password (or set BACKUPOS_XCP_PASS env var)")
 		xapiFP       = flag.String("xapi-cert-fingerprint", "", "XAPI host TLS cert SHA256 fingerprint (optional)")
 		xapiInsecure = flag.Bool("xapi-insecure", false, "Disable TLS verification for XAPI (dev only)")
+		readOutputDir = flag.String("read-output-dir", "/var/lib/backupos/xcp-reads",
+			"directory under which /api2/json/snapshot/{uuid}/read can write files")
 	)
 	flag.Parse()
 
@@ -72,6 +78,17 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
+
+	absReadDir, readDirErr := filepath.Abs(*readOutputDir)
+	if readDirErr != nil {
+		logger.Error("resolve read-output-dir", "error", readDirErr)
+		os.Exit(1)
+	}
+	readOutputDirResolved := filepath.Clean(absReadDir)
+	if readDirErr = os.MkdirAll(readOutputDirResolved, 0o755); readDirErr != nil {
+		logger.Error("create read-output-dir", "error", readDirErr)
+		os.Exit(1)
+	}
 
 	logger.Info("starting backupos-xcp",
 		"version", versionString,
@@ -278,58 +295,162 @@ func main() {
 		respondJSON(w, http.StatusOK, info)
 	})
 	mux.HandleFunc("/api2/json/snapshot/", func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("snapshot-delete",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"remote", r.RemoteAddr,
-		)
-
-		if r.Method != http.MethodDelete {
-			w.Header().Set("Allow", "DELETE")
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
-			return
-		}
-		if xapiClient == nil {
-			respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
-			return
+		suffix := strings.TrimPrefix(r.URL.Path, "/api2/json/snapshot/")
+		parts := strings.SplitN(suffix, "/", 2)
+		uuid := parts[0]
+		sub := ""
+		if len(parts) == 2 {
+			sub = parts[1]
 		}
 
-		uuid := strings.TrimPrefix(r.URL.Path, "/api2/json/snapshot/")
-		if uuid == "" || strings.Contains(uuid, "/") {
-			respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
-			return
-		}
+		switch {
+		case r.Method == http.MethodDelete && sub == "":
+			slog.Info("snapshot-delete", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+			if xapiClient == nil {
+				respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
+				return
+			}
+			if uuid == "" {
+				respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
+				return
+			}
+			mode := r.URL.Query().Get("mode")
+			if mode == "" {
+				mode = "destroy"
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			defer cancel()
+			var err error
+			switch mode {
+			case "destroy":
+				err = xapiClient.DestroySnapshot(ctx, uuid)
+			case "data_destroy":
+				err = xapiClient.DataDestroySnapshot(ctx, uuid)
+			default:
+				respondJSONError(w, http.StatusBadRequest, "mode must be 'destroy' or 'data_destroy'")
+				return
+			}
+			if err != nil {
+				slog.Error("snapshot delete failed", "error", err, "uuid", uuid, "mode", mode)
+				respondJSONError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			respondJSON(w, http.StatusOK, map[string]any{"uuid": uuid, "mode": mode, "status": "ok"})
 
-		mode := r.URL.Query().Get("mode")
-		if mode == "" {
-			mode = "destroy"
-		}
+		case r.Method == http.MethodGet && sub == "nbd-info":
+			slog.Info("snapshot-nbd-info", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+			if xapiClient == nil {
+				respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
+				return
+			}
+			if uuid == "" {
+				respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+			defer cancel()
+			infos, err := xapiClient.SnapshotNBDInfo(ctx, uuid)
+			if err != nil {
+				slog.Error("nbd-info query failed", "error", err, "uuid", uuid)
+				respondJSONError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			type sanitized struct {
+				ExportName      string `json:"export_name"`
+				Address         string `json:"address"`
+				Port            int    `json:"port"`
+				Subject         string `json:"subject"`
+				CertFingerprint string `json:"cert_fingerprint_sha256"`
+			}
+			san := make([]sanitized, len(infos))
+			for i, info := range infos {
+				sum := sha256.Sum256([]byte(info.CertPEM))
+				san[i] = sanitized{
+					ExportName:      info.ExportName,
+					Address:         info.Address,
+					Port:            info.Port,
+					Subject:         info.Subject,
+					CertFingerprint: hex.EncodeToString(sum[:]),
+				}
+			}
+			respondJSON(w, http.StatusOK, map[string]any{"uuid": uuid, "options": san})
 
-		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
-		defer cancel()
+		case r.Method == http.MethodPost && sub == "read":
+			slog.Info("snapshot-read", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+			if xapiClient == nil {
+				respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
+				return
+			}
+			if uuid == "" {
+				respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
+				return
+			}
+			var body struct {
+				OutputPath string          `json:"output_path"`
+				Regions    []nbdread.Region `json:"regions"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+				return
+			}
+			if body.OutputPath == "" {
+				respondJSONError(w, http.StatusBadRequest, "output_path required")
+				return
+			}
+			if len(body.Regions) == 0 {
+				respondJSONError(w, http.StatusBadRequest, "regions required (at least one)")
+				return
+			}
+			if !strings.HasPrefix(filepath.Clean(body.OutputPath), readOutputDirResolved) {
+				respondJSONError(w, http.StatusBadRequest, "output_path must be under "+readOutputDirResolved)
+				return
+			}
+			nbdCtx, nbdCancel := context.WithTimeout(r.Context(), 30*time.Second)
+			defer nbdCancel()
+			infos, err := xapiClient.SnapshotNBDInfo(nbdCtx, uuid)
+			if err != nil {
+				respondJSONError(w, http.StatusBadGateway, "get_nbd_info: "+err.Error())
+				return
+			}
+			if len(infos) == 0 {
+				respondJSONError(w, http.StatusBadGateway,
+					"no NBD options available for this snapshot — is NBD enabled on a network reaching this host's SR?")
+				return
+			}
+			chosen := infos[0]
+			f, err := os.Create(body.OutputPath)
+			if err != nil {
+				respondJSONError(w, http.StatusInternalServerError, "create output: "+err.Error())
+				return
+			}
+			defer f.Close()
+			readCtx, readCancel := context.WithTimeout(r.Context(), 10*time.Minute)
+			defer readCancel()
+			res, err := nbdread.ReadRegions(readCtx, nbdread.Connection{
+				Address:    chosen.Address,
+				Port:       chosen.Port,
+				ExportName: chosen.ExportName,
+				CertPEM:    chosen.CertPEM,
+				Subject:    chosen.Subject,
+			}, body.Regions, f)
+			if err != nil {
+				slog.Error("nbd read failed", "error", err, "uuid", uuid)
+				respondJSONError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			respondJSON(w, http.StatusOK, map[string]any{
+				"uuid":         uuid,
+				"output_path":  body.OutputPath,
+				"bytes_read":   res.BytesRead,
+				"region_count": res.RegionCount,
+				"sha256":       res.SHA256Hex,
+				"duration_ms":  res.DurationMS,
+			})
 
-		var err error
-		switch mode {
-		case "destroy":
-			err = xapiClient.DestroySnapshot(ctx, uuid)
-		case "data_destroy":
-			err = xapiClient.DataDestroySnapshot(ctx, uuid)
 		default:
-			respondJSONError(w, http.StatusBadRequest, "mode must be 'destroy' or 'data_destroy'")
-			return
+			w.Header().Set("Allow", "DELETE, GET, POST")
+			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
-
-		if err != nil {
-			slog.Error("snapshot delete failed", "error", err, "uuid", uuid, "mode", mode)
-			respondJSONError(w, http.StatusBadGateway, err.Error())
-			return
-		}
-
-		respondJSON(w, http.StatusOK, map[string]any{
-			"uuid":   uuid,
-			"mode":   mode,
-			"status": "ok",
-		})
 	})
 	mux.HandleFunc("/", notFound)
 
