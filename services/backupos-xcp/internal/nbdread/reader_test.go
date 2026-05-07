@@ -39,6 +39,7 @@ func TestBuildPythonScript(t *testing.T) {
 	script := buildPythonScript("nbds://example/foo", regions)
 
 	mustContain := []string{
+		`h.set_uri_allow_local_file(True)`,
 		`h.connect_uri("nbds://example/foo")`,
 		`h.pread(65536, 0)`,
 		`h.pread(131072, 1048576)`,

@@ -157,6 +157,10 @@ func buildPythonScript(uri string, regions []Region) string {
 	var b strings.Builder
 	b.WriteString("import sys\n")
 	b.WriteString("h = nbd.NBD()\n")
+	// tls-certificates=DIR in the URI is a local-file reference; libnbd requires
+	// explicit opt-in per nbd_connect_uri(3) to prevent unintended local access.
+	// Safe here because we control both the URI and the tmpdir cert contents.
+	b.WriteString("h.set_uri_allow_local_file(True)\n")
 	fmt.Fprintf(&b, "h.connect_uri(%q)\n", uri)
 	for _, r := range regions {
 		fmt.Fprintf(&b, "sys.stdout.buffer.write(h.pread(%d, %d))\n", r.Length, r.Offset)
