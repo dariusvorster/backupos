@@ -24,7 +24,8 @@ async function xcpRequest(opts: {
 }): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const url = new URL(opts.xcpBase + opts.path)
-    const poolHeaders: Record<string, string> = opts.method !== 'POST' ? {
+    // GET: pool creds in headers. POST/DELETE: pool creds in body.
+    const poolHeaders: Record<string, string> = opts.method === 'GET' ? {
       'X-XAPI-Pool-Master-URL':         opts.pool.masterUrl,
       'X-XAPI-Username':                opts.pool.username,
       'X-XAPI-Password':                opts.pool.password,
@@ -171,6 +172,12 @@ export async function runXcpngBackup(
         const destResp = await xcpRequest({
           method: 'DELETE', path: `/api2/json/snapshot/${snap.uuid}?mode=destroy`,
           xcpBase, bearerToken: xcp.bearerToken, pool,
+          body: {
+            pool_master_url:         pool.masterUrl,
+            username:                pool.username,
+            password:                pool.password,
+            cert_fingerprint_sha256: pool.certFingerprintSha256,
+          },
         }).catch((e: unknown) => ({ status: 0, body: String(e) }))
         if (destResp.status !== 200) {
           log(`WARN: snapshot destroy failed (${destResp.status}): ${destResp.body}`)

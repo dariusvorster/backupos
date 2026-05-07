@@ -246,7 +246,20 @@ func main() {
 				respondJSONError(w, http.StatusBadRequest, "mode must be 'destroy' or 'data_destroy'")
 				return
 			}
-			creds := extractGetCreds(r)
+			var delBody struct {
+				PoolMasterURL         string `json:"pool_master_url"`
+				Username              string `json:"username"`
+				Password              string `json:"password"`
+				CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&delBody); err != nil {
+				respondJSONError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+				return
+			}
+			creds := xapi.PerRequestCredentials{
+				PoolMasterURL: delBody.PoolMasterURL, Username: delBody.Username,
+				Password: delBody.Password, CertFingerprintSHA256: delBody.CertFingerprintSHA256,
+			}
 			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 			defer cancel()
 			if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
@@ -334,44 +347,45 @@ func main() {
 				PoolMasterURL: body.PoolMasterURL, Username: body.Username,
 				Password: body.Password, CertFingerprintSHA256: body.CertFingerprintSHA256,
 			}
-			nbdCtx, nbdCancel := context.WithTimeout(r.Context(), 30*time.Second)
-			defer nbdCancel()
-			var chosen xapi.NBDInfo
-			if err := xapi.WithSession(nbdCtx, creds, func(c *xapi.Client) error {
-				infos, err := c.SnapshotNBDInfo(nbdCtx, uuid)
+			// Session must span SnapshotNBDInfo + ReadRegions — the export_name encodes
+			// this session's session_id, which XCP-ng validates on every NBD block read.
+			sessionCtx, sessionCancel := context.WithTimeout(r.Context(), 10*time.Minute+30*time.Second)
+			defer sessionCancel()
+			var readRes nbdread.ReadResult
+			if err := xapi.WithSession(sessionCtx, creds, func(c *xapi.Client) error {
+				infos, err := c.SnapshotNBDInfo(sessionCtx, uuid)
 				if err != nil {
 					return err
 				}
 				if len(infos) == 0 {
 					return errors.New("no NBD options available for this snapshot — is NBD enabled on a network reaching this host's SR?")
 				}
-				chosen = infos[0]
+				chosen := infos[0]
+				f, ferr := os.Create(body.OutputPath)
+				if ferr != nil {
+					return fmt.Errorf("create output: %w", ferr)
+				}
+				defer f.Close()
+				readCtx, readCancel := context.WithTimeout(r.Context(), 10*time.Minute)
+				defer readCancel()
+				res, rerr := nbdread.ReadRegions(readCtx, nbdread.Connection{
+					Address: chosen.Address, Port: chosen.Port,
+					ExportName: chosen.ExportName, CertPEM: chosen.CertPEM, Subject: chosen.Subject,
+				}, body.Regions, f)
+				if rerr != nil {
+					slog.Error("nbd read failed", "error", rerr, "uuid", uuid)
+					return rerr
+				}
+				readRes = res
 				return nil
 			}); err != nil {
-				respondJSONError(w, http.StatusBadGateway, "get_nbd_info: "+err.Error())
-				return
-			}
-			f, err := os.Create(body.OutputPath)
-			if err != nil {
-				respondJSONError(w, http.StatusInternalServerError, "create output: "+err.Error())
-				return
-			}
-			defer f.Close()
-			readCtx, readCancel := context.WithTimeout(r.Context(), 10*time.Minute)
-			defer readCancel()
-			res, err := nbdread.ReadRegions(readCtx, nbdread.Connection{
-				Address: chosen.Address, Port: chosen.Port,
-				ExportName: chosen.ExportName, CertPEM: chosen.CertPEM, Subject: chosen.Subject,
-			}, body.Regions, f)
-			if err != nil {
-				slog.Error("nbd read failed", "error", err, "uuid", uuid)
 				respondJSONError(w, http.StatusBadGateway, err.Error())
 				return
 			}
 			respondJSON(w, http.StatusOK, map[string]any{
 				"uuid": uuid, "output_path": body.OutputPath,
-				"bytes_read": res.BytesRead, "region_count": res.RegionCount,
-				"sha256": res.SHA256Hex, "duration_ms": res.DurationMS,
+				"bytes_read": readRes.BytesRead, "region_count": readRes.RegionCount,
+				"sha256": readRes.SHA256Hex, "duration_ms": readRes.DurationMS,
 			})
 
 		case r.Method == http.MethodGet && sub == "stream":
@@ -381,45 +395,47 @@ func main() {
 				return
 			}
 			creds := extractGetCreds(r)
-			nbdCtx, nbdCancel := context.WithTimeout(r.Context(), 30*time.Second)
-			defer nbdCancel()
-			var chosen xapi.NBDInfo
-			if err := xapi.WithSession(nbdCtx, creds, func(c *xapi.Client) error {
-				infos, err := c.SnapshotNBDInfo(nbdCtx, uuid)
+			// Session must stay open for the full NBD stream duration — the export_name
+			// encodes this session's session_id, which XCP-ng validates on every block read.
+			streamCtx, streamCancel := context.WithTimeout(r.Context(), 4*time.Hour)
+			defer streamCancel()
+			var headersSent bool
+			if err := xapi.WithSession(streamCtx, creds, func(c *xapi.Client) error {
+				infos, err := c.SnapshotNBDInfo(streamCtx, uuid)
 				if err != nil {
-					return err
+					return fmt.Errorf("get_nbd_info: %w", err)
 				}
 				if len(infos) == 0 {
 					return errors.New("no NBD options for this snapshot — is NBD enabled on a network reaching this host's SR?")
 				}
-				chosen = infos[0]
+				chosen := infos[0]
+				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("X-BackupOS-Snapshot-UUID", uuid)
+				w.Header().Set("X-BackupOS-NBD-Address", fmt.Sprintf("%s:%d", chosen.Address, chosen.Port))
+				w.Header().Set("X-BackupOS-NBD-Export-Name", chosen.ExportName)
+				w.Header().Set("Cache-Control", "no-store")
+				w.WriteHeader(http.StatusOK)
+				headersSent = true
+				res, streamErr := nbdread.StreamFullExport(streamCtx, nbdread.Connection{
+					Address: chosen.Address, Port: chosen.Port,
+					ExportName: chosen.ExportName, CertPEM: chosen.CertPEM, Subject: chosen.Subject,
+				}, w)
+				if streamErr != nil {
+					var bytesWritten int64
+					if res != nil {
+						bytesWritten = res.BytesWritten
+					}
+					slog.Error("nbd stream failed", "error", streamErr, "uuid", uuid, "bytes_so_far", bytesWritten)
+					return streamErr
+				}
+				slog.Info("nbd stream complete", "uuid", uuid,
+					"bytes_written", res.BytesWritten, "duration_ms", res.DurationMS)
 				return nil
 			}); err != nil {
-				respondJSONError(w, http.StatusBadGateway, "get_nbd_info: "+err.Error())
-				return
-			}
-			w.Header().Set("Content-Type", "application/octet-stream")
-			w.Header().Set("X-BackupOS-Snapshot-UUID", uuid)
-			w.Header().Set("X-BackupOS-NBD-Address", fmt.Sprintf("%s:%d", chosen.Address, chosen.Port))
-			w.Header().Set("X-BackupOS-NBD-Export-Name", chosen.ExportName)
-			w.Header().Set("Cache-Control", "no-store")
-			w.WriteHeader(http.StatusOK)
-			streamCtx, streamCancel := context.WithTimeout(r.Context(), 4*time.Hour)
-			defer streamCancel()
-			res, err := nbdread.StreamFullExport(streamCtx, nbdread.Connection{
-				Address: chosen.Address, Port: chosen.Port,
-				ExportName: chosen.ExportName, CertPEM: chosen.CertPEM, Subject: chosen.Subject,
-			}, w)
-			if err != nil {
-				var bytesWritten int64
-				if res != nil {
-					bytesWritten = res.BytesWritten
+				if !headersSent {
+					respondJSONError(w, http.StatusBadGateway, err.Error())
 				}
-				slog.Error("nbd stream failed", "error", err, "uuid", uuid, "bytes_so_far", bytesWritten)
-				return
 			}
-			slog.Info("nbd stream complete", "uuid", uuid,
-				"bytes_written", res.BytesWritten, "duration_ms", res.DurationMS)
 
 		default:
 			w.Header().Set("Allow", "DELETE, GET, POST")
