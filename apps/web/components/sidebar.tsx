@@ -36,9 +36,10 @@ const NAV: NavGroup[] = [
   {
     label: 'Infrastructure',
     items: [
-      { href: '/agents',       label: 'Agents',       icon: <Server size={15} /> },
+      { href: '/agents',       label: 'Agents',       icon: <Server   size={15} /> },
       { href: '/repositories', label: 'Repositories', icon: <Database size={15} /> },
-      { href: '/monitors',     label: 'Monitors',     icon: <Radar size={15} /> },
+      { href: '/monitors',     label: 'Monitors',     icon: <Radar    size={15} /> },
+      { href: '/hypervisors',  label: 'Hypervisors',  icon: <HardDrive size={15} /> },
     ],
   },
   {
@@ -47,14 +48,6 @@ const NAV: NavGroup[] = [
       { href: '/pbs/connect', label: 'Connect',    icon: <PlugZap   size={15} /> },
       { href: '/pbs',         label: 'Datastores', icon: <HardDrive size={15} /> },
       { href: '/pbs/tokens',  label: 'Tokens',     icon: <KeyRound  size={15} /> },
-    ],
-  },
-  {
-    label: 'XCP-NG',
-    items: [
-      { href: '/xcp-ng/connect', label: 'Connect', icon: <PlugZap   size={15} /> },
-      { href: '/xcp-ng/pools',   label: 'Pools',   icon: <Server    size={15} /> },
-      { href: '/xcp-ng/vms',     label: 'VMs',     icon: <HardDrive size={15} /> },
     ],
   },
   {
