@@ -89,16 +89,11 @@ func ReadRegions(ctx context.Context, conn Connection, regions []Region, out io.
 	uri := buildURI(conn, certDir)
 
 	// Build a Python script that opens the connection and performs each pread,
-	// writing raw bytes to stdout. Using a file avoids passing hundreds of
-	// --command flags for large region lists.
+	// writing raw bytes to stdout. nbdsh -c - reads the script from stdin.
 	script := buildPythonScript(uri, regions)
 
-	scriptPath := filepath.Join(certDir, "read.py")
-	if err := os.WriteFile(scriptPath, []byte(script), 0o600); err != nil {
-		return nil, fmt.Errorf("nbdread: write script: %w", err)
-	}
-
-	cmd := exec.CommandContext(ctx, "nbdsh", "-f", scriptPath)
+	cmd := exec.CommandContext(ctx, "nbdsh", "-c", "-")
+	cmd.Stdin = strings.NewReader(script)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("nbdread: stdout pipe: %w", err)
