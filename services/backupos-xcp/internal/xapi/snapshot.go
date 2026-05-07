@@ -82,7 +82,7 @@ func (c *Client) Snapshot(ctx context.Context, sourceVDIUUID, nameLabel string) 
 
 // DestroySnapshot fully removes the snapshot VDI (both data and metadata).
 //
-// Idempotent: if the snapshot is already gone (HANDLE_INVALID), returns nil.
+// Idempotent: if the snapshot is already gone (HANDLE_INVALID or UUID_INVALID), returns nil.
 func (c *Client) DestroySnapshot(ctx context.Context, snapshotUUID string) error {
 	if snapshotUUID == "" {
 		return errors.New("xapi: snapshotUUID required")
@@ -96,14 +96,14 @@ func (c *Client) DestroySnapshot(ctx context.Context, snapshotUUID string) error
 
 	ref, err := raw.VDI.GetByUUID(sess, snapshotUUID)
 	if err != nil {
-		if isHandleInvalid(err) {
+		if isAlreadyGone(err) {
 			return nil
 		}
 		return fmt.Errorf("xapi: vdi.get_by_uuid(%s): %w", snapshotUUID, err)
 	}
 
 	if err := raw.VDI.Destroy(sess, ref); err != nil {
-		if isHandleInvalid(err) {
+		if isAlreadyGone(err) {
 			return nil
 		}
 		return fmt.Errorf("xapi: vdi.destroy(%s): %w", snapshotUUID, err)
@@ -131,14 +131,14 @@ func (c *Client) DataDestroySnapshot(ctx context.Context, snapshotUUID string) e
 
 	ref, err := raw.VDI.GetByUUID(sess, snapshotUUID)
 	if err != nil {
-		if isHandleInvalid(err) {
+		if isAlreadyGone(err) {
 			return nil
 		}
 		return fmt.Errorf("xapi: vdi.get_by_uuid(%s): %w", snapshotUUID, err)
 	}
 
 	if err := raw.VDI.DataDestroy(sess, ref); err != nil {
-		if isHandleInvalid(err) {
+		if isAlreadyGone(err) {
 			return nil
 		}
 		return fmt.Errorf("xapi: vdi.data_destroy(%s): %w", snapshotUUID, err)
@@ -146,17 +146,15 @@ func (c *Client) DataDestroySnapshot(ctx context.Context, snapshotUUID string) e
 	return nil
 }
 
-// isHandleInvalid checks whether an XAPI error means the VDI is already gone.
-// XAPI returns errors as strings like:
-//
-//	"API Error: HANDLE_INVALID VDI OpaqueRef:..."
-//
-// We match on the HANDLE_INVALID token to avoid coupling to the exact format.
-func isHandleInvalid(err error) bool {
+// isAlreadyGone checks whether an XAPI error means the VDI no longer exists.
+// XAPI uses HANDLE_INVALID for opaque refs that have been freed, and UUID_INVALID
+// when get_by_uuid is called with a UUID that no longer resolves.
+func isAlreadyGone(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "HANDLE_INVALID")
+	msg := err.Error()
+	return strings.Contains(msg, "HANDLE_INVALID") || strings.Contains(msg, "UUID_INVALID")
 }
 
 // Compile-time assertion that VDIRef remains a string-alias.
