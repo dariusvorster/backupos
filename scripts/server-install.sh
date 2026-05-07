@@ -640,6 +640,11 @@ fi
 mkdir -p "$AGENT_DIR"
 chown "$SVC_USER:$SVC_USER" "$AGENT_DIR"
 
+# Pre-create the NFS mount root so the agent can mkdir per-repo subdirs
+mkdir -p /mnt/backupos
+chown backupos:backupos /mnt/backupos
+chmod 0755 /mnt/backupos
+
 cp "$INSTALL_DIR/apps/web/public/agent/bundle.js" "$AGENT_DIR/agent.js"
 chown "$SVC_USER:$SVC_USER" "$AGENT_DIR/agent.js"
 
