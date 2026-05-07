@@ -640,6 +640,11 @@ fi
 mkdir -p "$AGENT_DIR"
 chown "$SVC_USER:$SVC_USER" "$AGENT_DIR"
 
+# Pre-create the NFS mount root so the agent can mkdir per-repo subdirs
+mkdir -p /mnt/backupos
+chown root:root /mnt/backupos
+chmod 0755 /mnt/backupos
+
 cp "$INSTALL_DIR/apps/web/public/agent/bundle.js" "$AGENT_DIR/agent.js"
 chown "$SVC_USER:$SVC_USER" "$AGENT_DIR/agent.js"
 
@@ -667,7 +672,7 @@ BACKUPOS_TOKEN=${AGENT_TOKEN}
 RESTIC_BINARY_PATH=${RESTIC_BIN}
 AGENTENV
 chmod 600 "$AGENT_ENV_FILE"
-chown "$SVC_USER:$SVC_USER" "$AGENT_ENV_FILE"
+chown root:root "$AGENT_ENV_FILE"
 
 cat > /etc/systemd/system/${AGENT_SERVICE}.service <<AGENTSVCEOF
 [Unit]
@@ -677,8 +682,6 @@ Requires=${SERVICE_NAME}.service
 
 [Service]
 Type=simple
-User=$SVC_USER
-Group=$SVC_USER
 WorkingDirectory=$AGENT_DIR
 EnvironmentFile=$AGENT_ENV_FILE
 ExecStart=${NODE_BIN} ${AGENT_DIR}/agent.js
