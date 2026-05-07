@@ -5,6 +5,7 @@ export type RestoreStepType =
   | 'http_check'
   | 'container_restart'
   | 'notify'
+  | 'xcpng_vm_restore'
 
 export type OnFailure = 'abort' | 'continue' | 'notify_only'
 
@@ -65,6 +66,18 @@ export interface NotifyStep {
   onFailure: OnFailure
 }
 
+export interface XcpngVmRestoreStep {
+  name: string
+  type: 'xcpng_vm_restore'
+  vmUUID: string
+  vmName: string
+  targetSrUUID: string
+  backupJobId: string
+  memoryBytes?: number
+  vcpus?: number
+  onFailure: OnFailure
+}
+
 export type RestoreStep =
   | FilesystemRestoreStep
   | DatabaseRestoreStep
@@ -72,6 +85,7 @@ export type RestoreStep =
   | HttpCheckStep
   | ContainerRestartStep
   | NotifyStep
+  | XcpngVmRestoreStep
 
 // ── Parsed spec ───────────────────────────────────────────────────────────────
 

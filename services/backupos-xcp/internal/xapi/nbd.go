@@ -17,6 +17,42 @@ type NBDInfo struct {
 	Subject    string `json:"subject"`
 }
 
+// VDINBDInfo returns NBD connection options for any VDI (snapshot or regular).
+// Use this when writing to a freshly-created VDI via UploadFromReader.
+func (c *Client) VDINBDInfo(ctx context.Context, vdiUUID string) ([]NBDInfo, error) {
+	if vdiUUID == "" {
+		return nil, errors.New("xapi: vdiUUID required")
+	}
+
+	raw, sess, release, err := c.Session(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	ref, err := raw.VDI.GetByUUID(sess, vdiUUID)
+	if err != nil {
+		return nil, fmt.Errorf("xapi: vdi.get_by_uuid(%s): %w", vdiUUID, err)
+	}
+
+	records, err := raw.VDI.GetNbdInfo(sess, ref)
+	if err != nil {
+		return nil, fmt.Errorf("xapi: vdi.get_nbd_info: %w", err)
+	}
+
+	out := make([]NBDInfo, 0, len(records))
+	for _, r := range records {
+		out = append(out, NBDInfo{
+			ExportName: r.Exportname,
+			Address:    r.Address,
+			Port:       r.Port,
+			CertPEM:    r.Cert,
+			Subject:    r.Subject,
+		})
+	}
+	return out, nil
+}
+
 // SnapshotNBDInfo returns NBD connection options for the given snapshot VDI.
 // The snapshot must be a regular snapshot (not cbt_metadata) — cbt_metadata
 // VDIs cannot be exported over NBD.
