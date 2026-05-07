@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -446,6 +447,55 @@ func main() {
 				"sha256":       res.SHA256Hex,
 				"duration_ms":  res.DurationMS,
 			})
+
+		case r.Method == http.MethodGet && sub == "stream":
+			slog.Info("snapshot-stream", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+			if xapiClient == nil {
+				respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
+				return
+			}
+			if uuid == "" {
+				respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
+				return
+			}
+			nbdCtx, nbdCancel := context.WithTimeout(r.Context(), 30*time.Second)
+			defer nbdCancel()
+			infos, err := xapiClient.SnapshotNBDInfo(nbdCtx, uuid)
+			if err != nil {
+				respondJSONError(w, http.StatusBadGateway, "get_nbd_info: "+err.Error())
+				return
+			}
+			if len(infos) == 0 {
+				respondJSONError(w, http.StatusBadGateway,
+					"no NBD options for this snapshot — is NBD enabled on a network reaching this host's SR?")
+				return
+			}
+			chosen := infos[0]
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("X-BackupOS-Snapshot-UUID", uuid)
+			w.Header().Set("X-BackupOS-NBD-Address", fmt.Sprintf("%s:%d", chosen.Address, chosen.Port))
+			w.Header().Set("X-BackupOS-NBD-Export-Name", chosen.ExportName)
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusOK)
+			streamCtx, streamCancel := context.WithTimeout(r.Context(), 4*time.Hour)
+			defer streamCancel()
+			res, err := nbdread.StreamFullExport(streamCtx, nbdread.Connection{
+				Address:    chosen.Address,
+				Port:       chosen.Port,
+				ExportName: chosen.ExportName,
+				CertPEM:    chosen.CertPEM,
+				Subject:    chosen.Subject,
+			}, w)
+			if err != nil {
+				var bytesWritten int64
+				if res != nil {
+					bytesWritten = res.BytesWritten
+				}
+				slog.Error("nbd stream failed", "error", err, "uuid", uuid, "bytes_so_far", bytesWritten)
+				return
+			}
+			slog.Info("nbd stream complete", "uuid", uuid,
+				"bytes_written", res.BytesWritten, "duration_ms", res.DurationMS)
 
 		default:
 			w.Header().Set("Allow", "DELETE, GET, POST")
