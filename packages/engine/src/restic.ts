@@ -2,6 +2,7 @@ import { spawnAllowed as spawn } from './exec-allowed'
 import type {
   ResticConfig,
   BackupOptions,
+  BackupFromStreamOptions,
   BackupResult,
   CheckResult,
   ExecResult,
@@ -106,6 +107,86 @@ export class ResticEngine {
         opts.signal,
       )
       if (result.exitCode !== 0) throw new ResticError('backup', result)
+
+      const summary = this.parseSummaryLine(result.stdout)
+      backupResult = {
+        snapshotId:      summary.snapshot_id,
+        filesNew:        summary.files_new,
+        filesChanged:    summary.files_changed,
+        filesUnmodified: summary.files_unmodified,
+        dataAdded:       summary.data_added,
+        totalSize:       summary.total_bytes_processed,
+        duration:        Math.round((summary.total_duration ?? 0) * 1000),
+        log:             buildRunLog(result.stdout, result.stderr),
+      }
+    } catch (err) {
+      backupError = err instanceof Error ? err : new Error(String(err))
+    }
+
+    if (opts.postHook) await opts.postHook()
+
+    if (backupError) throw backupError
+    return backupResult!
+  }
+
+  async backupFromStream(opts: BackupFromStreamOptions): Promise<BackupResult> {
+    if (opts.preHook) await opts.preHook()
+
+    let backupError: Error | undefined
+    let backupResult: BackupResult | undefined
+
+    try {
+      const args: string[] = [
+        'backup',
+        '--json',
+        '--no-scan',
+        '--stdin',
+        '--stdin-filename', opts.stdinFilename ?? 'stdin',
+      ]
+
+      if (opts.tags) for (const t of opts.tags) args.push('--tag', t)
+
+      if (this.config.bandwidthLimitKbps && this.config.bandwidthLimitKbps > 0) {
+        args.push('--limit-upload',   String(this.config.bandwidthLimitKbps))
+        args.push('--limit-download', String(this.config.bandwidthLimitKbps))
+      }
+
+      let bytesPiped = 0
+
+      const result = await this.runStreamingWithStdin(
+        args,
+        opts.stream,
+        (chunk) => { bytesPiped += chunk.length },
+        opts.onProgress
+          ? (line) => {
+              try {
+                const obj = JSON.parse(line) as { message_type: string }
+                if (obj.message_type === 'status') {
+                  const s = obj as unknown as ResticStatusJson
+                  opts.onProgress!({
+                    pct:              s.percent_done,
+                    bytesDone:        s.bytes_done,
+                    bytesTotal:       s.total_bytes,
+                    filesDone:        s.files_done,
+                    filesTotal:       s.total_files,
+                    secondsElapsed:   s.seconds_elapsed,
+                    secondsRemaining: s.seconds_remaining,
+                  })
+                }
+              } catch { /* not JSON */ }
+            }
+          : undefined,
+        14_400_000,
+        opts.signal,
+      )
+
+      if (result.exitCode !== 0) throw new ResticError('backup', result)
+
+      if (opts.expectedBytes !== undefined && bytesPiped !== opts.expectedBytes) {
+        throw new Error(
+          `stream byte count mismatch: piped ${bytesPiped}, expected ${opts.expectedBytes}`,
+        )
+      }
 
       const summary = this.parseSummaryLine(result.stdout)
       backupResult = {
@@ -370,6 +451,103 @@ export class ResticEngine {
         settled = true
         if (timer) clearTimeout(timer)
         resolve({ stdout: '', stderr: e.message, exitCode: 1 })
+      })
+    })
+  }
+
+  private runStreamingWithStdin(
+    args: string[],
+    stdin: NodeJS.ReadableStream,
+    onStdinChunk?: (chunk: Buffer) => void,
+    onLine?: (line: string) => void,
+    timeoutMs?: number,
+    signal?: AbortSignal,
+  ): Promise<ExecResult> {
+    return new Promise((resolve, reject) => {
+      const proc = spawn(this.binary, args, {
+        env:   this.buildEnv(),
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+
+      let settled = false
+      let stdinError: Error | undefined
+
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          if (settled) return
+          proc.kill('SIGTERM')
+          setTimeout(() => {
+            if (!proc.killed && proc.exitCode === null) proc.kill('SIGKILL')
+          }, 10_000)
+        }, { once: true })
+      }
+
+      const outLines: string[] = []
+      const err: Buffer[] = []
+      let partial = ''
+
+      let timer: ReturnType<typeof setTimeout> | undefined
+      if (timeoutMs) {
+        timer = setTimeout(() => {
+          if (settled) return
+          settled = true
+          proc.kill('SIGTERM')
+          setTimeout(() => { if (!proc.killed) proc.kill('SIGKILL') }, 10_000)
+          reject(new Error(`restic timed out after ${timeoutMs}ms during ${args[0] ?? 'unknown'}`))
+        }, timeoutMs)
+      }
+
+      proc.stdout!.on('data', (chunk: Buffer) => {
+        const text = partial + chunk.toString('utf8')
+        const parts = text.split('\n')
+        partial = parts.pop() ?? ''
+        for (const line of parts) {
+          outLines.push(line)
+          if (onLine) onLine(line)
+        }
+      })
+
+      proc.stderr!.on('data', (chunk: Buffer) => err.push(chunk))
+
+      if (onStdinChunk) {
+        stdin.on('data', (chunk: Buffer) => onStdinChunk(chunk))
+      }
+      stdin.on('error', (e: Error) => {
+        stdinError = e
+        proc.stdin!.destroy(e)
+      })
+      stdin.pipe(proc.stdin!)
+      proc.stdin!.on('error', (e: Error) => {
+        // EPIPE when restic exits before we finish — let exit code surface the error.
+        if ((e as NodeJS.ErrnoException).code !== 'EPIPE') {
+          stdinError = stdinError ?? e
+        }
+      })
+
+      proc.on('close', (code) => {
+        if (settled) return
+        settled = true
+        if (timer) clearTimeout(timer)
+        if (partial) {
+          outLines.push(partial)
+          if (onLine) onLine(partial)
+        }
+        if (stdinError && code !== 0) {
+          reject(new Error(`restic stdin source failed: ${stdinError.message}`))
+          return
+        }
+        resolve({
+          exitCode: code ?? -1,
+          stdout:   outLines.join('\n'),
+          stderr:   Buffer.concat(err).toString('utf8'),
+        })
+      })
+
+      proc.on('error', (e) => {
+        if (settled) return
+        settled = true
+        if (timer) clearTimeout(timer)
+        reject(e)
       })
     })
   }

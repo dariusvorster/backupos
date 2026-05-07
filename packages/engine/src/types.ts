@@ -29,6 +29,31 @@ export interface BackupOptions {
   signal?: AbortSignal
 }
 
+export interface BackupFromStreamOptions {
+  /** Readable stream of bytes to pipe into restic stdin. */
+  stream: NodeJS.ReadableStream
+
+  /** Filename restic uses inside the snapshot (default: "stdin"). */
+  stdinFilename?: string
+
+  /** Tags to attach to the snapshot. */
+  tags?: string[]
+
+  /**
+   * Optional content-length hint. If supplied, the engine verifies that
+   * exactly this many bytes were written to restic's stdin and treats a
+   * mismatch as a fatal error (truncated stream).
+   *
+   * If undefined, the engine accepts whatever the stream produced before EOF.
+   */
+  expectedBytes?: number
+
+  preHook?: () => Promise<void>
+  postHook?: () => Promise<void>
+  onProgress?: (status: BackupProgressStatus) => void
+  signal?: AbortSignal
+}
+
 export interface ResticStatusJson {
   message_type:      'status'
   percent_done:      number
