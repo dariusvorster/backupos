@@ -160,7 +160,7 @@ func InventoryPool(ctx context.Context, creds PoolCredentials) (*InventoryResult
 			if string(vdiRef) == "OpaqueRef:NULL" || string(vdiRef) == "" {
 				continue
 			}
-			userDevice, err := raw.VBD.GetUserDevice(sess, vbdRef)
+			userDevice, err := raw.VBD.GetUserdevice(sess, vbdRef)
 			if err != nil {
 				continue
 			}
