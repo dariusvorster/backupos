@@ -192,6 +192,26 @@ fi
 restic version &>/dev/null || die "restic installed but cannot execute — check architecture"
 ok "restic $(restic version | head -1 | awk '{print $2}')"
 
+# libnbd-bin + python3-libnbd for backupos-xcp NBD reader.
+# nbdsh (used by the xcp service to read snapshot data over NBD) ships in
+# python3-libnbd on Debian/Ubuntu, separate from the C tooling in libnbd-bin.
+# Both packages are required.
+if ! command -v nbdsh &>/dev/null; then
+  log "Installing libnbd-bin and python3-libnbd..."
+  if command -v apt-get &>/dev/null; then
+    apt-get install -y libnbd-bin python3-libnbd
+  elif command -v yum &>/dev/null; then
+    yum install -y nbdkit-libnbd-tools
+  else
+    log "WARN: cannot auto-install nbdsh — install libnbd-bin and python3-libnbd manually for NBD snapshot reads"
+  fi
+fi
+if command -v nbdsh &>/dev/null; then
+  ok "nbdsh $(nbdsh --version 2>&1 | head -1)"
+else
+  log "WARN: nbdsh not found — NBD snapshot read endpoint will return errors until installed"
+fi
+
 # Go (1.22+) for backupos-pbs service.
 #
 # Users typically install Go from the official tarball at /usr/local/go/.
@@ -513,9 +533,12 @@ PBSSVCEOF
 # ── 8c. systemd service for the Go XCP sidecar ───────────────────────────────
 XCP_BIND="${BACKUPOS_XCP_BIND:-0.0.0.0:8009}"
 
-# Ensure cert directory exists
+# Ensure cert directory and NBD read output directory exist
 mkdir -p "$DATA_DIR/xcp"
 chown "$SVC_USER:$SVC_USER" "$DATA_DIR/xcp"
+mkdir -p "$DATA_DIR/xcp-reads"
+chown "$SVC_USER:$SVC_USER" "$DATA_DIR/xcp-reads"
+chmod 0750 "$DATA_DIR/xcp-reads"
 
 cat > /etc/systemd/system/${SERVICE_NAME}-xcp.service <<XCPSVCEOF
 [Unit]
