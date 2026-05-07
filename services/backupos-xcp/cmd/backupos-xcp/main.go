@@ -351,7 +351,7 @@ func main() {
 			// this session's session_id, which XCP-ng validates on every NBD block read.
 			sessionCtx, sessionCancel := context.WithTimeout(r.Context(), 10*time.Minute+30*time.Second)
 			defer sessionCancel()
-			var readRes nbdread.ReadResult
+			var readRes *nbdread.ReadResult
 			if err := xapi.WithSession(sessionCtx, creds, func(c *xapi.Client) error {
 				infos, err := c.SnapshotNBDInfo(sessionCtx, uuid)
 				if err != nil {
