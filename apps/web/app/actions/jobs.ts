@@ -52,6 +52,9 @@ function parseSourceConfig(sourceType: string, fd: FormData): string {
   } else if (sourceType === 'compose_project') {
     const raw = str('composeConfig')
     cfg = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+  } else if (sourceType === 'xcpng_vm') {
+    const targetId = (fd.get('xcpng_target_id') as string | null)?.trim() ?? ''
+    if (targetId) cfg = { targetId }
   }
 
   return JSON.stringify(cfg)

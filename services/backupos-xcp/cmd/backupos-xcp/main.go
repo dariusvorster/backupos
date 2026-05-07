@@ -7,6 +7,8 @@
 //
 // Endpoints:
 //   - GET /api2/json/version  unauthenticated, 200 JSON
+//   - All other /api2/json/* routes require Authorization: Bearer <BACKUPOS_INTERNAL_SECRET>
+//   - POST /internal/inventory requires the same bearer token
 package main
 
 import (
@@ -50,35 +52,47 @@ func respondJSONError(w http.ResponseWriter, status int, msg string) {
 	respondJSON(w, status, map[string]string{"error": msg})
 }
 
+// extractGetCreds reads per-request pool credentials from request headers.
+// Used by GET and DELETE handlers.
+func extractGetCreds(r *http.Request) xapi.PerRequestCredentials {
+	return xapi.PerRequestCredentials{
+		PoolMasterURL:         r.Header.Get("X-XAPI-Pool-Master-URL"),
+		Username:              r.Header.Get("X-XAPI-Username"),
+		Password:              r.Header.Get("X-XAPI-Password"),
+		CertFingerprintSHA256: r.Header.Get("X-XAPI-Cert-Fingerprint-SHA256"),
+	}
+}
+
 func main() {
 	var (
 		bind     = flag.String("bind", "0.0.0.0:8009", "address:port to listen on")
 		certPath = flag.String("cert", "/var/lib/backupos/xcp/cert.pem", "TLS certificate path")
 		keyPath  = flag.String("key", "/var/lib/backupos/xcp/key.pem", "TLS private key path")
-		dbPath   = flag.String("db", "/var/lib/backupos/backupos.db", "SQLite database path")
+		dbPath   = flag.String("db", "/var/lib/backupos/backupos.db", "SQLite database path (unused)")
 
-		// XAPI connection flags. If xapiURL is empty, the service starts but
-		// XAPI features are disabled — useful for the placeholder Phase 1 deploy.
-		xapiURL      = flag.String("xapi-url", "", "XAPI pool master URL (e.g. https://192.168.69.2)")
-		xapiUser     = flag.String("xapi-user", "root", "XAPI username")
-		xapiPass     = flag.String("xapi-pass", "", "XAPI password (or set BACKUPOS_XCP_PASS env var)")
-		xapiFP       = flag.String("xapi-cert-fingerprint", "", "XAPI host TLS cert SHA256 fingerprint (optional)")
-		xapiInsecure = flag.Bool("xapi-insecure", false, "Disable TLS verification for XAPI (dev only)")
+		// Deprecated startup XAPI flags — kept so existing install.sh ExecStart lines
+		// don't break. Pool credentials are now per-request on every handler.
+		xapiURL  = flag.String("xapi-url",              "", "deprecated: pool master URL (now per-request)")
+		xapiUser = flag.String("xapi-user",             "root", "deprecated: XAPI username (now per-request)")
+		xapiPass = flag.String("xapi-pass",             "", "deprecated: XAPI password (now per-request)")
+		xapiFP   = flag.String("xapi-cert-fingerprint", "", "deprecated: cert fingerprint (now per-request)")
+		_        = flag.Bool("xapi-insecure",            false, "deprecated")
+
 		readOutputDir = flag.String("read-output-dir", "/var/lib/backupos/xcp-reads",
 			"directory under which /api2/json/snapshot/{uuid}/read can write files")
 	)
 	flag.Parse()
 
-	// Password can also come from env var (preferred for systemd EnvironmentFile).
-	if *xapiPass == "" {
-		*xapiPass = os.Getenv("BACKUPOS_XCP_PASS")
+	_ = dbPath
+	_ = *xapiUser
+	_ = *xapiPass
+
+	if *xapiURL != "" || *xapiFP != "" {
+		slog.Warn("startup XAPI flags are deprecated and ignored; pool credentials are now per-request",
+			"deprecated_flags", []string{"--xapi-url", "--xapi-user", "--xapi-pass", "--xapi-cert-fingerprint"})
 	}
 
-	_ = dbPath // reserved for future use
-
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
 	absReadDir, readDirErr := filepath.Abs(*readOutputDir)
@@ -98,12 +112,9 @@ func main() {
 		"bind", *bind,
 	)
 
-	internalURL := os.Getenv("BACKUPOS_INTERNAL_URL")
 	internalSecret := os.Getenv("BACKUPOS_INTERNAL_SECRET")
-	if internalURL == "" || internalSecret == "" {
-		slog.Warn("BACKUPOS_INTERNAL_URL or BACKUPOS_INTERNAL_SECRET not set; XCP alerts will not fire")
-	} else {
-		slog.Info("internal webhook configured", "url", internalURL)
+	if internalSecret == "" {
+		slog.Warn("BACKUPOS_INTERNAL_SECRET not set; all authenticated routes will return 503")
 	}
 
 	cert, err := tls.LoadX509KeyPair(*certPath, *keyPath)
@@ -112,168 +123,77 @@ func main() {
 		os.Exit(1)
 	}
 
-	// serverCtx is the parent context for all incoming HTTP request contexts
-	// (via http.Server.BaseContext). Cancelled on SIGINT/SIGTERM so in-flight
-	// requests can react to shutdown. Phase 2 will also use serverCtx to stop
-	// background goroutines (XAPI session reaper, CBT chain GC scheduler).
 	serverCtx, serverCancel := context.WithCancel(context.Background())
 	defer serverCancel()
 
-	var xapiClient *xapi.Client
-	if *xapiURL != "" {
-		cfg := xapi.Config{
-			PoolMasterURL:      *xapiURL,
-			Username:           *xapiUser,
-			Password:           *xapiPass,
-			CertFingerprint:    *xapiFP,
-			InsecureSkipVerify: *xapiInsecure,
-		}
-		xc, err := xapi.New(cfg, logger)
-		if err != nil {
-			logger.Error("xapi: invalid config", "error", err)
-			os.Exit(1)
-		}
-		if err := xc.Connect(serverCtx); err != nil {
-			logger.Error("xapi: initial connect failed", "error", err)
-			// Non-fatal: service still starts, but XAPI endpoints will return 503.
-		} else {
-			xapiClient = xc
-			defer xapiClient.Close() //nolint:gocritic
-		}
-	} else {
-		logger.Warn("xapi-url not set; XAPI endpoints will return 503")
-	}
+	// apiMux handles all authenticated /api2/json/* routes.
+	// /api2/json/version is registered on the main mux without auth.
+	apiMux := http.NewServeMux()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api2/json/version", func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("version",
-			"method", r.Method,
-			"path",   r.URL.Path,
-			"remote", r.RemoteAddr,
-		)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		resp := map[string]string{
-			"version": versionString,
-			"release": releaseString,
-			"repoID":  repoIDString,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-	mux.HandleFunc("/api2/json/pool", func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("pool",
-			"method", r.Method,
-			"path",   r.URL.Path,
-			"remote", r.RemoteAddr,
-		)
-
-		if xapiClient == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error": "xapi client not configured",
-			})
-			return
-		}
-
+	apiMux.HandleFunc("/api2/json/pool", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("pool", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		creds := extractGetCreds(r)
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-
-		uuid, name, err := xapiClient.PoolName(ctx)
-		if err != nil {
+		var poolUUID, poolName string
+		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+			var err error
+			poolUUID, poolName, err = c.PoolName(ctx)
+			return err
+		}); err != nil {
 			slog.Error("pool query failed", "error", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error": err.Error(),
-			})
+			respondJSONError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"uuid": uuid,
-			"name": name,
-		})
+		respondJSON(w, http.StatusOK, map[string]string{"uuid": poolUUID, "name": poolName})
 	})
-	mux.HandleFunc("/api2/json/changed-blocks", func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("changed-blocks",
-			"method", r.Method,
-			"path",   r.URL.Path,
-			"remote", r.RemoteAddr,
-		)
 
-		if xapiClient == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error": "xapi client not configured",
-			})
-			return
-		}
-
+	apiMux.HandleFunc("/api2/json/changed-blocks", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("changed-blocks", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		creds := extractGetCreds(r)
 		fromUUID := r.URL.Query().Get("from")
 		toUUID := r.URL.Query().Get("to")
 		if fromUUID == "" || toUUID == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error": "from and to query parameters required",
-			})
+			respondJSONError(w, http.StatusBadRequest, "from and to query parameters required")
 			return
 		}
-
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
-
-		regions, err := xapiClient.ChangedRegions(ctx, fromUUID, toUUID)
-		if err != nil {
+		var regions []xapi.ChangedRegion
+		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+			var err error
+			regions, err = c.ChangedRegions(ctx, fromUUID, toUUID)
+			return err
+		}); err != nil {
 			slog.Error("changed-blocks query failed", "error", err, "from", fromUUID, "to", toUUID)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error": err.Error(),
-			})
+			respondJSONError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-
 		var totalBytes int64
 		for _, rg := range regions {
 			totalBytes += rg.Length
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"from":         fromUUID,
-			"to":           toUUID,
-			"block_size":   xapi.BlockSize,
-			"region_count": len(regions),
-			"total_bytes":  totalBytes,
-			"regions":      regions,
+		respondJSON(w, http.StatusOK, map[string]any{
+			"from": fromUUID, "to": toUUID,
+			"block_size": xapi.BlockSize, "region_count": len(regions),
+			"total_bytes": totalBytes, "regions": regions,
 		})
 	})
-	mux.HandleFunc("/api2/json/snapshot", func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("snapshot",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"remote", r.RemoteAddr,
-		)
 
+	apiMux.HandleFunc("/api2/json/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("snapshot", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", "POST")
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		if xapiClient == nil {
-			respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
-			return
-		}
-
 		var body struct {
-			SourceUUID string `json:"source_uuid"`
-			NameLabel  string `json:"name_label"`
+			PoolMasterURL         string `json:"pool_master_url"`
+			Username              string `json:"username"`
+			Password              string `json:"password"`
+			CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
+			SourceUUID            string `json:"source_uuid"`
+			NameLabel             string `json:"name_label"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			respondJSONError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
@@ -283,20 +203,26 @@ func main() {
 			respondJSONError(w, http.StatusBadRequest, "source_uuid required")
 			return
 		}
-
+		creds := xapi.PerRequestCredentials{
+			PoolMasterURL: body.PoolMasterURL, Username: body.Username,
+			Password: body.Password, CertFingerprintSHA256: body.CertFingerprintSHA256,
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
-
-		info, err := xapiClient.Snapshot(ctx, body.SourceUUID, body.NameLabel)
-		if err != nil {
+		var snapInfo any
+		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+			si, err := c.Snapshot(ctx, body.SourceUUID, body.NameLabel)
+			snapInfo = si
+			return err
+		}); err != nil {
 			slog.Error("snapshot failed", "error", err, "source_uuid", body.SourceUUID)
 			respondJSONError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-
-		respondJSON(w, http.StatusOK, info)
+		respondJSON(w, http.StatusOK, snapInfo)
 	})
-	mux.HandleFunc("/api2/json/snapshot/", func(w http.ResponseWriter, r *http.Request) {
+
+	apiMux.HandleFunc("/api2/json/snapshot/", func(w http.ResponseWriter, r *http.Request) {
 		suffix := strings.TrimPrefix(r.URL.Path, "/api2/json/snapshot/")
 		parts := strings.SplitN(suffix, "/", 2)
 		uuid := parts[0]
@@ -308,10 +234,6 @@ func main() {
 		switch {
 		case r.Method == http.MethodDelete && sub == "":
 			slog.Info("snapshot-delete", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
-			if xapiClient == nil {
-				respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
-				return
-			}
 			if uuid == "" {
 				respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
 				return
@@ -320,19 +242,19 @@ func main() {
 			if mode == "" {
 				mode = "destroy"
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
-			defer cancel()
-			var err error
-			switch mode {
-			case "destroy":
-				err = xapiClient.DestroySnapshot(ctx, uuid)
-			case "data_destroy":
-				err = xapiClient.DataDestroySnapshot(ctx, uuid)
-			default:
+			if mode != "destroy" && mode != "data_destroy" {
 				respondJSONError(w, http.StatusBadRequest, "mode must be 'destroy' or 'data_destroy'")
 				return
 			}
-			if err != nil {
+			creds := extractGetCreds(r)
+			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			defer cancel()
+			if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+				if mode == "destroy" {
+					return c.DestroySnapshot(ctx, uuid)
+				}
+				return c.DataDestroySnapshot(ctx, uuid)
+			}); err != nil {
 				slog.Error("snapshot delete failed", "error", err, "uuid", uuid, "mode", mode)
 				respondJSONError(w, http.StatusBadGateway, err.Error())
 				return
@@ -341,18 +263,19 @@ func main() {
 
 		case r.Method == http.MethodGet && sub == "nbd-info":
 			slog.Info("snapshot-nbd-info", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
-			if xapiClient == nil {
-				respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
-				return
-			}
 			if uuid == "" {
 				respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
 				return
 			}
+			creds := extractGetCreds(r)
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
-			infos, err := xapiClient.SnapshotNBDInfo(ctx, uuid)
-			if err != nil {
+			var infos []xapi.NBDInfo
+			if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+				var err error
+				infos, err = c.SnapshotNBDInfo(ctx, uuid)
+				return err
+			}); err != nil {
 				slog.Error("nbd-info query failed", "error", err, "uuid", uuid)
 				respondJSONError(w, http.StatusBadGateway, err.Error())
 				return
@@ -379,17 +302,17 @@ func main() {
 
 		case r.Method == http.MethodPost && sub == "read":
 			slog.Info("snapshot-read", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
-			if xapiClient == nil {
-				respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
-				return
-			}
 			if uuid == "" {
 				respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
 				return
 			}
 			var body struct {
-				OutputPath string          `json:"output_path"`
-				Regions    []nbdread.Region `json:"regions"`
+				PoolMasterURL         string           `json:"pool_master_url"`
+				Username              string           `json:"username"`
+				Password              string           `json:"password"`
+				CertFingerprintSHA256 string           `json:"cert_fingerprint_sha256"`
+				OutputPath            string           `json:"output_path"`
+				Regions               []nbdread.Region `json:"regions"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -407,19 +330,27 @@ func main() {
 				respondJSONError(w, http.StatusBadRequest, "output_path must be under "+readOutputDirResolved)
 				return
 			}
+			creds := xapi.PerRequestCredentials{
+				PoolMasterURL: body.PoolMasterURL, Username: body.Username,
+				Password: body.Password, CertFingerprintSHA256: body.CertFingerprintSHA256,
+			}
 			nbdCtx, nbdCancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer nbdCancel()
-			infos, err := xapiClient.SnapshotNBDInfo(nbdCtx, uuid)
-			if err != nil {
+			var chosen xapi.NBDInfo
+			if err := xapi.WithSession(nbdCtx, creds, func(c *xapi.Client) error {
+				infos, err := c.SnapshotNBDInfo(nbdCtx, uuid)
+				if err != nil {
+					return err
+				}
+				if len(infos) == 0 {
+					return errors.New("no NBD options available for this snapshot — is NBD enabled on a network reaching this host's SR?")
+				}
+				chosen = infos[0]
+				return nil
+			}); err != nil {
 				respondJSONError(w, http.StatusBadGateway, "get_nbd_info: "+err.Error())
 				return
 			}
-			if len(infos) == 0 {
-				respondJSONError(w, http.StatusBadGateway,
-					"no NBD options available for this snapshot — is NBD enabled on a network reaching this host's SR?")
-				return
-			}
-			chosen := infos[0]
 			f, err := os.Create(body.OutputPath)
 			if err != nil {
 				respondJSONError(w, http.StatusInternalServerError, "create output: "+err.Error())
@@ -429,11 +360,8 @@ func main() {
 			readCtx, readCancel := context.WithTimeout(r.Context(), 10*time.Minute)
 			defer readCancel()
 			res, err := nbdread.ReadRegions(readCtx, nbdread.Connection{
-				Address:    chosen.Address,
-				Port:       chosen.Port,
-				ExportName: chosen.ExportName,
-				CertPEM:    chosen.CertPEM,
-				Subject:    chosen.Subject,
+				Address: chosen.Address, Port: chosen.Port,
+				ExportName: chosen.ExportName, CertPEM: chosen.CertPEM, Subject: chosen.Subject,
 			}, body.Regions, f)
 			if err != nil {
 				slog.Error("nbd read failed", "error", err, "uuid", uuid)
@@ -441,37 +369,35 @@ func main() {
 				return
 			}
 			respondJSON(w, http.StatusOK, map[string]any{
-				"uuid":         uuid,
-				"output_path":  body.OutputPath,
-				"bytes_read":   res.BytesRead,
-				"region_count": res.RegionCount,
-				"sha256":       res.SHA256Hex,
-				"duration_ms":  res.DurationMS,
+				"uuid": uuid, "output_path": body.OutputPath,
+				"bytes_read": res.BytesRead, "region_count": res.RegionCount,
+				"sha256": res.SHA256Hex, "duration_ms": res.DurationMS,
 			})
 
 		case r.Method == http.MethodGet && sub == "stream":
 			slog.Info("snapshot-stream", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
-			if xapiClient == nil {
-				respondJSONError(w, http.StatusServiceUnavailable, "xapi client not configured")
-				return
-			}
 			if uuid == "" {
 				respondJSONError(w, http.StatusBadRequest, "snapshot uuid required in path")
 				return
 			}
+			creds := extractGetCreds(r)
 			nbdCtx, nbdCancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer nbdCancel()
-			infos, err := xapiClient.SnapshotNBDInfo(nbdCtx, uuid)
-			if err != nil {
+			var chosen xapi.NBDInfo
+			if err := xapi.WithSession(nbdCtx, creds, func(c *xapi.Client) error {
+				infos, err := c.SnapshotNBDInfo(nbdCtx, uuid)
+				if err != nil {
+					return err
+				}
+				if len(infos) == 0 {
+					return errors.New("no NBD options for this snapshot — is NBD enabled on a network reaching this host's SR?")
+				}
+				chosen = infos[0]
+				return nil
+			}); err != nil {
 				respondJSONError(w, http.StatusBadGateway, "get_nbd_info: "+err.Error())
 				return
 			}
-			if len(infos) == 0 {
-				respondJSONError(w, http.StatusBadGateway,
-					"no NBD options for this snapshot — is NBD enabled on a network reaching this host's SR?")
-				return
-			}
-			chosen := infos[0]
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Header().Set("X-BackupOS-Snapshot-UUID", uuid)
 			w.Header().Set("X-BackupOS-NBD-Address", fmt.Sprintf("%s:%d", chosen.Address, chosen.Port))
@@ -481,11 +407,8 @@ func main() {
 			streamCtx, streamCancel := context.WithTimeout(r.Context(), 4*time.Hour)
 			defer streamCancel()
 			res, err := nbdread.StreamFullExport(streamCtx, nbdread.Connection{
-				Address:    chosen.Address,
-				Port:       chosen.Port,
-				ExportName: chosen.ExportName,
-				CertPEM:    chosen.CertPEM,
-				Subject:    chosen.Subject,
+				Address: chosen.Address, Port: chosen.Port,
+				ExportName: chosen.ExportName, CertPEM: chosen.CertPEM, Subject: chosen.Subject,
 			}, w)
 			if err != nil {
 				var bytesWritten int64
@@ -503,6 +426,15 @@ func main() {
 			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
 	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api2/json/version", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("version", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		respondJSON(w, http.StatusOK, map[string]string{
+			"version": versionString, "release": releaseString, "repoID": repoIDString,
+		})
+	})
+	mux.Handle("/api2/json/", internalauth.Middleware(internalSecret, apiMux))
 	mux.Handle("/internal/inventory", internalauth.Middleware(internalSecret, http.HandlerFunc(handleInventory)))
 	mux.HandleFunc("/", notFound)
 
@@ -587,6 +519,5 @@ func notFound(w http.ResponseWriter, r *http.Request) {
 	)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
-	resp := map[string]string{"error": "not found"}
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
 }

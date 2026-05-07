@@ -1,6 +1,6 @@
 import * as cron from 'node-cron'
 import { parseExpression } from 'cron-parser'
-import { getDb, backupJobs, backupRuns, repositories, agents, backupMonitors, verificationTests, backupDefaults, bandwidthProfiles, bandwidthRules, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
+import { getDb, backupJobs, backupRuns, repositories, agents, backupMonitors, verificationTests, backupDefaults, bandwidthProfiles, bandwidthRules, hypervisorTargets, hypervisorIntegrations, eq, and, or, lt, lte, gte, isNotNull, isNull } from '@backupos/db'
 import { decryptField } from './repo-crypto'
 import { sendAlert } from './alerts'
 import { dispatch, connectedAgentIds } from './ws-state'
@@ -151,6 +151,72 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
       jobId:              job.id,
       runId,
       config:             composeConfig,
+      repoId:             job.repositoryId ?? '',
+      repoUrl:            cfg['repositoryUrl'] ?? '',
+      repoPassword:       password,
+      envVars:            cfg,
+      bandwidthLimitKbps,
+    }
+  } else if (job.sourceType === 'xcpng_vm') {
+    const srcConfig = JSON.parse(job.sourceConfig) as { targetId?: string }
+    const [target] = await db.select().from(hypervisorTargets)
+      .where(eq(hypervisorTargets.id, srcConfig.targetId ?? '')).limit(1)
+    if (!target) {
+      await db.update(backupRuns).set({
+        status: 'failed', completedAt: now,
+        errorMessage: `hypervisor target ${srcConfig.targetId ?? '(unset)'} not found`,
+      }).where(eq(backupRuns.id, runId))
+      return false
+    }
+    const [integration] = await db.select().from(hypervisorIntegrations)
+      .where(eq(hypervisorIntegrations.id, target.integrationId ?? '')).limit(1)
+    if (!integration) {
+      await db.update(backupRuns).set({
+        status: 'failed', completedAt: now,
+        errorMessage: `hypervisor integration ${target.integrationId ?? '(unset)'} not found`,
+      }).where(eq(backupRuns.id, runId))
+      return false
+    }
+    const xcpServiceUrl    = process.env['BACKUPOS_XCP_URL']
+    const internalSecret   = process.env['BACKUPOS_INTERNAL_SECRET']
+    if (!xcpServiceUrl || !internalSecret) {
+      await db.update(backupRuns).set({
+        status: 'failed', completedAt: now,
+        errorMessage: 'BACKUPOS_XCP_URL or BACKUPOS_INTERNAL_SECRET not set on server',
+      }).where(eq(backupRuns.id, runId))
+      return false
+    }
+    const integrationConfig = JSON.parse(integration.config) as Record<string, string>
+    const tagsData = JSON.parse(target.tags ?? '{}') as {
+      disks?: Array<{ uuid: string; name_label: string; virtual_size: number; user_device: string; bootable: boolean }>
+    }
+    const poolMasterUrl = (integrationConfig['host'] ?? '').startsWith('http')
+      ? (integrationConfig['host'] ?? '')
+      : `https://${integrationConfig['host'] ?? ''}${integrationConfig['port'] ? `:${integrationConfig['port']}` : ''}`
+    msg = {
+      type:  'run_xcp_backup',
+      jobId: job.id,
+      runId,
+      pool: {
+        masterUrl:             poolMasterUrl,
+        username:              integrationConfig['username'] ?? '',
+        password:              integrationConfig['password'] ?? '',
+        certFingerprintSha256: integrationConfig['cert_fingerprint_sha256'] ?? '',
+      },
+      xcp: { serviceUrl: xcpServiceUrl, bearerToken: internalSecret },
+      target: {
+        vmUUID:   target.externalId,
+        vmName:   target.name,
+        poolUUID: '',
+        hostFqdn: (() => { try { return new URL(poolMasterUrl).hostname } catch { return poolMasterUrl } })(),
+        disks: (tagsData.disks ?? []).map(d => ({
+          vdiUUID:     d.uuid,
+          vdiName:     d.name_label,
+          virtualSize: d.virtual_size,
+          userDevice:  d.user_device,
+          bootable:    d.bootable,
+        })),
+      },
       repoId:             job.repositoryId ?? '',
       repoUrl:            cfg['repositoryUrl'] ?? '',
       repoPassword:       password,

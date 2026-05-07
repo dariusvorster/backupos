@@ -1,4 +1,4 @@
-import { getDb, repositories, agents, infraOsServices } from '@backupos/db'
+import { getDb, repositories, agents, infraOsServices, hypervisorTargets, eq } from '@backupos/db'
 import { Button } from '@/components/ui/button'
 import { createJob } from '@/app/actions/jobs'
 import { SourceConfigSection } from '@/components/source-config-section'
@@ -17,11 +17,17 @@ export default async function NewJobPage({
   const composeError        = params.composeError
 
   const db      = getDb()
-  const [repos, agentList, services] = await Promise.all([
+  const builtInPrefix = '00000000-0000-0000-0000-'
+  const [repos, agentList, services, xcpngTargets] = await Promise.all([
     db.select().from(repositories).all(),
     db.select().from(agents).all(),
     db.select().from(infraOsServices).all(),
+    db.select({ id: hypervisorTargets.id, name: hypervisorTargets.name, externalId: hypervisorTargets.externalId })
+      .from(hypervisorTargets).where(eq(hypervisorTargets.type, 'xcpng_vm')).all(),
   ])
+
+  const builtInAgent   = agentList.find(a => a.id.startsWith(builtInPrefix))
+  const defaultAgentId = prefillSourceType === 'xcpng_vm' && builtInAgent ? builtInAgent.id : ''
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -67,20 +73,23 @@ export default async function NewJobPage({
           <SourceConfigSection
             defaultSourceType={prefillSourceType || 'filesystem'}
             composeError={composeError}
+            xcpngTargets={xcpngTargets}
           />
 
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'block', fontSize: 13, color: 'var(--fg-mute)', marginBottom: 6, fontWeight: 500 }}>
               Agent
             </label>
-            <select name="agentId" style={{
+            <select name="agentId" defaultValue={defaultAgentId} style={{
               width: '100%', padding: '8px 12px',
               backgroundColor: 'var(--surf2)', border: '1px solid var(--border)',
               borderRadius: 'var(--radius-sm)', color: 'var(--fg)', fontSize: 14, outline: 'none',
             }}>
               <option value="">— Select agent —</option>
               {agentList.map(a => (
-                <option key={a.id} value={a.id}>{a.name} ({a.platform ?? 'unknown'})</option>
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.platform ?? 'unknown'}){a.id.startsWith(builtInPrefix) ? ' — recommended for VM backups' : ''}
+                </option>
               ))}
             </select>
           </div>

@@ -188,6 +188,38 @@ export type ServerMessage =
   | { type: 'force_update' }
   | { type: 'list_compose_project'; requestId: string; projectName: string }
   | { type: 'run_compose_backup'; jobId: string; runId: string; config: ComposeProjectConfig; repoId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; bandwidthLimitKbps?: number | null }
+  | { type: 'run_xcp_backup'
+      jobId:   string
+      runId:   string
+      pool: {
+        masterUrl:             string
+        username:              string
+        password:              string
+        certFingerprintSha256: string
+      }
+      xcp: {
+        serviceUrl:  string
+        bearerToken: string
+      }
+      target: {
+        vmUUID:   string
+        vmName:   string
+        poolUUID: string
+        hostFqdn: string
+        disks: Array<{
+          vdiUUID:     string
+          vdiName:     string
+          virtualSize: number
+          userDevice:  string
+          bootable:    boolean
+        }>
+      }
+      repoId:               string
+      repoUrl:              string
+      repoPassword:         string
+      envVars?:             Record<string, string>
+      bandwidthLimitKbps?:  number | null
+    }
   | { type: 'run_compose_restore'; jobId: string; runId: string; repoId: string; config: ComposeRestoreConfig; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
   | { type: 'mount_repository'; requestId: string; repoId: string; nfsServer: string; nfsExport: string; nfsOptions: string }
   | { type: 'run_verification'; verificationRunId: string; repoId: string; snapshotId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; targetType: 'temp_directory' | 'docker_volume' | 'ssh_target' | 'proxmox_vm_clone' | 'xcpng_vm'; targetConfig?: SshVerificationTargetConfig; validationHook?: string | null }
