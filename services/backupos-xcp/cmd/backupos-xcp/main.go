@@ -159,7 +159,7 @@ func main() {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
-		var regions []xapi.Region
+		var regions []xapi.ChangedRegion
 		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
 			var err error
 			regions, err = c.ChangedRegions(ctx, fromUUID, toUUID)
