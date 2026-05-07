@@ -28,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dariusvorster/backupos/services/backupos-xcp/internal/internalauth"
 	"github.com/dariusvorster/backupos/services/backupos-xcp/internal/nbdread"
 	"github.com/dariusvorster/backupos/services/backupos-xcp/internal/xapi"
 )
@@ -502,6 +503,7 @@ func main() {
 			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
 	})
+	mux.Handle("/internal/inventory", internalauth.Middleware(internalSecret, http.HandlerFunc(handleInventory)))
 	mux.HandleFunc("/", notFound)
 
 	server := &http.Server{
@@ -538,6 +540,42 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("backupos-xcp stopped")
+}
+
+func handleInventory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		PoolMasterURL         string `json:"pool_master_url"`
+		Username              string `json:"username"`
+		Password              string `json:"password"`
+		CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if body.PoolMasterURL == "" || body.Username == "" || body.Password == "" {
+		respondJSONError(w, http.StatusBadRequest, "pool_master_url, username, and password required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	result, err := xapi.InventoryPool(ctx, xapi.PoolCredentials{
+		PoolMasterURL:         body.PoolMasterURL,
+		Username:              body.Username,
+		Password:              body.Password,
+		CertFingerprintSHA256: body.CertFingerprintSHA256,
+	})
+	if err != nil {
+		slog.Error("inventory failed", "error", err, "url", body.PoolMasterURL)
+		respondJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {

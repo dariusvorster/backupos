@@ -10,6 +10,7 @@ async function createHypervisor(formData: FormData) {
   const username = (formData.get('username') as string).trim()
   const password = (formData.get('password') as string).trim()
   const port = formData.get('port') ? Number(formData.get('port')) : undefined
+  const certFingerprint = (formData.get('cert_fingerprint_sha256') as string | null)?.trim() ?? ''
 
   if (!name || !type || !host) return
 
@@ -18,7 +19,7 @@ async function createHypervisor(formData: FormData) {
     id:        crypto.randomUUID(),
     name,
     type:      type as 'proxmox' | 'xcpng' | 'vmware',
-    config:    JSON.stringify({ host, username, password, port }),
+    config:    JSON.stringify({ host, username, password, port, cert_fingerprint_sha256: certFingerprint }),
     status:    'unknown',
     createdAt: new Date(),
   })
@@ -98,6 +99,11 @@ export default function NewHypervisorPage() {
           <div>
             <label style={labelStyle}>Password / API token</label>
             <input name="password" type="password" placeholder="••••••••" style={inputStyle} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>TLS cert fingerprint (SHA-256, XCP-ng only)</label>
+            <input name="cert_fingerprint_sha256" placeholder="AB:CD:EF:..." style={inputStyle} />
           </div>
 
           <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>

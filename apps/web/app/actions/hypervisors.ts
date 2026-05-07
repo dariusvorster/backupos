@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDb, hypervisorIntegrations, hypervisorTargets, eq } from '@backupos/db'
-import { ProxmoxHypervisorDriver, XCPNGHypervisorDriver, VMwareHypervisorDriver } from '@backupos/hypervisors'
-import type { ProxmoxConfig, XCPNGConfig, VMwareConfig } from '@backupos/hypervisors'
+import { ProxmoxHypervisorDriver, VMwareHypervisorDriver } from '@backupos/hypervisors'
+import type { ProxmoxConfig, VMwareConfig } from '@backupos/hypervisors'
 import { requireAdmin } from '@/lib/user'
 
 type DiscoverResult = { ok: boolean; count?: number; error?: string }
@@ -57,18 +57,44 @@ export async function discoverHypervisorTargets(integrationId: string): Promise<
         lastSeenAt:   now,
       }))
     } else if (integration.type === 'xcpng') {
-      const driver  = new XCPNGHypervisorDriver(config as XCPNGConfig)
-      const targets = await driver.listTargets()
-      rows = targets.map(x => ({
-        id:           crypto.randomUUID(),
-        integrationId,
-        externalId:   x.uuid,
-        name:         x.name,
-        type:         'xcpng_vm',
-        node:         x.node,
-        status:       x.status,
-        lastSeenAt:   now,
-      }))
+      const cfg = config as { host: string; username: string; password: string; cert_fingerprint_sha256?: string }
+      const xcpURL = process.env.BACKUPOS_XCP_URL
+      if (!xcpURL) throw new Error('BACKUPOS_XCP_URL not configured')
+      const secret = process.env.BACKUPOS_INTERNAL_SECRET
+      if (!secret) throw new Error('BACKUPOS_INTERNAL_SECRET not configured')
+      const res = await fetch(`${xcpURL}/internal/inventory`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${secret}`,
+        },
+        body: JSON.stringify({
+          pool_master_url:          cfg.host,
+          username:                 cfg.username,
+          password:                 cfg.password,
+          cert_fingerprint_sha256:  cfg.cert_fingerprint_sha256 ?? '',
+        }),
+      })
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({ error: 'unknown error' })) as { error?: string }
+        throw new Error(errBody.error ?? `XCP inventory HTTP ${res.status}`)
+      }
+      type XCPDisk = { uuid: string; name_label: string; virtual_size: number; type: string; cbt_enabled: boolean; user_device: string; bootable: boolean }
+      type XCPVM  = { uuid: string; name_label: string; power_state: string; is_template: boolean; is_control_domain: boolean; disks: XCPDisk[] }
+      const inv = await res.json() as { pool_uuid: string; pool_name: string; host_count: number; vms: XCPVM[] }
+      rows = inv.vms
+        .filter(vm => !vm.is_template && !vm.is_control_domain)
+        .map(vm => ({
+          id:           crypto.randomUUID(),
+          integrationId,
+          externalId:   vm.uuid,
+          name:         vm.name_label,
+          type:         'xcpng_vm',
+          node:         inv.pool_name,
+          status:       vm.power_state.toLowerCase(),
+          tags:         JSON.stringify({ disks: vm.disks }),
+          lastSeenAt:   now,
+        }))
     } else if (integration.type === 'vmware') {
       const driver  = new VMwareHypervisorDriver(config as VMwareConfig)
       const targets = await driver.listTargets()

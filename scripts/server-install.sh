@@ -429,6 +429,14 @@ if ! grep -q '^BACKUPOS_INTERNAL_URL=' "$ENV_FILE" 2>/dev/null; then
   echo "BACKUPOS_INTERNAL_URL=http://127.0.0.1:3093" >> "$ENV_FILE"
   echo "[backupos] Set BACKUPOS_INTERNAL_URL"
 fi
+if ! grep -q '^BACKUPOS_XCP_URL=' "$ENV_FILE" 2>/dev/null; then
+  echo "BACKUPOS_XCP_URL=https://127.0.0.1:8009" >> "$ENV_FILE"
+  echo "[backupos] Set BACKUPOS_XCP_URL"
+fi
+if ! grep -q '^NODE_EXTRA_CA_CERTS=' "$ENV_FILE" 2>/dev/null; then
+  echo "NODE_EXTRA_CA_CERTS=/var/lib/backupos/xcp/cert.pem" >> "$ENV_FILE"
+  echo "[backupos] Set NODE_EXTRA_CA_CERTS"
+fi
 
 # Heal env-file ownership for upgrades from older installs that left the
 # file as root:root. The service runs as $SVC_USER and needs write access
