@@ -4,7 +4,7 @@ import { useState } from 'react'
 import type { ComposeProjectConfig, ComposeServiceConfig } from '@backupos/agent-protocol'
 
 type QuiescenceType = 'none' | 'pause' | 'stop' | 'apphook'
-type ApphookType = 'postgres' | 'mysql' | 'redis' | 'sqlite'
+type ApphookType = 'postgres' | 'mysql' | 'redis' | 'sqlite' | 'mongodb'
 
 interface VolumeInfo { name?: string; target: string }
 
@@ -19,6 +19,7 @@ interface ServiceState {
   apphookDatabase: string
   apphookHost: string
   apphookPort: string
+  apphookAuthDatabase: string
   includedVolumes: string[]
   allVolumes: VolumeInfo[]
   binds: string[]
@@ -47,6 +48,7 @@ const APPHOOK_DEFAULTS: Record<ApphookType, { port: number; database: string }> 
   mysql:    { port: 3306, database: '' },
   redis:    { port: 6379, database: '' },
   sqlite:   { port: 0,    database: '' },
+  mongodb:  { port: 27017, database: '' },
 }
 
 function buildConfig(projectName: string, listing: Listing, services: ServiceState[]) {
@@ -64,6 +66,7 @@ function buildConfig(projectName: string, listing: Listing, services: ServiceSta
         database:    s.apphookDatabase    || undefined,
         host:        s.apphookHost        || undefined,
         port:        s.apphookPort ? parseInt(s.apphookPort) : undefined,
+        authDatabase: s.apphookType === 'mongodb' ? (s.apphookAuthDatabase || undefined) : undefined,
       } : undefined,
       includedVolumes: s.includedVolumes,
       includedBindMounts: [],
@@ -107,6 +110,7 @@ function hydrateService(s: ComposeServiceConfig): ServiceState {
     apphookDatabase:    s.apphookConfig?.database    ?? d.database,
     apphookHost:        s.apphookConfig?.host        ?? '',
     apphookPort:        s.apphookConfig?.port ? String(s.apphookConfig.port) : (d.port > 0 ? String(d.port) : ''),
+    apphookAuthDatabase: s.apphookConfig?.authDatabase ?? 'admin',
     includedVolumes: s.includedVolumes,
     allVolumes: s.includedVolumes.map(v => ({ name: v, target: '' })),
     binds: s.includedBindMounts ?? [],
@@ -123,6 +127,7 @@ function initService(s: ListingService): ServiceState {
     apphookUsername: '', apphookPasswordEnv: '',
     apphookDatabase: d.database, apphookHost: '',
     apphookPort: d.port > 0 ? String(d.port) : '',
+    apphookAuthDatabase: 'admin',
     includedVolumes: s.volumes.filter(v => v.type === 'volume' && v.name).map(v => v.name!),
     allVolumes: s.volumes.filter(v => v.type === 'volume').map(v => ({ name: v.name, target: v.target })),
     binds: s.binds,
@@ -256,6 +261,7 @@ export function ComposeProjectFields({
                     <option value="mysql">MySQL / MariaDB</option>
                     <option value="redis">Redis</option>
                     <option value="sqlite">SQLite</option>
+                    <option value="mongodb">MongoDB</option>
                   </select>
                 </div>
                 <div>
@@ -288,6 +294,13 @@ export function ComposeProjectFields({
                         onChange={e => update(idx, { apphookPort: e.target.value })} />
                     </div>
                   </>
+                )}
+                {svc.apphookType === 'mongodb' && (
+                  <div>
+                    <label style={lbl}>Auth database</label>
+                    <input type="text" value={svc.apphookAuthDatabase} placeholder="admin" style={inp}
+                      onChange={e => update(idx, { apphookAuthDatabase: e.target.value })} />
+                  </div>
                 )}
               </div>
             )}
