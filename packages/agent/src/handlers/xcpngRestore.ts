@@ -288,9 +288,12 @@ export async function runXcpngVmRestore(
       const rest   = tag.slice(vifPrefix.length)
       const eqIdx  = rest.indexOf('=')
       if (eqIdx < 0) continue
-      const jsonStr = rest.slice(eqIdx + 1)
+      const encoded = rest.slice(eqIdx + 1)
       let vifInfo: { device: string; network_label: string; mac: string; mtu: number; locking_mode: string }
-      try { vifInfo = JSON.parse(jsonStr) } catch { log(`WARN: could not parse VIF tag JSON: ${jsonStr}`); continue }
+      try {
+        const jsonStr = Buffer.from(encoded, 'base64').toString('utf-8')
+        vifInfo = JSON.parse(jsonStr)
+      } catch { log(`WARN: could not parse VIF tag JSON: ${encoded}`); continue }
       try {
         const vifResp = await xcpPost({
           path: '/api2/json/vif/create',
