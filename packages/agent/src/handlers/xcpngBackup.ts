@@ -111,7 +111,8 @@ export async function runXcpngBackup(
       if (vifsResp.status === 200) {
         const parsed = JSON.parse(vifsResp.body) as { vifs: VIFInfo[] }
         for (const vif of parsed.vifs ?? []) {
-          vifTags.push(`xcp:vif=${vif.device}=${JSON.stringify(vif)}`)
+          const encoded = Buffer.from(JSON.stringify(vif)).toString('base64')
+          vifTags.push(`xcp:vif=${vif.device}=${encoded}`)
         }
         log(`captured ${parsed.vifs?.length ?? 0} VIF(s) for VM ${target.vmUUID}`)
       } else {
