@@ -8,7 +8,6 @@ import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
-import { ResticEngine } from '@backupos/engine'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, requestInitRepository, resolveInitRepository, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete, resolveSnapshotPaths } from './lib/ws-state'
 import { ensureRepoMountedOnAgent } from './lib/repo-mount'
@@ -622,7 +621,7 @@ void app.prepare().then(async () => {
             }
           }
 
-          // Run forget/prune using the job's retention policy (falls back to global defaults)
+          // Dispatch forget/prune to the agent — it owns the repo mount namespace
           void (async () => {
             try {
               const [job] = await db.select().from(backupJobs)
@@ -630,7 +629,7 @@ void app.prepare().then(async () => {
               if (!job?.repositoryId) return
 
               const jobHasRetention = job.keepLast || job.keepDaily || job.keepWeekly || job.keepMonthly || job.keepYearly
-              let policy: { keepLast?: number; keepDaily?: number; keepWeekly?: number; keepMonthly?: number; keepYearly?: number; keepTags?: string[] } | null = null
+              let policy: { keepLast?: number; keepDaily?: number; keepWeekly?: number; keepMonthly?: number; keepYearly?: number } | null = null
 
               if (jobHasRetention) {
                 policy = {
@@ -660,22 +659,25 @@ void app.prepare().then(async () => {
               if (!repo) return
 
               const repoCfg = JSON.parse(decryptField(repo.config)) as Record<string, string>
-              const engine = new ResticEngine({
-                repositoryUrl: repoCfg['repositoryUrl'] ?? '',
-                password:      decryptField(repo.resticPassword),
-                envVars:       repoCfg,
-                binaryPath:    process.env['RESTIC_BINARY_PATH'],
-              })
-
               const tags = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
-              const forget = await engine.forget({ ...policy, keepTags: tags })
 
-              await db.update(backupRuns).set({
-                snapshotsRemoved: forget.removed,
-                snapshotsKept:    forget.kept,
-              }).where(eq(backupRuns.id, run.id))
+              dispatch(agentId, {
+                type:         'run_forget_prune',
+                requestId:    crypto.randomUUID(),
+                jobId:        msg.jobId,
+                runId:        run.id,
+                repoUrl:      repoCfg['repositoryUrl'] ?? '',
+                repoPassword: decryptField(repo.resticPassword),
+                envVars:      repoCfg,
+                keepLast:     policy.keepLast,
+                keepDaily:    policy.keepDaily,
+                keepWeekly:   policy.keepWeekly,
+                keepMonthly:  policy.keepMonthly,
+                keepYearly:   policy.keepYearly,
+                keepTags:     tags,
+              })
             } catch (err) {
-              console.error('[server] forget/prune failed for job', msg.jobId, err)
+              console.error('[server] forget/prune dispatch failed for job', msg.jobId, err)
             }
           })()
 
@@ -822,6 +824,17 @@ void app.prepare().then(async () => {
 
         } else if (msg.type === 'list_snapshot_paths_result') {
           resolveSnapshotPaths(msg.requestId, { ok: msg.ok, paths: msg.paths, error: msg.error })
+
+        } else if (msg.type === 'forget_prune_complete') {
+          await db.update(backupRuns).set({
+            snapshotsRemoved: msg.removed,
+            snapshotsKept:    msg.kept,
+          }).where(eq(backupRuns.id, msg.runId))
+          if (!msg.success) {
+            console.error(`[server] forget/prune failed for job ${msg.jobId}:`, msg.error)
+          } else {
+            console.log(`[server] forget/prune for job ${msg.jobId}: removed ${msg.removed} kept ${msg.kept} in ${msg.durationMs}ms`)
+          }
 
         } else if (msg.type === 'filesystem_restore_started' && agentId) {
           console.log(`[restore] filesystem_restore_started restoreId=${msg.restoreId} agentId=${agentId}`)

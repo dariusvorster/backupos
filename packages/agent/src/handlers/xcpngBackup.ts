@@ -31,6 +31,7 @@ async function xcpRequest(opts: {
       'X-XAPI-Password':                opts.pool.password,
       'X-XAPI-Cert-Fingerprint-SHA256': opts.pool.certFingerprintSha256,
     } : {}
+    const bodyStr = opts.body ? JSON.stringify(opts.body) : ''
     const req = https.request({
       hostname:           url.hostname,
       port:               url.port ? parseInt(url.port) : 443,
@@ -38,9 +39,11 @@ async function xcpRequest(opts: {
       method:             opts.method,
       rejectUnauthorized: false, // self-signed cert; bearer token provides auth. TODO: proper pinning
       headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${opts.bearerToken}`,
+        'Content-Type':   'application/json',
+        'Authorization':  `Bearer ${opts.bearerToken}`,
         ...poolHeaders,
+        // Explicit Content-Length prevents Node from dropping the body on DELETE
+        ...(bodyStr ? { 'Content-Length': String(Buffer.byteLength(bodyStr)) } : {}),
       },
     }, (res) => {
       const chunks: Buffer[] = []
@@ -48,8 +51,8 @@ async function xcpRequest(opts: {
       res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }))
     })
     req.on('error', reject)
-    if (opts.body) req.end(JSON.stringify(opts.body))
-    else req.end()
+    if (bodyStr) req.write(bodyStr)
+    req.end()
   })
 }
 

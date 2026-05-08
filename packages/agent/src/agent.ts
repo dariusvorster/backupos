@@ -308,6 +308,12 @@ async function handleMessage(raw: WebSocket.RawData): Promise<void> {
       await runVerificationHandler(msg, send, BINARY)
     })()
 
+  } else if (msg.type === 'run_forget_prune') {
+    void (async () => {
+      const { handleForgetPrune } = await import('./handlers/forgetPrune')
+      await handleForgetPrune(msg, send, BINARY)
+    })()
+
   } else if (msg.type === 'list_compose_project') {
     void (async () => {
       try {
