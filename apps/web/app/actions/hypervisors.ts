@@ -124,7 +124,7 @@ export async function discoverHypervisorTargets(integrationId: string): Promise<
   }
 
   await db.update(hypervisorIntegrations)
-    .set({ status: 'ok' })
+    .set({ status: 'ok', lastSyncedAt: new Date() })
     .where(eq(hypervisorIntegrations.id, integrationId))
 
   revalidatePath('/hypervisors')

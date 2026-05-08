@@ -19,6 +19,26 @@ function vmBadge(s: string | null): BadgeStatus {
   return 'idle'
 }
 
+function formatRelativeTime(date: Date | null): string {
+  if (!date) return 'never synced'
+  const now    = Date.now()
+  const then   = date.getTime()
+  const diffMs = now - then
+  if (diffMs < 0)            return 'just now'
+  if (diffMs < 60_000)       return 'just now'
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60)          return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24)            return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  const days = Math.floor(hours / 24)
+  return `${days} day${days === 1 ? '' : 's'} ago`
+}
+
+function isStale(date: Date | null): boolean {
+  if (!date) return true
+  return Date.now() - date.getTime() > 24 * 60 * 60 * 1000
+}
+
 export default async function HypervisorsPage() {
   const db           = getDb()
   const integrations = await db.select().from(hypervisorIntegrations).all()
@@ -61,7 +81,7 @@ export default async function HypervisorsPage() {
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)' }}>{integration.name}</div>
                     <div style={{ fontSize: 12, color: 'var(--fg-mute)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                      {integration.type} · {vmList.length} VMs/LXCs
+                      {integration.type} · {vmList.length} VMs/LXCs · <span style={{ color: isStale(integration.lastSyncedAt) ? 'var(--warn)' : 'var(--fg-mute)' }}>Synced {formatRelativeTime(integration.lastSyncedAt)}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

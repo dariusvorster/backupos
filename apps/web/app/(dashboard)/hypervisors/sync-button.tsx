@@ -28,6 +28,7 @@ export function SyncButton({ integrationId }: { integrationId: string }) {
       <button
         onClick={handleSync}
         disabled={pending}
+        title="Refresh the VM list and each VM's disk topology from the hypervisor. Click after adding, removing, or resizing disks."
         style={{
           padding: '5px 14px', fontSize: 12, cursor: pending ? 'default' : 'pointer',
           borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
@@ -35,7 +36,7 @@ export function SyncButton({ integrationId }: { integrationId: string }) {
           opacity: pending ? 0.6 : 1,
         }}
       >
-        {pending ? 'Scanning…' : 'Sync VMs'}
+        {pending ? 'Scanning…' : 'Sync VMs & disks'}
       </button>
     </div>
   )
