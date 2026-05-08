@@ -212,6 +212,27 @@ else
   log "WARN: nbdsh not found — NBD snapshot read endpoint will return errors until installed"
 fi
 
+# ── NFS client ────────────────────────────────────────────────────────────────
+# Required for restic repositories on NFS-backed datastores (the built-in
+# agent mounts NFS in its own namespace via `mount -t nfs`). Without this,
+# `mount.nfs` is missing and the first NFS backup fails with "you might
+# need a /sbin/mount.<type> helper program".
+if ! command -v mount.nfs &>/dev/null; then
+  log "Installing NFS client..."
+  if command -v apt-get &>/dev/null; then
+    apt-get install -y nfs-common
+  elif command -v yum &>/dev/null; then
+    yum install -y nfs-utils
+  else
+    log "WARN: cannot auto-install NFS client — install nfs-common (Debian/Ubuntu) or nfs-utils (RHEL/Fedora) manually if you plan to use NFS-backed repositories"
+  fi
+fi
+if command -v mount.nfs &>/dev/null; then
+  ok "NFS client (mount.nfs)"
+else
+  log "WARN: mount.nfs not found — NFS-backed repositories will fail to mount until installed"
+fi
+
 # Go (1.22+) for backupos-pbs service.
 #
 # Users typically install Go from the official tarball at /usr/local/go/.
