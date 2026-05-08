@@ -235,15 +235,16 @@ export type ServerMessage =
         serviceUrl:  string
         bearerToken: string
       }
-      vmUUID:       string
-      vmName:       string
-      targetSrUUID: string
-      repoId:       string
-      repoUrl:      string
-      repoPassword: string
-      envVars?:     Record<string, string>
-      memoryBytes?: number
-      vcpus?:       number
+      vmUUID:                  string
+      vmName:                  string
+      targetSrUUID:            string
+      targetTemplateNameLabel?: string
+      repoId:                  string
+      repoUrl:                 string
+      repoPassword:            string
+      envVars?:                Record<string, string>
+      memoryBytes?:            number
+      vcpus?:                  number
       disks?: Array<{
         originalVdiUUID: string
         virtualSize:     number

@@ -8,8 +8,105 @@ import (
 	xenapi "github.com/terra-farm/go-xen-api-client"
 )
 
-// CreateVM creates a minimal HVM VM shell and returns its UUID.
-// The VM has no VBDs attached — use CreateVBD to attach disks after creation.
+// CloneVMOpts configures a VM clone from template operation.
+type CloneVMOpts struct {
+	TemplateNameLabel string // resolved to ref via FindTemplateByLabel; defaults to "Other install media"
+	NewNameLabel      string
+	MemoryBytes       int64 // 0 → keep template default
+	Vcpus             int   // 0 → keep template default
+}
+
+// CloneVMResult carries the new VM's UUID.
+type CloneVMResult struct {
+	UUID string
+}
+
+// FindTemplateByLabel returns the first VM template ref whose name-label matches.
+func (c *Client) FindTemplateByLabel(ctx context.Context, nameLabel string) (xenapi.VMRef, error) {
+	raw, sess, release, err := c.Session(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+
+	refs, err := raw.VM.GetAll(sess)
+	if err != nil {
+		return "", fmt.Errorf("xapi: vm.get_all: %w", err)
+	}
+	for _, ref := range refs {
+		isTemplate, terr := raw.VM.GetIsATemplate(sess, ref)
+		if terr != nil || !isTemplate {
+			continue
+		}
+		label, lerr := raw.VM.GetNameLabel(sess, ref)
+		if lerr != nil {
+			continue
+		}
+		if label == nameLabel {
+			return ref, nil
+		}
+	}
+	return "", fmt.Errorf("xapi: template %q not found", nameLabel)
+}
+
+// CloneVMFromTemplate clones a template VM, removes the stub VBDs inherited
+// from the template, and optionally overrides memory/vcpus. Returns the new
+// VM's UUID. Use this instead of CreateVM — VM.Clone is the correct XAPI
+// primitive for creating user VMs; VM.Create is for system templates only.
+func (c *Client) CloneVMFromTemplate(ctx context.Context, opts CloneVMOpts) (*CloneVMResult, error) {
+	if opts.TemplateNameLabel == "" {
+		opts.TemplateNameLabel = "Other install media"
+	}
+	if opts.NewNameLabel == "" {
+		return nil, errors.New("xapi: NewNameLabel required")
+	}
+
+	tmplRef, err := c.FindTemplateByLabel(ctx, opts.TemplateNameLabel)
+	if err != nil {
+		return nil, err
+	}
+
+	raw, sess, release, err := c.Session(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	vmRef, err := raw.VM.Clone(sess, tmplRef, opts.NewNameLabel)
+	if err != nil {
+		return nil, fmt.Errorf("xapi: vm.clone: %w", err)
+	}
+
+	// Remove template stub VBDs so restored disks can be attached cleanly.
+	vbdRefs, _ := raw.VM.GetVBDs(sess, vmRef)
+	for _, vbdRef := range vbdRefs {
+		vdiRef, verr := raw.VBD.GetVDI(sess, vbdRef)
+		if verr == nil && string(vdiRef) != "" && string(vdiRef) != "OpaqueRef:NULL" {
+			_ = raw.VDI.Destroy(sess, vdiRef) // template VDIs may be shared; ignore errors
+		}
+		_ = raw.VBD.Destroy(sess, vbdRef)
+	}
+
+	if opts.MemoryBytes > 0 {
+		_ = raw.VM.SetMemoryStaticMax(sess, vmRef, int(opts.MemoryBytes))
+		_ = raw.VM.SetMemoryDynamicMax(sess, vmRef, int(opts.MemoryBytes))
+		_ = raw.VM.SetMemoryDynamicMin(sess, vmRef, int(opts.MemoryBytes/2))
+		_ = raw.VM.SetMemoryStaticMin(sess, vmRef, int(opts.MemoryBytes/2))
+	}
+	if opts.Vcpus > 0 {
+		_ = raw.VM.SetVCPUsMax(sess, vmRef, opts.Vcpus)
+		_ = raw.VM.SetVCPUsAtStartup(sess, vmRef, opts.Vcpus)
+	}
+
+	uuid, err := raw.VM.GetUUID(sess, vmRef)
+	if err != nil {
+		return nil, fmt.Errorf("xapi: vm.get_uuid after clone: %w", err)
+	}
+	return &CloneVMResult{UUID: uuid}, nil
+}
+
+// DEPRECATED: CreateVM uses VM.Create which XAPI rejects for user VMs.
+// Use CloneVMFromTemplate instead.
 func (c *Client) CreateVM(ctx context.Context, nameLabel string, memoryBytes int64, vcpus int) (string, error) {
 	if nameLabel == "" {
 		return "", errors.New("xapi: nameLabel required")

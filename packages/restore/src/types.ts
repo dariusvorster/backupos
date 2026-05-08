@@ -73,6 +73,7 @@ export interface XcpngVmRestoreStep {
   vmName: string
   targetSrUUID: string
   backupJobId: string
+  targetTemplateNameLabel?: string
   memoryBytes?: number
   vcpus?: number
   onFailure: OnFailure
