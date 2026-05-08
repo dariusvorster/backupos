@@ -260,16 +260,39 @@ func main() {
 				PoolMasterURL: delBody.PoolMasterURL, Username: delBody.Username,
 				Password: delBody.Password, CertFingerprintSHA256: delBody.CertFingerprintSHA256,
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			// XCP-ng holds VDI locks briefly after NBD streams close while the
+			// coalesce task runs; retry on VDI_IN_USE with linear backoff.
+			const maxAttempts = 5
+			backoff := []time.Duration{2 * time.Second, 4 * time.Second, 6 * time.Second, 8 * time.Second, 10 * time.Second}
+			ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 			defer cancel()
-			if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
-				if mode == "destroy" {
-					return c.DestroySnapshot(ctx, uuid)
+			var lastErr error
+			for attempt := 0; attempt < maxAttempts; attempt++ {
+				if attempt > 0 {
+					delay := backoff[attempt-1]
+					slog.Info("snapshot-delete retry", "uuid", uuid, "attempt", attempt+1, "backoff_s", delay.Seconds(), "reason", lastErr.Error())
+					select {
+					case <-time.After(delay):
+					case <-ctx.Done():
+						break
+					}
 				}
-				return c.DataDestroySnapshot(ctx, uuid)
-			}); err != nil {
-				slog.Error("snapshot delete failed", "error", err, "uuid", uuid, "mode", mode)
-				respondJSONError(w, http.StatusBadGateway, err.Error())
+				lastErr = xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+					if mode == "destroy" {
+						return c.DestroySnapshot(ctx, uuid)
+					}
+					return c.DataDestroySnapshot(ctx, uuid)
+				})
+				if lastErr == nil {
+					break
+				}
+				if !strings.Contains(lastErr.Error(), "VDI_IN_USE") {
+					break // permanent error — don't retry
+				}
+			}
+			if lastErr != nil {
+				slog.Error("snapshot delete failed", "error", lastErr, "uuid", uuid, "mode", mode)
+				respondJSONError(w, http.StatusBadGateway, lastErr.Error())
 				return
 			}
 			respondJSON(w, http.StatusOK, map[string]any{"uuid": uuid, "mode": mode, "status": "ok"})
