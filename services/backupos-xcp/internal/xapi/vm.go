@@ -87,6 +87,20 @@ func (c *Client) CloneVMFromTemplate(ctx context.Context, opts CloneVMOpts) (*Cl
 		_ = raw.VBD.Destroy(sess, vbdRef)
 	}
 
+	// Convert from template to VM. VM.Clone returns a template by default;
+	// without this the result is invisible to xe vm-list and cannot be started.
+	// Must come before SetNameLabel — XAPI auto-appends "(restored)" to template
+	// clones but only applies the auto-name during the conversion step.
+	if err := raw.VM.SetIsATemplate(sess, vmRef, false); err != nil {
+		_ = raw.VM.Destroy(sess, vmRef)
+		return nil, fmt.Errorf("xapi: vm.set_is_a_template(false): %w", err)
+	}
+
+	// Override the auto-applied "(restored)" suffix that SetIsATemplate triggers.
+	if err := raw.VM.SetNameLabel(sess, vmRef, opts.NewNameLabel); err != nil {
+		return nil, fmt.Errorf("xapi: vm.set_name_label: %w", err)
+	}
+
 	if opts.MemoryBytes > 0 {
 		_ = raw.VM.SetMemoryStaticMax(sess, vmRef, int(opts.MemoryBytes))
 		_ = raw.VM.SetMemoryDynamicMax(sess, vmRef, int(opts.MemoryBytes))
