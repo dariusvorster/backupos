@@ -5,6 +5,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb, backupRuns }         from '@backupos/db'
 import { lt, eq, and, desc }         from '@backupos/db'
 import { authenticate }              from '@/lib/integration-auth'
+import { triggerJobById }            from '@/lib/scheduler'
+
+function checkInternalAuth(req: NextRequest): NextResponse | null {
+  const expected = process.env.BACKUPOS_INTERNAL_SECRET
+  if (!expected) return NextResponse.json({ error: 'internal auth not configured' }, { status: 503 })
+  if (req.headers.get('authorization') !== `Bearer ${expected}`) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+  return null
+}
+
+export async function POST(req: NextRequest) {
+  const deny = checkInternalAuth(req)
+  if (deny) return deny
+
+  let body: { job_id?: string }
+  try { body = await req.json() as { job_id?: string } }
+  catch { return NextResponse.json({ error: 'invalid JSON' }, { status: 400 }) }
+
+  if (!body.job_id) return NextResponse.json({ error: 'job_id required' }, { status: 400 })
+
+  const result = await triggerJobById(body.job_id)
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: 422 })
+  return NextResponse.json({ run_id: result.runId }, { status: 201 })
+}
 
 function decodeCursor(cursor: string): { startedAt: Date; id: string } | null {
   try {
