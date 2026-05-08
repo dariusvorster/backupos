@@ -4,7 +4,8 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb, backupRuns, eq }     from '@backupos/db'
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const expected = process.env.BACKUPOS_INTERNAL_SECRET
   if (!expected) return NextResponse.json({ error: 'internal auth not configured' }, { status: 503 })
   if (req.headers.get('authorization') !== `Bearer ${expected}`) {
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 
   const db    = getDb()
-  const [run] = await db.select().from(backupRuns).where(eq(backupRuns.id, params.id)).limit(1)
+  const [run] = await db.select().from(backupRuns).where(eq(backupRuns.id, id)).limit(1)
   if (!run) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
   return NextResponse.json({
