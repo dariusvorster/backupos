@@ -162,6 +162,18 @@ func (c *Client) Session(ctx context.Context) (*xenapi.Client, xenapi.SessionRef
 	return c.raw, c.session, c.mu.Unlock, nil
 }
 
+// GetSessionID returns the active session ID as a plain string, suitable for
+// use in URL query parameters (e.g. /import_raw_vdi?session_id=...).
+func (c *Client) GetSessionID(ctx context.Context) (string, error) {
+	_, sess, release, err := c.Session(ctx)
+	if err != nil {
+		return "", err
+	}
+	id := string(sess)
+	release()
+	return id, nil
+}
+
 // PoolName returns the human-readable name of the connected pool.
 // Convenience wrapper for the /api2/json/pool endpoint.
 func (c *Client) PoolName(ctx context.Context) (uuid string, name string, err error) {

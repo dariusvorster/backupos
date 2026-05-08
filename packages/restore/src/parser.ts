@@ -62,15 +62,16 @@ const notifyStep = z.object({
 })
 
 const xcpngVmRestoreStep = z.object({
-  name:           z.string(),
-  type:           z.literal('xcpng_vm_restore'),
-  vm_uuid:        z.string(),
-  vm_name:        z.string(),
-  target_sr_uuid: z.string(),
-  backup_job_id:  z.string(),
-  memory_bytes:   z.number().int().positive().optional(),
-  vcpus:          z.number().int().positive().optional(),
-  on_failure:     onFailure.default('abort'),
+  name:                      z.string(),
+  type:                      z.literal('xcpng_vm_restore'),
+  vm_uuid:                   z.string(),
+  vm_name:                   z.string(),
+  target_sr_uuid:            z.string(),
+  backup_job_id:             z.string(),
+  target_template_name_label: z.string().default('Other install media'),
+  memory_bytes:              z.number().int().positive().optional(),
+  vcpus:                     z.number().int().positive().optional(),
+  on_failure:                onFailure.default('abort'),
 })
 
 const restoreStepSchema = z.discriminatedUnion('type', [
@@ -117,15 +118,16 @@ export class RestoreSpecParseError extends Error {
 function toStep(raw: z.infer<typeof restoreStepSchema>): RestoreStep {
   if (raw.type === 'xcpng_vm_restore') {
     const s: XcpngVmRestoreStep = {
-      name:         raw.name,
-      type:         'xcpng_vm_restore',
-      vmUUID:       raw.vm_uuid,
-      vmName:       raw.vm_name,
-      targetSrUUID: raw.target_sr_uuid,
-      backupJobId:  raw.backup_job_id,
-      memoryBytes:  raw.memory_bytes,
-      vcpus:        raw.vcpus,
-      onFailure:    raw.on_failure,
+      name:                    raw.name,
+      type:                    'xcpng_vm_restore',
+      vmUUID:                  raw.vm_uuid,
+      vmName:                  raw.vm_name,
+      targetSrUUID:            raw.target_sr_uuid,
+      backupJobId:             raw.backup_job_id,
+      targetTemplateNameLabel: raw.target_template_name_label,
+      memoryBytes:             raw.memory_bytes,
+      vcpus:                   raw.vcpus,
+      onFailure:               raw.on_failure,
     }
     return s
   }

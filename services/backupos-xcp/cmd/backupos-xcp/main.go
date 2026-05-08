@@ -514,46 +514,32 @@ func main() {
 				respondJSONError(w, http.StatusBadRequest, "vdi uuid required in path")
 				return
 			}
-			// Pool creds in headers (body is the raw VDI image stream).
 			creds := extractGetCreds(r)
-			// Session must span VDINBDInfo + UploadFromReader — export_name encodes session_id.
+			contentLength := r.ContentLength
 			uploadCtx, uploadCancel := context.WithTimeout(r.Context(), 4*time.Hour)
 			defer uploadCancel()
-			var headersSent bool
+			var uploadResult *xapi.ImportRawVDIResult
 			if err := xapi.WithSession(uploadCtx, creds, func(c *xapi.Client) error {
-				infos, err := c.VDINBDInfo(uploadCtx, vdiUUID)
+				sessionID, err := c.GetSessionID(uploadCtx)
 				if err != nil {
-					return fmt.Errorf("vdi_nbd_info: %w", err)
+					return fmt.Errorf("get_session_id: %w", err)
 				}
-				if len(infos) == 0 {
-					return errors.New("no NBD options for this VDI — is NBD enabled on a network reaching this SR?")
-				}
-				chosen := infos[0]
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				headersSent = true
-				res, uploadErr := nbdread.UploadFromReader(uploadCtx, nbdread.Connection{
-					Address: chosen.Address, Port: chosen.Port,
-					ExportName: chosen.ExportName, CertPEM: chosen.CertPEM, Subject: chosen.Subject,
-				}, r.Body)
-				if uploadErr != nil {
-					var bytesRead int64
-					if res != nil {
-						bytesRead = res.BytesRead
-					}
-					slog.Error("vdi upload failed", "error", uploadErr, "uuid", vdiUUID, "bytes_so_far", bytesRead)
-					return uploadErr
-				}
-				slog.Info("vdi upload complete", "uuid", vdiUUID,
-					"bytes_read", res.BytesRead, "duration_ms", res.DurationMS)
-				return nil
+				var importErr error
+				uploadResult, importErr = xapi.ImportRawVDI(uploadCtx, xapi.ImportRawVDIOpts{
+					PoolMasterURL:         creds.PoolMasterURL,
+					SessionID:             sessionID,
+					VDIUUID:               vdiUUID,
+					CertFingerprintSHA256: creds.CertFingerprintSHA256,
+				}, r.Body, contentLength)
+				return importErr
 			}); err != nil {
-				if !headersSent {
-					respondJSONError(w, http.StatusBadGateway, err.Error())
-				}
-			} else if headersSent {
-				_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "uuid": vdiUUID})
+				slog.Error("vdi upload failed", "error", err, "uuid", vdiUUID)
+				respondJSONError(w, http.StatusBadGateway, err.Error())
+				return
 			}
+			slog.Info("vdi upload complete", "uuid", vdiUUID,
+				"bytes_written", uploadResult.BytesWritten, "duration_ms", uploadResult.DurationMS)
+			respondJSON(w, http.StatusOK, map[string]string{"status": "ok", "uuid": vdiUUID})
 
 		default:
 			w.Header().Set("Allow", "POST")
@@ -562,7 +548,11 @@ func main() {
 	})
 
 	apiMux.HandleFunc("/api2/json/vm/create", func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("vm-create", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		respondJSONError(w, http.StatusGone, "vm/create is deprecated — use vm/clone-from-template")
+	})
+
+	apiMux.HandleFunc("/api2/json/vm/clone-from-template", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("vm-clone-from-template", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", "POST")
 			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -573,7 +563,8 @@ func main() {
 			Username              string `json:"username"`
 			Password              string `json:"password"`
 			CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
-			NameLabel             string `json:"name_label"`
+			TemplateNameLabel     string `json:"template_name_label"`
+			NewNameLabel          string `json:"new_name_label"`
 			MemoryBytes           int64  `json:"memory_bytes"`
 			Vcpus                 int    `json:"vcpus"`
 		}
@@ -581,9 +572,12 @@ func main() {
 			respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 			return
 		}
-		if body.NameLabel == "" {
-			respondJSONError(w, http.StatusBadRequest, "name_label required")
+		if body.NewNameLabel == "" {
+			respondJSONError(w, http.StatusBadRequest, "new_name_label required")
 			return
+		}
+		if body.TemplateNameLabel == "" {
+			body.TemplateNameLabel = "Other install media"
 		}
 		creds := xapi.PerRequestCredentials{
 			PoolMasterURL: body.PoolMasterURL, Username: body.Username,
@@ -593,11 +587,19 @@ func main() {
 		defer cancel()
 		var vmUUID string
 		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
-			var err error
-			vmUUID, err = c.CreateVM(ctx, body.NameLabel, body.MemoryBytes, body.Vcpus)
-			return err
+			res, err := c.CloneVMFromTemplate(ctx, xapi.CloneVMOpts{
+				TemplateNameLabel: body.TemplateNameLabel,
+				NewNameLabel:      body.NewNameLabel,
+				MemoryBytes:       body.MemoryBytes,
+				Vcpus:             body.Vcpus,
+			})
+			if err != nil {
+				return err
+			}
+			vmUUID = res.UUID
+			return nil
 		}); err != nil {
-			slog.Error("vm-create failed", "error", err)
+			slog.Error("vm-clone-from-template failed", "error", err)
 			respondJSONError(w, http.StatusBadGateway, err.Error())
 			return
 		}

@@ -234,23 +234,25 @@ export async function runXcpngVmRestore(
       }
     }
 
-    // Create VM shell
+    // Clone VM from template
     const vmResp = await xcpPost({
-      path:        '/api2/json/vm/create',
+      path:        '/api2/json/vm/clone-from-template',
       xcpBase, bearerToken: xcp.bearerToken, pool,
       body: {
         pool_master_url:         pool.masterUrl,
         username:                pool.username,
         password:                pool.password,
         cert_fingerprint_sha256: pool.certFingerprintSha256,
-        name_label:   `${vmName} (restored)`,
-        memory_bytes: msg.memoryBytes ?? 0,
-        vcpus:        msg.vcpus ?? 0,
+        template_name_label: msg.targetTemplateNameLabel ?? 'Other install media',
+        new_name_label:      `${vmName} (restored)`,
+        memory_bytes:        msg.memoryBytes ?? 0,
+        vcpus:               msg.vcpus ?? 0,
       },
     })
-    if (vmResp.status !== 200) throw new Error(`vm.create failed (${vmResp.status}): ${vmResp.body}`)
+    if (vmResp.status !== 200) throw new Error(`vm.clone-from-template failed (${vmResp.status}): ${vmResp.body}`)
     const newVmUUID = (JSON.parse(vmResp.body) as { uuid: string }).uuid
-    log(`created VM ${newVmUUID}`)
+    log(`cloned VM ${newVmUUID} from template "${msg.targetTemplateNameLabel ?? 'Other install media'}"`)
+
 
     // Attach VBDs
     for (const disk of disks) {
