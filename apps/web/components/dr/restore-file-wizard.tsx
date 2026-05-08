@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { CheckCircle, AlertTriangle } from 'lucide-react'
 import { logDrAction } from '@/app/actions/dr-audit'
-import { getLatestSnapshotForJob, restoreFromSnapshot } from '@/app/actions/restore'
+import { getLatestSnapshotForJob, restoreFromSnapshot, browseSnapshot } from '@/app/actions/restore'
 
 /* ── HTML escape for runbook export ── */
 export function escHtml(s: string): string {
@@ -104,6 +104,164 @@ export function WizardNav({
   )
 }
 
+/* ── Snapshot Browser ── */
+
+type SnapshotEntry = { path: string; type: string; size?: number; mtime?: string }
+
+function childrenOfPrefix(entries: SnapshotEntry[], prefix: string): SnapshotEntry[] {
+  const normalizedPrefix = prefix === '/' ? '/' : (prefix.endsWith('/') ? prefix : prefix + '/')
+  const prefixDepth = normalizedPrefix === '/' ? 0 : normalizedPrefix.split('/').filter(Boolean).length
+  return entries.filter(e => {
+    if (!e.path.startsWith(normalizedPrefix === '/' ? '/' : normalizedPrefix)) return false
+    if (e.path === normalizedPrefix.replace(/\/$/, '')) return false
+    const segments = e.path.split('/').filter(Boolean)
+    return segments.length === prefixDepth + 1
+  }).sort((a, b) => {
+    if (a.type === 'dir' && b.type !== 'dir') return -1
+    if (a.type !== 'dir' && b.type === 'dir') return 1
+    return a.path.localeCompare(b.path)
+  })
+}
+
+function formatSize(bytes?: number): string {
+  if (bytes == null) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+interface SnapshotBrowserProps {
+  jobId:    string
+  onPick:   (path: string) => void
+  onCancel: () => void
+}
+
+function SnapshotBrowser({ jobId, onPick, onCancel }: SnapshotBrowserProps) {
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState<string | null>(null)
+  const [entries, setEntries]   = useState<SnapshotEntry[]>([])
+  const [prefix, setPrefix]     = useState('/')
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    browseSnapshot(jobId).then(result => {
+      setLoading(false)
+      if (!result.ok) { setError(result.error); return }
+      setEntries(result.entries)
+    }).catch(err => {
+      setLoading(false)
+      setError(err instanceof Error ? err.message : 'Failed to load snapshot')
+    })
+  }, [jobId])
+
+  const segments = prefix === '/' ? [] : prefix.split('/').filter(Boolean)
+  const children = childrenOfPrefix(entries, prefix)
+
+  const containerStyle: React.CSSProperties = {
+    marginTop: 12,
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--surf2)',
+    overflow: 'hidden',
+  }
+
+  if (loading) {
+    return (
+      <div style={containerStyle}>
+        <div style={{ padding: '16px 14px', fontSize: 13, color: 'var(--fg-mute)' }}>
+          Loading snapshot contents…
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={containerStyle}>
+        <div style={{ padding: '16px 14px', fontSize: 13, color: 'var(--err)' }}>
+          {error}
+        </div>
+        <div style={{ padding: '0 14px 14px', display: 'flex', gap: 8 }}>
+          <button onClick={onCancel} style={{ padding: '6px 14px', fontSize: 12, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg)' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={containerStyle}>
+      {/* Breadcrumb */}
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg-mute)', flexWrap: 'wrap' }}>
+          <button onClick={() => setPrefix('/')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 12, fontFamily: 'var(--font-mono)', padding: 0 }}>/</button>
+          {segments.map((seg, i) => {
+            const segPath = '/' + segments.slice(0, i + 1).join('/')
+            return (
+              <span key={segPath} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ color: 'var(--fg-dim)' }}>›</span>
+                <button onClick={() => setPrefix(segPath)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: i === segments.length - 1 ? 'var(--fg)' : 'var(--accent)', fontSize: 12, fontFamily: 'var(--font-mono)', padding: 0 }}>
+                  {seg}
+                </button>
+              </span>
+            )
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => { onPick(prefix); }} style={{ padding: '4px 10px', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surf)', color: 'var(--fg-mute)' }}>
+            Pick this directory
+          </button>
+          <button onClick={onCancel} style={{ padding: '4px 10px', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--fg-mute)' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      {/* Listing */}
+      <div style={{ maxHeight: 400, overflow: 'auto' }}>
+        {children.length === 0 && (
+          <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--fg-dim)' }}>
+            Empty directory
+          </div>
+        )}
+        {children.map((entry, i) => {
+          const isDir = entry.type === 'dir'
+          const name = entry.path.split('/').filter(Boolean).pop() ?? entry.path
+          return (
+            <div
+              key={entry.path}
+              onClick={() => {
+                if (isDir) { setPrefix(entry.path) }
+                else { onPick(entry.path) }
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '7px 14px', cursor: 'pointer', fontSize: 13,
+                borderTop: i > 0 ? '1px solid var(--border)' : undefined,
+                color: 'var(--fg)',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'color-mix(in srgb, var(--surf2) 60%, var(--accent) 8%)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = '' }}
+            >
+              <span style={{ fontSize: 15, flexShrink: 0 }}>{isDir ? '📁' : '📄'}</span>
+              <span style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12, color: isDir ? 'var(--fg)' : 'var(--fg-mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
+              </span>
+              {!isDir && entry.size != null && (
+                <span style={{ fontSize: 11, color: 'var(--fg-dim)', flexShrink: 0 }}>
+                  {formatSize(entry.size)}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /* ── Restore File wizard ── */
 
 interface Props {
@@ -121,6 +279,7 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
   const [error, setError]           = useState<string | null>(null)
   const [latestSnapshot, setLatestSnapshot] = useState<{ id: string; createdAt: Date | null } | null>(null)
   const [loadingSnapshot, setLoadingSnapshot] = useState(false)
+  const [browserOpen, setBrowserOpen] = useState(false)
 
   async function execute() {
     setSubmitting(true)
@@ -267,17 +426,39 @@ export function RestoreFileWizard({ jobs, onDone }: Props) {
 
       {step === 1 && (
         <WizardCard title="What file or directory do you need?">
-          <label style={labelStyle}>Source path to restore</label>
-          <input
-            type="text"
-            value={filePath}
-            onChange={e => { setFilePath(e.target.value); setDryRunOk(false) }}
-            placeholder="/home/user/documents/report.pdf"
-            style={inputStyle}
-          />
-          <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginTop: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 6 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Source path to restore</label>
+              <input
+                type="text"
+                value={filePath}
+                onChange={e => { setFilePath(e.target.value); setDryRunOk(false) }}
+                placeholder="/home/user/documents/report.pdf"
+                style={inputStyle}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setBrowserOpen(b => !b)}
+              style={{
+                padding: '8px 14px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                background: browserOpen ? 'var(--surf2)' : 'none', color: 'var(--fg)',
+              }}
+            >
+              {browserOpen ? 'Close browser' : 'Browse snapshot →'}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--fg-dim)', marginBottom: 4 }}>
             Enter the path as it existed in the backup. Use a directory path to restore an entire folder.
           </div>
+          {browserOpen && jobId && (
+            <SnapshotBrowser
+              jobId={jobId}
+              onPick={(path) => { setFilePath(path); setDryRunOk(false); setBrowserOpen(false) }}
+              onCancel={() => setBrowserOpen(false)}
+            />
+          )}
           <WizardNav onBack={() => setStep(0)} onNext={() => setStep(2)} nextDisabled={!filePath.trim()} />
         </WizardCard>
       )}
