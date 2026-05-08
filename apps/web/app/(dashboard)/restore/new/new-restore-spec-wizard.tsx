@@ -45,7 +45,13 @@ function fmtBytes(b: number): string {
   return b + ' B'
 }
 
-export function NewRestoreSpecWizard({ xcpJobs }: { xcpJobs: XcpJob[] }) {
+export function NewRestoreSpecWizard({
+  xcpJobs,
+  invalidJobs,
+}: {
+  xcpJobs: XcpJob[]
+  invalidJobs: Array<{ id: string; name: string; reason: string }>
+}) {
   const [tab, setTab] = useState<'form' | 'yaml'>('form')
   const [name, setName] = useState('')
 
@@ -165,13 +171,44 @@ export function NewRestoreSpecWizard({ xcpJobs }: { xcpJobs: XcpJob[] }) {
 
       {tab === 'form' && (
         <>
-          {xcpJobs.length === 0 ? (
+          {xcpJobs.length === 0 && invalidJobs.length === 0 && (
             <div style={{ fontSize: 13, color: 'var(--fg-mute)', padding: 12, background: 'var(--surf2)', borderRadius: 'var(--radius-sm)', marginBottom: 16 }}>
               No XCP-ng VM backup jobs found. Create an xcpng_vm backup job first, then come back to author a restore spec for it.
               You can also use the YAML tab to author other step types (filesystem, database, etc.).
             </div>
-          ) : (
+          )}
+
+          {xcpJobs.length === 0 && invalidJobs.length > 0 && (
+            <div style={{ fontSize: 13, color: 'var(--fg-mute)', padding: 12, background: 'var(--surf2)', borderRadius: 'var(--radius-sm)', marginBottom: 16 }}>
+              <div style={{ marginBottom: 8 }}>
+                You have {invalidJobs.length} XCP-ng backup job{invalidJobs.length === 1 ? '' : 's'} but
+                none are fully configured for restore:
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 20 }}>
+                {invalidJobs.map(j => (
+                  <li key={j.id} style={{ marginBottom: 4 }}>
+                    <span style={{ color: 'var(--fg)' }}>{j.name}</span>
+                    {' — '}
+                    <span style={{ color: 'var(--warn)' }}>{j.reason}</span>
+                  </li>
+                ))}
+              </ul>
+              <div style={{ marginTop: 8 }}>
+                Edit the job&apos;s hypervisor target to fix, or use the YAML tab for other step types
+                (filesystem, database, etc.).
+              </div>
+            </div>
+          )}
+
+          {xcpJobs.length > 0 && (
             <>
+              {invalidJobs.length > 0 && (
+                <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 12 }}>
+                  {invalidJobs.length} other job{invalidJobs.length === 1 ? '' : 's'} hidden because
+                  {invalidJobs.length === 1 ? ' it is' : ' they are'} not fully configured for restore.
+                </div>
+              )}
+
               <div style={section}>
                 <label style={lbl}>Backup job</label>
                 <select value={selectedJobId} onChange={e => setSelectedJobId(e.target.value)} style={inp}>
