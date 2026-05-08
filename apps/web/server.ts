@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, requestInitRepository, resolveInitRepository, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete, resolveSnapshotPaths } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, requestInitRepository, resolveInitRepository, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete, resolveSnapshotPaths, resolveSnapshotContents } from './lib/ws-state'
 import { ensureRepoMountedOnAgent } from './lib/repo-mount'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
@@ -830,6 +830,9 @@ void app.prepare().then(async () => {
             error:       msg.error,
             durationSec: msg.durationSec,
           })
+
+        } else if (msg.type === 'list_snapshot_contents_result') {
+          resolveSnapshotContents(msg.requestId, { ok: msg.ok, entries: msg.entries, error: msg.error })
 
         } else if (msg.type === 'list_snapshot_paths_result') {
           resolveSnapshotPaths(msg.requestId, { ok: msg.ok, paths: msg.paths, error: msg.error })
