@@ -130,3 +130,75 @@ export async function discoverHypervisorTargets(integrationId: string): Promise<
   revalidatePath('/hypervisors')
   return { ok: true, count: rows.length }
 }
+
+export async function updateHypervisorIntegration(
+  id: string,
+  formData: FormData,
+): Promise<{ error: string } | undefined> {
+  await requireAdmin()
+
+  const name            = String(formData.get('name') ?? '').trim()
+  const host            = String(formData.get('host') ?? '').trim()
+  const username        = String(formData.get('username') ?? '').trim()
+  const password        = String(formData.get('password') ?? '').trim()
+  const port            = formData.get('port') ? Number(formData.get('port')) : undefined
+  const certFingerprint = String(formData.get('cert_fingerprint_sha256') ?? '').trim()
+
+  if (!name || !host) return { error: 'name and host required' }
+
+  const db = getDb()
+  const [existing] = await db
+    .select()
+    .from(hypervisorIntegrations)
+    .where(eq(hypervisorIntegrations.id, id))
+    .limit(1)
+
+  if (!existing) return { error: 'integration not found' }
+
+  // Preserve existing password if the form left it blank (security: don't require
+  // re-entering the password just to update the host or username).
+  let nextPassword = password
+  if (!nextPassword) {
+    try {
+      const cfg = JSON.parse(existing.config) as { password?: string }
+      nextPassword = cfg.password ?? ''
+    } catch {
+      nextPassword = ''
+    }
+  }
+
+  await db.update(hypervisorIntegrations)
+    .set({
+      name,
+      config: JSON.stringify({
+        host,
+        username,
+        password: nextPassword,
+        port,
+        cert_fingerprint_sha256: certFingerprint,
+      }),
+      // Reset status — the user may have just rotated credentials, so let
+      // the next sync reflect reality rather than carrying over a stale 'ok'.
+      status: 'unknown',
+    })
+    .where(eq(hypervisorIntegrations.id, id))
+
+  revalidatePath('/hypervisors')
+  return undefined
+}
+
+export async function deleteHypervisorIntegration(
+  id: string,
+): Promise<{ error: string } | undefined> {
+  await requireAdmin()
+
+  const db = getDb()
+
+  // Cascade: remove all hypervisor_targets pointing at this integration first
+  // (the schema has no foreign-key cascade — this is application-level).
+  await db.delete(hypervisorTargets).where(eq(hypervisorTargets.integrationId, id))
+  await db.delete(hypervisorIntegrations).where(eq(hypervisorIntegrations.id, id))
+
+  revalidatePath('/hypervisors')
+  return undefined
+}

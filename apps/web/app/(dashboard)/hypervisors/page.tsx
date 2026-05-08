@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SyncButton } from './sync-button'
+import { DeleteHypervisorButton } from './delete-button'
 
 type BadgeStatus = ComponentProps<typeof Badge>['status']
 
@@ -66,6 +67,14 @@ export default async function HypervisorsPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <Badge status={integrationBadge(integration.status)} label={integration.status ?? 'unknown'} />
                     <SyncButton integrationId={integration.id} />
+                    <Link href={`/hypervisors/${integration.id}/edit`} style={{ textDecoration: 'none' }}>
+                      <Button variant="secondary" size="sm">Edit</Button>
+                    </Link>
+                    <DeleteHypervisorButton
+                      integrationId={integration.id}
+                      integrationName={integration.name}
+                      targetCount={vmList.length}
+                    />
                   </div>
                 </div>
 
