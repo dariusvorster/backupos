@@ -338,7 +338,6 @@ export const hypervisorTargets = sqliteTable('hypervisor_targets', {
   status:        text('status'),         // 'running'|'stopped'
   osType:        text('os_type'),
   tags:          text('tags'),           // JSON array
-  meta:          text('meta'),           // JSON — hypervisor-specific fields
   lastSeenAt:    integer('last_seen_at', { mode: 'timestamp_ms' }),
 })
 
