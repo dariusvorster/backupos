@@ -244,7 +244,7 @@ export async function runXcpngVmRestore(
         password:                pool.password,
         cert_fingerprint_sha256: pool.certFingerprintSha256,
         template_name_label: msg.targetTemplateNameLabel ?? 'Other install media',
-        new_name_label:      `${vmName} (restored)`,
+        new_name_label:      vmName,
         memory_bytes:        msg.memoryBytes ?? 0,
         vcpus:               msg.vcpus ?? 0,
       },
