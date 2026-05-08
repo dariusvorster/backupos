@@ -103,6 +103,31 @@ async function dumpSqlite(cfg: ComposeApphookConfig, container: DockerContainer,
   await spawnAllowed('docker', ['exec', container.Id, 'rm', '-f', insidePath]).catch(() => { /* ignore */ })
 }
 
+// ── MongoDB ───────────────────────────────────────────────────────────────────
+
+async function dumpMongodb(cfg: ComposeApphookConfig, container: DockerContainer, dest: string): Promise<void> {
+  const insidePath = `/tmp/backupos-mongodb-${Date.now()}.archive.gz`
+
+  const dumpArgs: string[] = ['exec', container.Id, 'mongodump', `--archive=${insidePath}`, '--gzip']
+  if (cfg.username) {
+    dumpArgs.push('--username', cfg.username)
+  }
+  if (cfg.passwordEnv) {
+    const password = process.env[cfg.passwordEnv]
+    if (password) dumpArgs.push('--password', password)
+  }
+  if (cfg.username || cfg.passwordEnv) {
+    dumpArgs.push('--authenticationDatabase', cfg.authDatabase ?? 'admin')
+  }
+  if (cfg.database) {
+    dumpArgs.push('--db', cfg.database)
+  }
+
+  await spawnAllowed('docker', dumpArgs)
+  await spawnAllowed('docker', ['cp', `${container.Id}:${insidePath}`, dest])
+  await spawnAllowed('docker', ['exec', container.Id, 'rm', '-f', insidePath]).catch(() => { /* ignore */ })
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function runApphook(
@@ -118,6 +143,7 @@ export async function runApphook(
     case 'mysql':    return dumpMysql(cfg, dest)
     case 'redis':    return dumpRedis(cfg, container, dest)
     case 'sqlite':   return dumpSqlite(cfg, container, dest)
+    case 'mongodb':  return dumpMongodb(cfg, container, dest)
     default:
       throw new Error(`apphook: unknown type "${String(service.apphookType)}"`)
   }

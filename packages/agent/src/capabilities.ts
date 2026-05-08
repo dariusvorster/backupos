@@ -84,5 +84,10 @@ export async function detectCapabilities(): Promise<Capability[]> {
   // the result out. Requires docker only.
   if (dockerOk) caps.push('apphook:sqlite')
 
+  // MongoDB hook runs mongodump inside the container via docker exec (mongo
+  // official images include mongodump), then docker cp's the archive out.
+  // Requires docker only.
+  if (dockerOk) caps.push('apphook:mongodb')
+
   return caps
 }

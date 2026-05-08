@@ -451,7 +451,7 @@ export async function getLatestSnapshotForJob(
 
 export interface ApphookService {
   serviceName: string
-  apphookType: 'postgres' | 'mysql' | 'redis' | 'sqlite'
+  apphookType: 'postgres' | 'mysql' | 'redis' | 'sqlite' | 'mongodb'
   apphookConfig: NonNullable<import('@backupos/agent-protocol').ComposeServiceConfig['apphookConfig']>
 }
 
