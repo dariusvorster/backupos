@@ -4,7 +4,7 @@
 
 BackupOS is a self-hosted backup management platform built on [Restic](https://restic.net). Back up Proxmox VMs and LXCs, Linux hosts, Windows machines, Docker / Compose stacks, databases, and NAS shares — from one dashboard, to one or more repositories, with YAML-defined restore specs that actually work when you need them.
 
-> **Status: V1 launch candidate.** Active development. See [release notes](packages/docs-content/content/release-notes/index.mdx).
+> **Status: V1 launch candidate.** Active development. See [release notes](packages/docs-content/content/release-notes/index.mdx) for the current changelog.
 
 ---
 
@@ -13,11 +13,11 @@ BackupOS is a self-hosted backup management platform built on [Restic](https://r
 - **Unified dashboard** — every repository, job, agent, and restore spec in one place
 - **Restic-native** — content-addressed storage, deduplication, incremental-forever, fully readable by the `restic` CLI on its own
 - **Eight repository backends** — local filesystem, NFS, SMB / CIFS, SFTP, Amazon S3 (and S3-compatible), Cloudflare R2, Backblaze B2, Rclone
-- **Eight source types** — filesystem, Compose project, Docker volume, database (PostgreSQL / MySQL / MariaDB / SQLite / Redis / MongoDB), Proxmox VM, Proxmox LXC, Windows VSS, NAS share
+- **Nine source types** — filesystem, Compose project, Docker volume, database (PostgreSQL / MySQL / MariaDB / SQLite / Redis), Proxmox VM, Proxmox LXC, XCP-ng VM, Windows VSS, NAS share
 - **Cross-platform agents** — Linux (Node bundle, systemd) and Windows (native binary, Windows Service)
-- **Hypervisor integration** — Proxmox VMs and LXCs via the Proxmox API
+- **Hypervisor integration** — Proxmox VMs and LXCs via the Proxmox API; XCP-ng VMs via XAPI with Changed Block Tracking (CBT)
 - **PBS protocol target** — point Proxmox VE at BackupOS as a Proxmox Backup Server-compatible target, no agent install on the Proxmox host required
-- **YAML restore specs** — define, version, and rehearse your recovery procedure as code
+- **YAML restore specs** — define, version, and rehearse your recovery procedure as code, with a guided form for VM restores
 - **DR Mode** — guided checklist that walks you through restore specs during an incident
 - **Verification** — scheduled restore tests that prove backups are actually usable, not just present
 - **Nine alert channels** — email, Slack, Discord, Telegram, Pushover, Gotify, ntfy, generic webhook, Twilio SMS
@@ -176,14 +176,14 @@ self-hosted commercial offering.
 
 ## Status and roadmap
 
-V1 launch candidate. Tracked in [issue #73](https://github.com/dariusvorster/backupos/issues/73) and the V1 milestone on the issue tracker.
+V1 launch candidate. Active development tracked on the issue tracker.
 
 Known scope deferred to V1.x:
 
-- XCP-ng support via XAPI / CBT
+- MongoDB apphook backup + restore (tracked in [#378](https://github.com/dariusvorster/backupos/issues/378))
+- DR Mode browse-and-restore for individual files within a snapshot (tracked in [#381](https://github.com/dariusvorster/backupos/issues/381))
 - Cloud sync tier (currently no managed cloud product — BackupOS is self-hosted only)
-- Licensing / paid tier infrastructure
+- Licensing / paid tier infrastructure (tracked in [#336](https://github.com/dariusvorster/backupos/issues/336))
 - macOS agent
-- Restore feature gaps tracked in issues #30–#32, #230, #231
 
 Issues and feedback welcome at [github.com/dariusvorster/backupos/issues](https://github.com/dariusvorster/backupos/issues).
