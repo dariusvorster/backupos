@@ -23,13 +23,14 @@ function parseTagValue(tags: string[], prefix: string): string {
   return t ? t.slice(prefix.length) : ''
 }
 
-function groupByVdi(snapshots: Array<{ id: string; tags: string[]; time: string }>): DiskInfo[] {
+function groupByVdi(snapshots: Array<{ id: string; tags?: string[]; time: string }>): DiskInfo[] {
   const byVdi = new Map<string, DiskInfo>()
   for (const snap of snapshots) {
-    const vdiUUID   = parseTagValue(snap.tags, 'xcp:vdi=')
-    const userDevice = parseTagValue(snap.tags, 'xcp:user_device=')
+    const tags    = snap.tags ?? []
+    const vdiUUID   = parseTagValue(tags, 'xcp:vdi=')
+    const userDevice = parseTagValue(tags, 'xcp:user_device=')
     if (!vdiUUID || !userDevice) continue
-    const sizeStr   = parseTagValue(snap.tags, 'xcp:virtual_size=')
+    const sizeStr   = parseTagValue(tags, 'xcp:virtual_size=')
     const virtualSize = sizeStr ? parseInt(sizeStr, 10) : 0
     const existing  = byVdi.get(vdiUUID)
     if (!existing || snap.time > existing.time) {
