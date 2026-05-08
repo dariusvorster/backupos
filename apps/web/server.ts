@@ -800,6 +800,15 @@ void app.prepare().then(async () => {
             console.error('[alerts] restore alert failed:', err)
           }
 
+        } else if (msg.type === 'xcpng_vm_restore_complete' && agentId) {
+          await db.update(restoreRuns).set({
+            status:      msg.success ? 'success' : 'failed',
+            completedAt: new Date(),
+            log:         JSON.stringify({ log: msg.log ?? '', newVmUUID: msg.newVmUUID ?? null }),
+          }).where(eq(restoreRuns.id, msg.runId))
+          console.log(`[xcpng-restore] ${msg.runId} — ${msg.success ? 'success' : 'failed'} newVm=${msg.newVmUUID ?? 'none'}`)
+          try { appendLog({ level: msg.success ? 'info' : 'error', component: 'web', message: msg.success ? `XCP-ng VM restore succeeded, new VM=${msg.newVmUUID ?? 'unknown'}` : `XCP-ng VM restore failed: ${msg.error ?? ''}`, entityType: 'restore_run', entityId: msg.runId }) } catch (err) { console.error('[logger]', err) }
+
         } else if (msg.type === 'filesystem_restore_cancelled' && agentId) {
           console.log(`[restore] filesystem_restore_cancelled restoreId=${msg.restoreId} agentId=${agentId} reason=${msg.reason}`)
           await db.update(restoreRuns).set({

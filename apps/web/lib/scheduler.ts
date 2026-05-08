@@ -99,12 +99,12 @@ async function resolveJobWindow(db: Db, job: Job): Promise<{ start: number | nul
   return { start: defaults?.scheduleStart ?? null, end: defaults?.scheduleEnd ?? null }
 }
 
-async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<boolean> {
-  if (!job.agentId || !job.repositoryId) return false
+async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Promise<string | null> {
+  if (!job.agentId || !job.repositoryId) return null
 
   const [repo] = await db.select().from(repositories)
     .where(eq(repositories.id, job.repositoryId)).limit(1)
-  if (!repo) return false
+  if (!repo) return null
 
   const cfg      = JSON.parse(decryptField(repo.config)) as Record<string, string>
   const password = decryptField(repo.resticPassword)
@@ -166,7 +166,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
         status: 'failed', completedAt: now,
         errorMessage: `hypervisor target ${srcConfig.targetId ?? '(unset)'} not found`,
       }).where(eq(backupRuns.id, runId))
-      return false
+      return null
     }
     const [integration] = await db.select().from(hypervisorIntegrations)
       .where(eq(hypervisorIntegrations.id, target.integrationId ?? '')).limit(1)
@@ -175,7 +175,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
         status: 'failed', completedAt: now,
         errorMessage: `hypervisor integration ${target.integrationId ?? '(unset)'} not found`,
       }).where(eq(backupRuns.id, runId))
-      return false
+      return null
     }
     const xcpServiceUrl    = process.env['BACKUPOS_XCP_URL']
     const internalSecret   = process.env['BACKUPOS_INTERNAL_SECRET']
@@ -184,7 +184,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
         status: 'failed', completedAt: now,
         errorMessage: 'BACKUPOS_XCP_URL or BACKUPOS_INTERNAL_SECRET not set on server',
       }).where(eq(backupRuns.id, runId))
-      return false
+      return null
     }
     const integrationConfig = JSON.parse(integration.config) as Record<string, string>
     const tagsData = JSON.parse(target.tags ?? '{}') as {
@@ -230,7 +230,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
       : (srcConfig.paths ?? [])
     if (paths.length === 0) {
       await db.update(backupRuns).set({ status: 'failed', completedAt: now, errorMessage: 'No backup paths resolved' }).where(eq(backupRuns.id, runId))
-      return false
+      return null
     }
     const tags        = job.tags ? (JSON.parse(job.tags) as string[]) : [`job:${job.id}`]
     const mountConfig = cfg['mountConfig'] ? (JSON.parse(cfg['mountConfig']) as MountConfig) : undefined
@@ -259,7 +259,7 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
     await db.update(backupRuns).set({
       status: 'failed', completedAt: now, errorMessage: `NFS mount failed: ${errorMessage}`,
     }).where(eq(backupRuns.id, runId))
-    return false
+    return null
   }
 
   const sent = dispatch(job.agentId, msg)
@@ -268,14 +268,23 @@ async function dispatchToAgent(db: Db, job: Job, trigger: 'cron' | 'manual'): Pr
       status: 'failed', completedAt: now,
       errorMessage: 'Agent disconnected before dispatch',
     }).where(eq(backupRuns.id, runId))
-    return false
+    return null
   }
 
   // Reset nextRunAt so the trigger tick doesn't re-fire this job
   await stampNextRun(db, job.id, job.schedule)
   console.log(`[scheduler] Dispatched job "${job.name}" (${job.sourceType}) to agent ${job.agentId}`)
   try { appendLog({ level: 'info', component: 'web', message: `Backup dispatched for job "${job.name}"`, entityType: 'job', entityId: job.id, payload: { trigger, runId } }) } catch (err) { console.error('[logger]', err) }
-  return true
+  return runId
+}
+
+export async function triggerJobById(jobId: string): Promise<{ ok: true; runId: string } | { ok: false; error: string }> {
+  const db    = getDb()
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
+  if (!job) return { ok: false, error: `job ${jobId} not found` }
+  const runId = await dispatchToAgent(db, job, 'manual')
+  if (!runId) return { ok: false, error: 'dispatch failed — check agent connectivity and job configuration' }
+  return { ok: true, runId }
 }
 
 /**
