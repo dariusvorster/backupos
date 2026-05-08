@@ -11,11 +11,12 @@ type XcpJob    = {
   vmName:        string
   vmUUID:        string
   integrationId: string
+  repositoryId:  string
   disks:         DiskInfo[]
   runs:          RunOption[]
 }
 
-type SR = { uuid: string; name_label: string; sr_type: string; physical_size: number; physical_utilisation: number }
+type SR = { uuid: string; name_label: string; type: string; free_bytes: number; total_bytes: number }
 
 const DEFAULT_YAML = `name: my-restore
 description: Description
@@ -101,6 +102,7 @@ export function NewRestoreSpecWizard({
       `name: ${name || 'restore-' + selectedJob.name}`,
       `description: Restore VM ${selectedJob.vmName} from backup`,
       `version: "1.0"`,
+      `repository: "${selectedJob.repositoryId}"`,
       ``,
       `steps:`,
       `  - name: ${stepName}`,
@@ -238,11 +240,10 @@ export function NewRestoreSpecWizard({
                 {srsError && <div style={{ fontSize: 12, color: 'var(--err)', marginBottom: 6 }}>{srsError}</div>}
                 <select value={targetSrUUID} onChange={e => setTargetSrUUID(e.target.value)} style={inp} disabled={srsLoading}>
                   <option value="">— select an SR —</option>
-                  {srs?.filter(s => s.sr_type !== 'iso' && s.sr_type !== 'udev').map(s => {
-                    const free = s.physical_size - s.physical_utilisation
+                  {srs?.filter(s => s.type !== 'iso' && s.type !== 'udev').map(s => {
                     return (
                       <option key={s.uuid} value={s.uuid}>
-                        {s.name_label} ({s.sr_type}, {fmtBytes(free)} free of {fmtBytes(s.physical_size)})
+                        {s.name_label} ({s.type}, {fmtBytes(s.free_bytes)} free of {fmtBytes(s.total_bytes)})
                       </option>
                     )
                   })}
