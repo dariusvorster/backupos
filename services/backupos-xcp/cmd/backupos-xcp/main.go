@@ -443,6 +443,211 @@ func main() {
 		}
 	})
 
+	apiMux.HandleFunc("/api2/json/sr/list", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("sr-list", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		creds := extractGetCreds(r)
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		var srs []xapi.SRInfo
+		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+			var err error
+			srs, err = c.FindSRsByPool(ctx)
+			return err
+		}); err != nil {
+			slog.Error("sr-list failed", "error", err)
+			respondJSONError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]any{"srs": srs})
+	})
+
+	apiMux.HandleFunc("/api2/json/vdi/", func(w http.ResponseWriter, r *http.Request) {
+		suffix := strings.TrimPrefix(r.URL.Path, "/api2/json/vdi/")
+
+		switch {
+		case r.Method == http.MethodPost && suffix == "create":
+			slog.Info("vdi-create", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+			var body struct {
+				PoolMasterURL         string `json:"pool_master_url"`
+				Username              string `json:"username"`
+				Password              string `json:"password"`
+				CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
+				SrUUID                string `json:"sr_uuid"`
+				NameLabel             string `json:"name_label"`
+				VirtualSize           int64  `json:"virtual_size"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+				return
+			}
+			if body.SrUUID == "" || body.VirtualSize <= 0 {
+				respondJSONError(w, http.StatusBadRequest, "sr_uuid and virtual_size required")
+				return
+			}
+			creds := xapi.PerRequestCredentials{
+				PoolMasterURL: body.PoolMasterURL, Username: body.Username,
+				Password: body.Password, CertFingerprintSHA256: body.CertFingerprintSHA256,
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			defer cancel()
+			var vdiUUID string
+			if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+				var err error
+				vdiUUID, err = c.CreateVDI(ctx, body.SrUUID, body.NameLabel, body.VirtualSize)
+				return err
+			}); err != nil {
+				slog.Error("vdi-create failed", "error", err)
+				respondJSONError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			respondJSON(w, http.StatusOK, map[string]string{"uuid": vdiUUID})
+
+		case r.Method == http.MethodPost && strings.HasSuffix(suffix, "/upload"):
+			vdiUUID := strings.TrimSuffix(suffix, "/upload")
+			slog.Info("vdi-upload", "method", r.Method, "path", r.URL.Path, "uuid", vdiUUID, "remote", r.RemoteAddr)
+			if vdiUUID == "" {
+				respondJSONError(w, http.StatusBadRequest, "vdi uuid required in path")
+				return
+			}
+			// Pool creds in headers (body is the raw VDI image stream).
+			creds := extractGetCreds(r)
+			// Session must span VDINBDInfo + UploadFromReader — export_name encodes session_id.
+			uploadCtx, uploadCancel := context.WithTimeout(r.Context(), 4*time.Hour)
+			defer uploadCancel()
+			var headersSent bool
+			if err := xapi.WithSession(uploadCtx, creds, func(c *xapi.Client) error {
+				infos, err := c.VDINBDInfo(uploadCtx, vdiUUID)
+				if err != nil {
+					return fmt.Errorf("vdi_nbd_info: %w", err)
+				}
+				if len(infos) == 0 {
+					return errors.New("no NBD options for this VDI — is NBD enabled on a network reaching this SR?")
+				}
+				chosen := infos[0]
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				headersSent = true
+				res, uploadErr := nbdread.UploadFromReader(uploadCtx, nbdread.Connection{
+					Address: chosen.Address, Port: chosen.Port,
+					ExportName: chosen.ExportName, CertPEM: chosen.CertPEM, Subject: chosen.Subject,
+				}, r.Body)
+				if uploadErr != nil {
+					var bytesRead int64
+					if res != nil {
+						bytesRead = res.BytesRead
+					}
+					slog.Error("vdi upload failed", "error", uploadErr, "uuid", vdiUUID, "bytes_so_far", bytesRead)
+					return uploadErr
+				}
+				slog.Info("vdi upload complete", "uuid", vdiUUID,
+					"bytes_read", res.BytesRead, "duration_ms", res.DurationMS)
+				return nil
+			}); err != nil {
+				if !headersSent {
+					respondJSONError(w, http.StatusBadGateway, err.Error())
+				}
+			} else if headersSent {
+				_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "uuid": vdiUUID})
+			}
+
+		default:
+			w.Header().Set("Allow", "POST")
+			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+	})
+
+	apiMux.HandleFunc("/api2/json/vm/create", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("vm-create", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var body struct {
+			PoolMasterURL         string `json:"pool_master_url"`
+			Username              string `json:"username"`
+			Password              string `json:"password"`
+			CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
+			NameLabel             string `json:"name_label"`
+			MemoryBytes           int64  `json:"memory_bytes"`
+			Vcpus                 int    `json:"vcpus"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			return
+		}
+		if body.NameLabel == "" {
+			respondJSONError(w, http.StatusBadRequest, "name_label required")
+			return
+		}
+		creds := xapi.PerRequestCredentials{
+			PoolMasterURL: body.PoolMasterURL, Username: body.Username,
+			Password: body.Password, CertFingerprintSHA256: body.CertFingerprintSHA256,
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		var vmUUID string
+		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+			var err error
+			vmUUID, err = c.CreateVM(ctx, body.NameLabel, body.MemoryBytes, body.Vcpus)
+			return err
+		}); err != nil {
+			slog.Error("vm-create failed", "error", err)
+			respondJSONError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"uuid": vmUUID})
+	})
+
+	apiMux.HandleFunc("/api2/json/vbd/create", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("vbd-create", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var body struct {
+			PoolMasterURL         string `json:"pool_master_url"`
+			Username              string `json:"username"`
+			Password              string `json:"password"`
+			CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
+			VmUUID                string `json:"vm_uuid"`
+			VdiUUID               string `json:"vdi_uuid"`
+			Userdevice            string `json:"userdevice"`
+			Bootable              bool   `json:"bootable"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			return
+		}
+		if body.VmUUID == "" || body.VdiUUID == "" {
+			respondJSONError(w, http.StatusBadRequest, "vm_uuid and vdi_uuid required")
+			return
+		}
+		creds := xapi.PerRequestCredentials{
+			PoolMasterURL: body.PoolMasterURL, Username: body.Username,
+			Password: body.Password, CertFingerprintSHA256: body.CertFingerprintSHA256,
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		var vbdUUID string
+		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+			var err error
+			vbdUUID, err = c.CreateVBD(ctx, body.VmUUID, body.VdiUUID, body.Userdevice, body.Bootable)
+			return err
+		}); err != nil {
+			slog.Error("vbd-create failed", "error", err)
+			respondJSONError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"uuid": vbdUUID})
+	})
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", func(w http.ResponseWriter, r *http.Request) {
 		slog.Info("version", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)

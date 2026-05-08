@@ -153,6 +153,7 @@ export async function runXcpngBackup(
             `xcp:vdi=${disk.vdiUUID}`,
             `xcp:snapshot=${snap.uuid}`,
             `xcp:user_device=${disk.userDevice}`,
+            `xcp:virtual_size=${disk.virtualSize}`,
             `xcp:job=${jobId}`,
           ],
           signal: ctrl.signal,

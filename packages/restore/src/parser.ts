@@ -1,6 +1,6 @@
 import { load } from 'js-yaml'
 import { z } from 'zod'
-import type { ParsedRestoreSpec, RestoreStep } from './types'
+import type { ParsedRestoreSpec, RestoreStep, XcpngVmRestoreStep } from './types'
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
 
@@ -61,6 +61,18 @@ const notifyStep = z.object({
   on_failure: onFailure.default('continue'),
 })
 
+const xcpngVmRestoreStep = z.object({
+  name:           z.string(),
+  type:           z.literal('xcpng_vm_restore'),
+  vm_uuid:        z.string(),
+  vm_name:        z.string(),
+  target_sr_uuid: z.string(),
+  backup_job_id:  z.string(),
+  memory_bytes:   z.number().int().positive().optional(),
+  vcpus:          z.number().int().positive().optional(),
+  on_failure:     onFailure.default('abort'),
+})
+
 const restoreStepSchema = z.discriminatedUnion('type', [
   filesystemRestoreStep,
   databaseRestoreStep,
@@ -68,6 +80,7 @@ const restoreStepSchema = z.discriminatedUnion('type', [
   httpCheckStep,
   containerRestartStep,
   notifyStep,
+  xcpngVmRestoreStep,
 ])
 
 const notificationConfig = z.object({
@@ -102,6 +115,20 @@ export class RestoreSpecParseError extends Error {
 }
 
 function toStep(raw: z.infer<typeof restoreStepSchema>): RestoreStep {
+  if (raw.type === 'xcpng_vm_restore') {
+    const s: XcpngVmRestoreStep = {
+      name:         raw.name,
+      type:         'xcpng_vm_restore',
+      vmUUID:       raw.vm_uuid,
+      vmName:       raw.vm_name,
+      targetSrUUID: raw.target_sr_uuid,
+      backupJobId:  raw.backup_job_id,
+      memoryBytes:  raw.memory_bytes,
+      vcpus:        raw.vcpus,
+      onFailure:    raw.on_failure,
+    }
+    return s
+  }
   switch (raw.type) {
     case 'filesystem_restore':
       return {

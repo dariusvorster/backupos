@@ -167,6 +167,8 @@ export type AgentMessage =
   | { type: 'database_restore_started'; requestId: string; restoreId: string }
   | { type: 'database_restore_complete'; restoreId: string; success: boolean; output?: string; error?: string; durationSec?: number }
   | { type: 'list_snapshot_paths_result'; requestId: string; ok: boolean; paths?: string[]; error?: string }
+  | { type: 'xcpng_vm_restore_started'; jobId: string; runId: string; diskCount: number }
+  | { type: 'xcpng_vm_restore_complete'; jobId: string; runId: string; success: boolean; newVmUUID?: string; error?: string; log?: string }
 
 export interface DetectedResources {
   dockerVolumes?: string[]
@@ -219,6 +221,35 @@ export type ServerMessage =
       repoPassword:         string
       envVars?:             Record<string, string>
       bandwidthLimitKbps?:  number | null
+    }
+  | { type: 'run_xcpng_vm_restore'
+      jobId:        string
+      runId:        string
+      pool: {
+        masterUrl:             string
+        username:              string
+        password:              string
+        certFingerprintSha256: string
+      }
+      xcp: {
+        serviceUrl:  string
+        bearerToken: string
+      }
+      vmUUID:       string
+      vmName:       string
+      targetSrUUID: string
+      repoId:       string
+      repoUrl:      string
+      repoPassword: string
+      envVars?:     Record<string, string>
+      memoryBytes?: number
+      vcpus?:       number
+      disks?: Array<{
+        originalVdiUUID: string
+        virtualSize:     number
+        userDevice:      string
+        bootable:        boolean
+      }>
     }
   | { type: 'run_compose_restore'; jobId: string; runId: string; repoId: string; config: ComposeRestoreConfig; repoUrl: string; repoPassword: string; envVars?: Record<string, string> }
   | { type: 'mount_repository'; requestId: string; repoId: string; nfsServer: string; nfsExport: string; nfsOptions: string }

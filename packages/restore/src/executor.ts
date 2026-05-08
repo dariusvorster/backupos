@@ -10,6 +10,7 @@ import type {
   RestoreStep,
   ShellStep,
   StepResult,
+  XcpngVmRestoreStep,
 } from './types'
 
 /**
@@ -26,6 +27,12 @@ export type DatabaseRestoreDelivery = (
   snapshotId: string,
   agentId: string,
 ) => Promise<{ success: boolean; output?: string; error?: string; durationSec?: number }>
+
+export type XcpngVmRestoreDelivery = (
+  step: XcpngVmRestoreStep,
+  snapshotId: string,
+  agentId: string,
+) => Promise<{ success: boolean; newVmUUID?: string; error?: string }>
 
 // ── Step executors ────────────────────────────────────────────────────────────
 
@@ -211,6 +218,26 @@ async function execNotify(
   }
 }
 
+async function execXcpngVmRestore(
+  step: XcpngVmRestoreStep,
+  snapshotId: string,
+  agentId: string,
+  xcpngVmRestoreDelivery?: XcpngVmRestoreDelivery,
+): Promise<Omit<StepResult, 'step' | 'durationMs'>> {
+  if (!xcpngVmRestoreDelivery) {
+    return { success: false, error: 'xcpng_vm_restore step requires server-side delivery wiring; no callback provided' }
+  }
+  try {
+    const result = await xcpngVmRestoreDelivery(step, snapshotId, agentId)
+    if (!result.success) {
+      return { success: false, error: result.error ?? 'xcpng_vm_restore failed' }
+    }
+    return { success: true, output: result.newVmUUID ? `Restore dispatched — new VM UUID: ${result.newVmUUID}` : 'VM restore dispatched' }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 // ── Step dispatcher ───────────────────────────────────────────────────────────
 
 async function executeStep(
@@ -219,6 +246,7 @@ async function executeStep(
   agentId: string,
   notifyDelivery?: NotifyDelivery,
   databaseRestoreDelivery?: DatabaseRestoreDelivery,
+  xcpngVmRestoreDelivery?: XcpngVmRestoreDelivery,
 ): Promise<StepResult> {
   const start = Date.now()
   let result: Omit<StepResult, 'step' | 'durationMs'>
@@ -242,6 +270,9 @@ async function executeStep(
     case 'notify':
       result = await execNotify(step, notifyDelivery)
       break
+    case 'xcpng_vm_restore':
+      result = await execXcpngVmRestore(step, snapshotId, agentId, xcpngVmRestoreDelivery)
+      break
   }
 
   return { step, durationMs: Date.now() - start, ...result }
@@ -255,11 +286,12 @@ export async function executeRestoreSpec(
   agentId: string,
   notifyDelivery?: NotifyDelivery,
   databaseRestoreDelivery?: DatabaseRestoreDelivery,
+  xcpngVmRestoreDelivery?: XcpngVmRestoreDelivery,
 ): Promise<RestoreRunResult> {
   const results: StepResult[] = []
 
   for (const step of spec.steps) {
-    const stepResult = await executeStep(step, snapshotId, agentId, notifyDelivery, databaseRestoreDelivery)
+    const stepResult = await executeStep(step, snapshotId, agentId, notifyDelivery, databaseRestoreDelivery, xcpngVmRestoreDelivery)
     results.push(stepResult)
 
     if (!stepResult.success && step.onFailure === 'abort') {

@@ -2,9 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, backupRuns, alertChannels, eq, desc, and } from '@backupos/db'
+import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, backupRuns, alertChannels, hypervisorTargets, hypervisorIntegrations, eq, desc, and } from '@backupos/db'
 import type { ComposeProjectConfig } from '@backupos/agent-protocol'
-import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery, type DatabaseRestoreDelivery } from '@backupos/restore'
+import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery, type DatabaseRestoreDelivery, type XcpngVmRestoreDelivery } from '@backupos/restore'
 import { requireAdmin } from '@/lib/user'
 import { dispatchToChannel, fireRestoreSucceeded, fireRestoreFailed } from '@/lib/alerts'
 import type { AlertType, AlertPayload } from '@/lib/alerts'
@@ -90,6 +90,81 @@ const deliverDatabaseRestore: DatabaseRestoreDelivery = async (step, _snapshotId
   })
 }
 
+const xcpngVmRestoreDelivery: XcpngVmRestoreDelivery = async (step, _snapshotId) => {
+  const db = getDb()
+
+  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, step.backupJobId)).limit(1)
+  if (!job) return { success: false, error: `Backup job ${step.backupJobId} not found` }
+
+  const srcConfig = JSON.parse(job.sourceConfig ?? '{}') as { targetId?: string }
+  const [target] = await db.select().from(hypervisorTargets)
+    .where(eq(hypervisorTargets.id, srcConfig.targetId ?? '')).limit(1)
+  if (!target) return { success: false, error: `Hypervisor target not found for job ${step.backupJobId}` }
+
+  const [integration] = await db.select().from(hypervisorIntegrations)
+    .where(eq(hypervisorIntegrations.id, target.integrationId ?? '')).limit(1)
+  if (!integration) return { success: false, error: `Hypervisor integration not found` }
+
+  const xcpServiceUrl  = process.env['BACKUPOS_XCP_URL']
+  const internalSecret = process.env['BACKUPOS_INTERNAL_SECRET']
+  if (!xcpServiceUrl || !internalSecret) {
+    return { success: false, error: 'BACKUPOS_XCP_URL or BACKUPOS_INTERNAL_SECRET not set on server' }
+  }
+
+  const [repo] = await db.select().from(repositories)
+    .where(eq(repositories.id, job.repositoryId ?? '')).limit(1)
+  if (!repo) return { success: false, error: 'Repository not found for job' }
+
+  let repoConfig: { repositoryUrl?: string; envVars?: Record<string, string> }
+  try { repoConfig = JSON.parse(decryptField(repo.config)) as typeof repoConfig } catch {
+    return { success: false, error: 'Failed to decrypt repository config' }
+  }
+  const repoPassword = decryptField(repo.resticPassword)
+
+  const integrationConfig = JSON.parse(integration.config) as Record<string, string>
+  const poolMasterUrl = (integrationConfig['host'] ?? '').startsWith('http')
+    ? (integrationConfig['host'] ?? '')
+    : `https://${integrationConfig['host'] ?? ''}${integrationConfig['port'] ? `:${integrationConfig['port']}` : ''}`
+
+  const tagsData = JSON.parse(target.tags ?? '{}') as {
+    disks?: Array<{ uuid: string; virtual_size: number; user_device: string; bootable: boolean }>
+  }
+
+  const builtInAgentId = connectedAgentIds().find(id => id.startsWith('00000000-0000-0000-0000-'))
+  if (!builtInAgentId) return { success: false, error: 'XCP-ng built-in agent is not connected' }
+
+  const sent = dispatch(builtInAgentId, {
+    type:         'run_xcpng_vm_restore',
+    jobId:        crypto.randomUUID(),
+    runId:        crypto.randomUUID(),
+    pool: {
+      masterUrl:             poolMasterUrl,
+      username:              integrationConfig['username'] ?? '',
+      password:              integrationConfig['password'] ?? '',
+      certFingerprintSha256: integrationConfig['cert_fingerprint_sha256'] ?? '',
+    },
+    xcp: { serviceUrl: xcpServiceUrl, bearerToken: internalSecret },
+    vmUUID:       step.vmUUID,
+    vmName:       step.vmName,
+    targetSrUUID: step.targetSrUUID,
+    repoId:       job.repositoryId ?? '',
+    repoUrl:      repoConfig.repositoryUrl ?? '',
+    repoPassword,
+    envVars:      repoConfig.envVars,
+    memoryBytes:  step.memoryBytes,
+    vcpus:        step.vcpus,
+    disks: (tagsData.disks ?? []).map(d => ({
+      originalVdiUUID: d.uuid,
+      virtualSize:     d.virtual_size,
+      userDevice:      d.user_device,
+      bootable:        d.bootable,
+    })),
+  })
+
+  if (!sent) return { success: false, error: 'Built-in agent disconnected before dispatch' }
+  return { success: true }
+}
+
 async function deliverRestoreNotification(channel: string, message: string): Promise<void> {
   const db       = getDb()
   const channels = await db.select().from(alertChannels).all()
@@ -128,7 +203,7 @@ export async function runSpec(specId: string, snapshotId = 'latest'): Promise<vo
     })
   } catch (err) { console.error('[logger]', err) }
 
-  executeRestoreSpec(parsed, snapshotId, 'local', deliverRestoreNotification, deliverDatabaseRestore).then(async (result: RestoreRunResult) => {
+  executeRestoreSpec(parsed, snapshotId, 'local', deliverRestoreNotification, deliverDatabaseRestore, xcpngVmRestoreDelivery).then(async (result: RestoreRunResult) => {
     await db
       .update(restoreRuns)
       .set({
