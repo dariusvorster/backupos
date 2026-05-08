@@ -35,7 +35,7 @@ type InventoryDisk struct {
 	Bootable    bool   `json:"bootable"`
 }
 
-// InventoryVM is one VM with its disks.
+// InventoryVM is one VM with its disks and network interfaces.
 type InventoryVM struct {
 	UUID            string          `json:"uuid"`
 	NameLabel       string          `json:"name_label"`
@@ -43,6 +43,7 @@ type InventoryVM struct {
 	IsTemplate      bool            `json:"is_template"`
 	IsControlDomain bool            `json:"is_control_domain"`
 	Disks           []InventoryDisk `json:"disks"`
+	VIFs            []VIFInfo       `json:"vifs"`
 }
 
 // InventoryResult is the full inventory of one pool.
@@ -201,6 +202,33 @@ func InventoryPool(ctx context.Context, creds PoolCredentials) (*InventoryResult
 			})
 		}
 
+		vifs := make([]VIFInfo, 0)
+		if !isControlDomain {
+			vifRefs, vifErr := raw.VM.GetVIFs(sess, vmRef)
+			if vifErr == nil {
+				for _, vifRef := range vifRefs {
+					device, _ := raw.VIF.GetDevice(sess, vifRef)
+					mac, _ := raw.VIF.GetMAC(sess, vifRef)
+					mtuRaw, _ := raw.VIF.GetMTU(sess, vifRef)
+					netRef, _ := raw.VIF.GetNetwork(sess, vifRef)
+					lockingMode, _ := raw.VIF.GetLockingMode(sess, vifRef)
+					var networkLabel string
+					if string(netRef) != "" {
+						if label, lerr := raw.Network.GetNameLabel(sess, netRef); lerr == nil {
+							networkLabel = label
+						}
+					}
+					vifs = append(vifs, VIFInfo{
+						Device:       device,
+						NetworkLabel: networkLabel,
+						MAC:          mac,
+						MTU:          int(mtuRaw),
+						LockingMode:  string(lockingMode),
+					})
+				}
+			}
+		}
+
 		out.VMs = append(out.VMs, InventoryVM{
 			UUID:            vmUUID,
 			NameLabel:       vmName,
@@ -208,6 +236,7 @@ func InventoryPool(ctx context.Context, creds PoolCredentials) (*InventoryResult
 			IsTemplate:      isTemplate,
 			IsControlDomain: isControlDomain,
 			Disks:           disks,
+			VIFs:            vifs,
 		})
 	}
 

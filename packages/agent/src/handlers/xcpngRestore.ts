@@ -279,6 +279,50 @@ export async function runXcpngVmRestore(
       }
     }
 
+    // Recreate VIFs from snapshot tags
+    const vifPrefix = 'xcp:vif='
+    const refSnap    = allSnaps.find(s => disks[0] && s.id === disks[0].snapshotId)
+    const vifTags    = (refSnap?.tags ?? []).filter(t => t.startsWith(vifPrefix))
+    log(`found ${vifTags.length} VIF tag(s) to restore`)
+    for (const tag of vifTags) {
+      const rest   = tag.slice(vifPrefix.length)
+      const eqIdx  = rest.indexOf('=')
+      if (eqIdx < 0) continue
+      const jsonStr = rest.slice(eqIdx + 1)
+      let vifInfo: { device: string; network_label: string; mac: string; mtu: number; locking_mode: string }
+      try { vifInfo = JSON.parse(jsonStr) } catch { log(`WARN: could not parse VIF tag JSON: ${jsonStr}`); continue }
+      try {
+        const vifResp = await xcpPost({
+          path: '/api2/json/vif/create',
+          xcpBase, bearerToken: xcp.bearerToken, pool,
+          body: {
+            pool_master_url:         pool.masterUrl,
+            username:                pool.username,
+            password:                pool.password,
+            cert_fingerprint_sha256: pool.certFingerprintSha256,
+            vm_uuid:                 newVmUUID,
+            device:                  vifInfo.device,
+            network_label:           vifInfo.network_label,
+            mac:                     vifInfo.mac,
+            mtu:                     vifInfo.mtu,
+            locking_mode:            vifInfo.locking_mode,
+          },
+        })
+        if (vifResp.status !== 200) {
+          log(`WARN: vif/create for device=${vifInfo.device} failed (${vifResp.status}): ${vifResp.body}`)
+        } else {
+          const result = JSON.parse(vifResp.body) as { uuid: string; mac_used: string }
+          if (result.mac_used !== vifInfo.mac) {
+            log(`VIF created with new MAC ${result.mac_used} (original ${vifInfo.mac} was in use) device=${vifInfo.device}`)
+          } else {
+            log(`VIF created: device=${vifInfo.device} mac=${vifInfo.mac} network="${vifInfo.network_label}"`)
+          }
+        }
+      } catch (vifErr) {
+        log(`WARN: vif/create threw: ${vifErr instanceof Error ? vifErr.message : String(vifErr)}`)
+      }
+    }
+
     send({
       type:      'xcpng_vm_restore_complete',
       jobId,

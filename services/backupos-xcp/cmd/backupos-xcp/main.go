@@ -673,6 +673,99 @@ func main() {
 		respondJSON(w, http.StatusOK, map[string]string{"uuid": vbdUUID})
 	})
 
+	apiMux.HandleFunc("/api2/json/vm/get-vifs", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("vm-get-vifs", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var body struct {
+			PoolMasterURL         string `json:"pool_master_url"`
+			Username              string `json:"username"`
+			Password              string `json:"password"`
+			CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
+			VMUUID                string `json:"vm_uuid"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			return
+		}
+		if body.VMUUID == "" {
+			respondJSONError(w, http.StatusBadRequest, "vm_uuid required")
+			return
+		}
+		creds := xapi.PerRequestCredentials{
+			PoolMasterURL: body.PoolMasterURL, Username: body.Username,
+			Password: body.Password, CertFingerprintSHA256: body.CertFingerprintSHA256,
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		var vifs []xapi.VIFInfo
+		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+			var err error
+			vifs, err = c.GetVIFsForVM(ctx, body.VMUUID)
+			return err
+		}); err != nil {
+			slog.Error("vm-get-vifs failed", "error", err, "vm_uuid", body.VMUUID)
+			respondJSONError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]any{"vifs": vifs})
+	})
+
+	apiMux.HandleFunc("/api2/json/vif/create", func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("vif-create", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			respondJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var body struct {
+			PoolMasterURL         string `json:"pool_master_url"`
+			Username              string `json:"username"`
+			Password              string `json:"password"`
+			CertFingerprintSHA256 string `json:"cert_fingerprint_sha256"`
+			VMUUID                string `json:"vm_uuid"`
+			Device                string `json:"device"`
+			NetworkLabel          string `json:"network_label"`
+			MAC                   string `json:"mac"`
+			MTU                   int    `json:"mtu"`
+			LockingMode           string `json:"locking_mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			respondJSONError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			return
+		}
+		if body.VMUUID == "" {
+			respondJSONError(w, http.StatusBadRequest, "vm_uuid required")
+			return
+		}
+		creds := xapi.PerRequestCredentials{
+			PoolMasterURL: body.PoolMasterURL, Username: body.Username,
+			Password: body.Password, CertFingerprintSHA256: body.CertFingerprintSHA256,
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		var vifUUID, macUsed string
+		if err := xapi.WithSession(ctx, creds, func(c *xapi.Client) error {
+			var err error
+			vifUUID, macUsed, err = c.CreateVIFFromInfo(ctx, body.VMUUID, xapi.VIFInfo{
+				Device:       body.Device,
+				NetworkLabel: body.NetworkLabel,
+				MAC:          body.MAC,
+				MTU:          body.MTU,
+				LockingMode:  body.LockingMode,
+			})
+			return err
+		}); err != nil {
+			slog.Error("vif-create failed", "error", err, "vm_uuid", body.VMUUID)
+			respondJSONError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]any{"uuid": vifUUID, "mac_used": macUsed, "status": "ok"})
+	})
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api2/json/version", func(w http.ResponseWriter, r *http.Request) {
 		slog.Info("version", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)

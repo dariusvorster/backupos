@@ -89,8 +89,37 @@ export async function runXcpngBackup(
   const logLines: string[] = []
   const log = (line: string) => logLines.push(`[${new Date().toISOString()}] ${line}`)
 
+  interface VIFInfo { device: string; network_label: string; mac: string; mtu: number; locking_mode: string }
+
   try {
     await ensureRepo(engine, repoId)
+
+    // Capture VIFs before the disk loop — same for all disks, added to each snapshot's tags
+    let vifTags: string[] = []
+    try {
+      const vifsResp = await xcpRequest({
+        method: 'POST', path: '/api2/json/vm/get-vifs',
+        xcpBase, bearerToken: xcp.bearerToken, pool,
+        body: {
+          pool_master_url:         pool.masterUrl,
+          username:                pool.username,
+          password:                pool.password,
+          cert_fingerprint_sha256: pool.certFingerprintSha256,
+          vm_uuid:                 target.vmUUID,
+        },
+      })
+      if (vifsResp.status === 200) {
+        const parsed = JSON.parse(vifsResp.body) as { vifs: VIFInfo[] }
+        for (const vif of parsed.vifs ?? []) {
+          vifTags.push(`xcp:vif=${vif.device}=${JSON.stringify(vif)}`)
+        }
+        log(`captured ${parsed.vifs?.length ?? 0} VIF(s) for VM ${target.vmUUID}`)
+      } else {
+        log(`WARN: vm/get-vifs returned ${vifsResp.status} — VIF tags will not be captured`)
+      }
+    } catch (vifErr) {
+      log(`WARN: failed to fetch VIFs: ${vifErr instanceof Error ? vifErr.message : String(vifErr)}`)
+    }
 
     for (const disk of target.disks) {
       if (ctrl.signal.aborted) throw new Error('cancelled')
@@ -158,6 +187,7 @@ export async function runXcpngBackup(
             `xcp:user_device=${disk.userDevice}`,
             `xcp:virtual_size=${disk.virtualSize}`,
             `xcp:job=${jobId}`,
+            ...vifTags,
           ],
           signal: ctrl.signal,
         })
