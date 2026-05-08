@@ -10,7 +10,7 @@ export async function handleDatabaseRestore(
   msg: RunDatabaseRestoreMsg,
   send: SendFn,
 ): Promise<void> {
-  const { requestId, restoreId, app, dumpFilePath, targetContainer, targetDatabase, targetUsername, targetHost, targetPort, passwordEnv, targetDbPath } = msg
+  const { requestId, restoreId, app, dumpFilePath, targetContainer, targetDatabase, targetUsername, targetHost, targetPort, passwordEnv, targetDbPath, targetAuthDatabase } = msg
 
   console.log(`[agent] run_database_restore received: restoreId=${restoreId} app=${app} dumpFile=${dumpFilePath}`)
 
@@ -31,6 +31,8 @@ export async function handleDatabaseRestore(
       await runSqliteRestore({ dumpPath: resolvedDumpPath, container: targetContainer, dbPath: targetDbPath })
     } else if (app === 'redis') {
       await runRedisRestore({ dumpPath: resolvedDumpPath, container: targetContainer, dbPath: targetDbPath })
+    } else if (app === 'mongodb') {
+      await runMongodbRestore({ dumpPath: resolvedDumpPath, container: targetContainer, database: targetDatabase, username: targetUsername, password, authDb: targetAuthDatabase ?? 'admin' })
     } else {
       throw new Error(`Unsupported database app: ${app}`)
     }
@@ -192,5 +194,45 @@ async function runSqliteRestore(opts: SqliteArgs): Promise<void> {
   } else {
     // Host-side copy. Caller is responsible for ensuring no writers hold the file.
     await spawnAllowed('cp', [dumpPath, dbPath])
+  }
+}
+
+interface MongodbArgs {
+  dumpPath: string
+  container?: string
+  database?: string
+  username?: string
+  password?: string
+  authDb: string
+}
+
+async function runMongodbRestore(opts: MongodbArgs): Promise<void> {
+  const { dumpPath, container, database, username, password, authDb } = opts
+  if (!container) {
+    throw new Error('mongodb restore: targetContainer is required (host-side restore is not supported)')
+  }
+
+  const insidePath = `/tmp/backupos-mongodb-restore-${Date.now()}.archive.gz`
+
+  await spawnAllowed('docker', ['cp', dumpPath, `${container}:${insidePath}`])
+
+  try {
+    const restoreArgs: string[] = ['exec', container, 'mongorestore', `--archive=${insidePath}`, '--gzip', '--drop']
+    if (username) {
+      restoreArgs.push('--username', username)
+    }
+    if (password) {
+      restoreArgs.push('--password', password)
+    }
+    if (username || password) {
+      restoreArgs.push('--authenticationDatabase', authDb)
+    }
+    if (database) {
+      restoreArgs.push('--db', database)
+    }
+
+    await spawnAllowed('docker', restoreArgs)
+  } finally {
+    await spawnAllowed('docker', ['exec', container, 'rm', '-f', insidePath]).catch(() => { /* ignore */ })
   }
 }

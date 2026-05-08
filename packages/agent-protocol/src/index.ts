@@ -54,8 +54,9 @@ export type Capability =
   | 'docker'               // can reach Docker API
   | 'podman'               // can reach Podman API
   | 'vss'                  // Windows VSS available
-  | 'apphook:postgres'     // pg_dump available
+  | 'apphook:mongodb'      // mongodump available inside container
   | 'apphook:mysql'        // mysqldump available
+  | 'apphook:postgres'     // pg_dump available
   | 'apphook:redis'        // redis-cli available
   | 'apphook:sqlite'       // sqlite3 available
   | 'hypervisor:proxmox'   // can reach Proxmox API
@@ -94,13 +95,14 @@ export interface ComposeApphookConfig {
   passwordEnv?: string   // name of env var on the agent container holding the password
   database?: string
   dbPath?: string        // sqlite only — path inside the volume
+  authDatabase?: string  // mongodb only — authentication database (defaults to 'admin')
 }
 
 export interface ComposeServiceConfig {
   serviceName: string
   included: boolean
   quiescence: 'none' | 'pause' | 'stop' | 'apphook'
-  apphookType?: 'postgres' | 'mysql' | 'redis' | 'sqlite'
+  apphookType?: 'postgres' | 'mysql' | 'redis' | 'sqlite' | 'mongodb'
   apphookConfig?: ComposeApphookConfig
   includedVolumes: string[]
   includedBindMounts: string[]
@@ -258,7 +260,7 @@ export type ServerMessage =
   | { type: 'run_verification'; verificationRunId: string; repoId: string; snapshotId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; targetType: 'temp_directory' | 'docker_volume' | 'ssh_target' | 'proxmox_vm_clone' | 'xcpng_vm'; targetConfig?: SshVerificationTargetConfig; validationHook?: string | null }
   | { type: 'run_filesystem_restore'; requestId: string; restoreId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; targetPath: string; sourcePath: string; targetIsAgentLocal: boolean }
   | { type: 'cancel_filesystem_restore'; restoreId: string }
-  | { type: 'run_database_restore'; requestId: string; restoreId: string; app: 'postgres' | 'mysql' | 'mariadb' | 'sqlite' | 'redis'; dumpFilePath: string; targetContainer?: string; targetDatabase?: string; targetUsername?: string; targetHost?: string; targetPort?: number; passwordEnv?: string; targetDbPath?: string }
+  | { type: 'run_database_restore'; requestId: string; restoreId: string; app: 'postgres' | 'mysql' | 'mariadb' | 'sqlite' | 'redis' | 'mongodb'; dumpFilePath: string; targetContainer?: string; targetDatabase?: string; targetUsername?: string; targetHost?: string; targetPort?: number; passwordEnv?: string; targetDbPath?: string; targetAuthDatabase?: string }
   | { type: 'list_snapshot_paths'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; pattern?: string }
   | { type: 'run_forget_prune'
       requestId:    string
