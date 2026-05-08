@@ -67,6 +67,32 @@ export default async function NewRestoreSpecPage() {
     }
   }))
 
+  type InvalidJob = { id: string; name: string; reason: string }
+  const validJobs: typeof xcpJobData = []
+  const invalidJobs: InvalidJob[] = []
+
+  for (const job of xcpJobData) {
+    if (!job.vmUUID && !job.integrationId) {
+      // target was null — check by whether both are empty (target null path sets both to '')
+      // Distinguish: if integrationId is '' and vmUUID is '' it means target was null
+      invalidJobs.push({ id: job.id, name: job.name, reason: 'no target configured' })
+    } else if (!job.integrationId) {
+      invalidJobs.push({ id: job.id, name: job.name, reason: 'target has no integration' })
+    } else if (!job.vmUUID) {
+      invalidJobs.push({ id: job.id, name: job.name, reason: 'target has no VM UUID' })
+    } else {
+      validJobs.push(job)
+    }
+  }
+
+  // Jobs with successful runs first, then alphabetically by name
+  validJobs.sort((a, b) => {
+    const aHasRuns = a.runs.length > 0 ? 0 : 1
+    const bHasRuns = b.runs.length > 0 ? 0 : 1
+    if (aHasRuns !== bHasRuns) return aHasRuns - bHasRuns
+    return a.name.localeCompare(b.name)
+  })
+
   return (
     <div style={{ maxWidth: 800 }}>
       <a href="/restore" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-dim)', textDecoration: 'none', marginBottom: 20 }}>← Restore</a>
@@ -74,7 +100,7 @@ export default async function NewRestoreSpecPage() {
       <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginBottom: 24 }}>
         Define your restore as a sequence of steps. Use the form for guided VM restore, or YAML for advanced multi-step flows.
       </p>
-      <NewRestoreSpecWizard xcpJobs={xcpJobData} />
+      <NewRestoreSpecWizard xcpJobs={validJobs} invalidJobs={invalidJobs} />
     </div>
   )
 }
