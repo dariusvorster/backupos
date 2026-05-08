@@ -11,6 +11,7 @@ export default async function NewRestoreSpecPage() {
       id:            backupJobs.id,
       name:          backupJobs.name,
       sourceConfig:  backupJobs.sourceConfig,
+      repositoryId:  backupJobs.repositoryId,
     })
     .from(backupJobs)
     .where(eq(backupJobs.sourceType, 'xcpng_vm'))
@@ -58,6 +59,7 @@ export default async function NewRestoreSpecPage() {
       vmName:        target?.name ?? job.name,
       vmUUID:        target?.externalId ?? '',
       integrationId: target?.integrationId ?? '',
+      repositoryId:  job.repositoryId ?? '',
       disks,
       runs: runs.map(r => ({
         id:          r.id,
