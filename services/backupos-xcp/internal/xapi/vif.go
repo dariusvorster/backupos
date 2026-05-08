@@ -111,30 +111,26 @@ func (c *Client) CreateVIFFromInfo(ctx context.Context, vmUUID string, info VIFI
 		mtu = 1500
 	}
 
-	// XAPI's VIF.create rejects terra-farm's VIFRecord wrapper because it
-	// includes runtime/output-only fields. Use only the 11 input fields per XAPI docs.
-	argsMap := map[string]interface{}{
-		"device":               device,
-		"network":              string(netRef),
-		"VM":                   string(vmRef),
-		"MAC":                  mac,
-		"MTU":                  mtu,
-		"other_config":         map[string]string{},
-		"qos_algorithm_type":   "",
-		"qos_algorithm_params": map[string]string{},
-		"locking_mode":         "network_default",
-		"ipv4_allowed":         []string{},
-		"ipv6_allowed":         []string{},
+	// Use terra-farm's record-based VIF.Create with a clean record (only input fields set).
+	// Pass typed values (NetworkRef, VMRef, VifLockingMode) so the serializer converts them correctly.
+	// Leave all runtime/output-only fields as zero values.
+	record := xenapi.VIFRecord{
+		Device:             device,
+		Network:            netRef,
+		VM:                 vmRef,
+		MAC:                mac,
+		MTU:                mtu,
+		OtherConfig:        map[string]string{},
+		QosAlgorithmType:   "",
+		QosAlgorithmParams: map[string]string{},
+		LockingMode:        xenapi.VifLockingModeNetworkDefault,
+		Ipv4Allowed:        []string{},
+		Ipv6Allowed:        []string{},
 	}
-	result, err := raw.APICall("VIF.create", sess, argsMap)
+	vifRef, err := raw.VIF.Create(sess, record)
 	if err != nil {
 		return "", "", fmt.Errorf("xapi: vif.create: %w", err)
 	}
-	vifRefStr, ok := result.Value.(string)
-	if !ok {
-		return "", "", fmt.Errorf("xapi: vif.create returned non-string ref: %T", result.Value)
-	}
-	vifRef := xenapi.VIFRef(vifRefStr)
 
 	if info.LockingMode != "" && info.LockingMode != "network_default" {
 		var mode xenapi.VifLockingMode
