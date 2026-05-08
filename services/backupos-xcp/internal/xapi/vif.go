@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"net/url"
 	"strings"
 
 	xenapi "github.com/terra-farm/go-xen-api-client"
+	"golang.org/x/crypto/ssh"
 )
 
 // VIFInfo is the preserved-and-replayable VIF state captured at backup time
@@ -66,6 +68,11 @@ func (c *Client) GetVIFsForVM(ctx context.Context, vmUUID string) ([]VIFInfo, er
 
 // CreateVIFFromInfo creates a new VIF on the given VM from preserved VIFInfo.
 //
+// terra-farm's VIF.Create is incompatible with this XCP-ng XAPI version (both
+// the full VIFRecord and the raw APICall approaches have been tried and rejected).
+// This implementation falls back to xe-over-SSH: connects to the pool master as
+// root and runs "xe vif-create" / "xe vif-param-set" directly.
+//
 // Network lookup fallback chain:
 //  1. Exact name_label match on target pool
 //  2. First non-internal network (excludes bridge=xenapi)
@@ -78,29 +85,52 @@ func (c *Client) CreateVIFFromInfo(ctx context.Context, vmUUID string, info VIFI
 	if err != nil {
 		return "", "", err
 	}
-	defer release()
 
-	vmRef, err := raw.VM.GetByUUID(sess, vmUUID)
-	if err != nil {
-		return "", "", fmt.Errorf("xapi: vm.get_by_uuid(%s): %w", vmUUID, err)
-	}
-
+	// Resolve network name_label → NetworkRef → UUID
 	netRef, err := findTargetNetwork(raw, sess, info.NetworkLabel)
 	if err != nil {
+		release()
 		return "", "", err
 	}
+	networkUUID, err := raw.Network.GetUUID(sess, netRef)
+	if err != nil {
+		release()
+		return "", "", fmt.Errorf("xapi: network.get_uuid: %w", err)
+	}
 
+	// MAC collision check
 	mac := info.MAC
 	if mac != "" {
 		inUse, _ := isMACInUse(raw, sess, mac)
 		if inUse {
 			newMAC, mErr := generateRandomMAC()
 			if mErr != nil {
+				release()
 				return "", "", fmt.Errorf("xapi: generate random mac: %w", mErr)
 			}
 			mac = newMAC
 		}
 	}
+
+	release() // done with XAPI session; SSH does not need it
+
+	host, err := poolMasterHost(c.cfg.PoolMasterURL)
+	if err != nil {
+		return "", "", err
+	}
+
+	sshCfg := &ssh.ClientConfig{
+		User: "root",
+		Auth: []ssh.AuthMethod{
+			ssh.Password(c.cfg.Password),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec
+	}
+	conn, dialErr := ssh.Dial("tcp", host+":22", sshCfg)
+	if dialErr != nil {
+		return "", "", fmt.Errorf("xapi: ssh dial %s:22: %w", host, dialErr)
+	}
+	defer conn.Close()
 
 	device := info.Device
 	if device == "" {
@@ -111,47 +141,52 @@ func (c *Client) CreateVIFFromInfo(ctx context.Context, vmUUID string, info VIFI
 		mtu = 1500
 	}
 
-	// Use terra-farm's record-based VIF.Create with a clean record (only input fields set).
-	// Pass typed values (NetworkRef, VMRef, VifLockingMode) so the serializer converts them correctly.
-	// Leave all runtime/output-only fields as zero values.
-	record := xenapi.VIFRecord{
-		Device:             device,
-		Network:            netRef,
-		VM:                 vmRef,
-		MAC:                mac,
-		MTU:                mtu,
-		OtherConfig:        map[string]string{},
-		QosAlgorithmType:   "",
-		QosAlgorithmParams: map[string]string{},
-		LockingMode:        xenapi.VifLockingModeNetworkDefault,
-		Ipv4Allowed:        []string{},
-		Ipv6Allowed:        []string{},
+	// UUIDs, MACs, and device indices are guaranteed safe — no shell quoting needed.
+	xeCmd := fmt.Sprintf("xe vif-create vm-uuid=%s network-uuid=%s device=%s mac=%s mtu=%d",
+		vmUUID, networkUUID, device, mac, mtu)
+
+	xeSess, sErr := conn.NewSession()
+	if sErr != nil {
+		return "", "", fmt.Errorf("xapi: ssh new session: %w", sErr)
 	}
-	vifRef, err := raw.VIF.Create(sess, record)
-	if err != nil {
-		return "", "", fmt.Errorf("xapi: vif.create: %w", err)
+	out, runErr := xeSess.CombinedOutput(xeCmd)
+	xeSess.Close()
+	if runErr != nil {
+		return "", "", fmt.Errorf("xapi: xe vif-create: %w: %s", runErr, strings.TrimSpace(string(out)))
 	}
 
+	vifUUID := strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
+	if len(vifUUID) != 36 {
+		return "", "", fmt.Errorf("xapi: xe vif-create returned unexpected output: %q", string(out))
+	}
+
+	// Set locking mode if non-default
 	if info.LockingMode != "" && info.LockingMode != "network_default" {
-		var mode xenapi.VifLockingMode
-		switch strings.ToLower(info.LockingMode) {
-		case "locked":
-			mode = xenapi.VifLockingModeLocked
-		case "unlocked":
-			mode = xenapi.VifLockingModeUnlocked
-		case "disabled":
-			mode = xenapi.VifLockingModeDisabled
-		default:
-			mode = xenapi.VifLockingModeNetworkDefault
+		lockCmd := fmt.Sprintf("xe vif-param-set uuid=%s locking-mode=%s", vifUUID, info.LockingMode)
+		lockSess, lErr := conn.NewSession()
+		if lErr == nil {
+			_ = lockSess.Run(lockCmd)
+			lockSess.Close()
 		}
-		_ = raw.VIF.SetLockingMode(sess, vifRef, mode)
 	}
 
-	uuid, err = raw.VIF.GetUUID(sess, vifRef)
-	if err != nil {
-		return "", "", fmt.Errorf("xapi: vif.get_uuid: %w", err)
+	return vifUUID, mac, nil
+}
+
+// poolMasterHost extracts the hostname from a pool master URL (strips scheme/port).
+func poolMasterHost(rawURL string) (string, error) {
+	if !strings.Contains(rawURL, "://") {
+		rawURL = "https://" + rawURL
 	}
-	return uuid, mac, nil
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("xapi: parse pool master url: %w", err)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("xapi: could not extract host from pool master url %q", rawURL)
+	}
+	return host, nil
 }
 
 func findTargetNetwork(raw *xenapi.Client, sess xenapi.SessionRef, label string) (xenapi.NetworkRef, error) {
