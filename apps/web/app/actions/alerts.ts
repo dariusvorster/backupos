@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { getDb, alerts, alertChannels, eq, count } from '@backupos/db'
+import { getDb, alerts, alertChannels, eq, ne, count } from '@backupos/db'
 import { requireAdmin } from '@/lib/user'
 import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { dispatchToChannel, ALL_ALERT_TYPES, type AlertType } from '@/lib/alerts'
