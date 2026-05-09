@@ -18,6 +18,7 @@ const LINKED_ITEMS: Record<string, string> = {
   'Coverage':           '/settings/infra-os',
   'Logging':            '/settings/logging',
   'Profile':            '/settings/profile',
+  'License':            '/settings/license',
 }
 
 const chevron = (
@@ -50,6 +51,7 @@ export default async function SettingsPage() {
         { title: 'Security', items: ['Users', 'Change password', 'API tokens', 'Session management'] },
         { title: 'Backup defaults', items: ['Retention policy', 'Bandwidth limits', 'Schedule windows', 'Coverage'] },
         { title: 'Logging', items: ['Logging'] },
+        { title: 'License', items: ['License'] },
       ].map(section => (
         <div key={section.title} style={{
           backgroundColor: 'var(--surf)', border: '1px solid var(--border)',

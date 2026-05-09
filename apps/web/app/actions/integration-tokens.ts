@@ -1,8 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { getDb, integrationTokens, eq } from '@backupos/db'
+import { getDb, integrationTokens, eq, count } from '@backupos/db'
 import { requireAdmin } from '@/lib/user'
+import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { appendAuditEntry } from '@/lib/audit'
 import { generateRawToken, hashToken, extractPrefix, ALL_SCOPES } from '@/lib/integration-tokens'
 
@@ -15,6 +16,14 @@ export async function createIntegrationToken(formData: FormData): Promise<{ toke
   if (!name) return { error: 'Name is required' }
   if (scopesRaw.length === 0) return { error: 'At least one scope is required' }
 
+  const db = getDb()
+  const tkRows = await db.select({ tkCount: count(integrationTokens.id) }).from(integrationTokens).all()
+  const tkCount = tkRows[0]?.tkCount ?? 0
+  try { await enforceLimit('apiTokens', tkCount) } catch (e) {
+    if (e instanceof LicenseLimitError) return { error: e.message }
+    throw e
+  }
+
   const validScopes = scopesRaw.filter(s => (ALL_SCOPES as string[]).includes(s))
   if (validScopes.length !== scopesRaw.length) return { error: 'Invalid scope detected' }
 
@@ -26,7 +35,6 @@ export async function createIntegrationToken(formData: FormData): Promise<{ toke
     : null
 
   const id = crypto.randomUUID()
-  const db = getDb()
 
   await db.insert(integrationTokens).values({
     id,

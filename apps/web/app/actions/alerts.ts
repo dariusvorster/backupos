@@ -2,8 +2,9 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { getDb, alerts, alertChannels, eq } from '@backupos/db'
+import { getDb, alerts, alertChannels, eq, ne, count } from '@backupos/db'
 import { requireAdmin } from '@/lib/user'
+import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { dispatchToChannel, ALL_ALERT_TYPES, type AlertType } from '@/lib/alerts'
 import { encryptChannelConfig } from '@/lib/alert-channel-crypto'
 
@@ -81,6 +82,21 @@ export async function createAlertChannel(formData: FormData): Promise<void> {
   if (!config) return
 
   const db = getDb()
+
+  // License gate: count non-email channels (email is always free).
+  if (type !== 'email') {
+    const rows = await db.select({ ch: count(alertChannels.id) }).from(alertChannels).where(ne(alertChannels.type, 'email')).all()
+    const ch = rows[0]?.ch ?? 0
+    try {
+      await enforceLimit('alertChannels', ch)
+    } catch (e) {
+      if (e instanceof LicenseLimitError) {
+        console.warn('[license] alert channel limit reached:', e.message)
+        return
+      }
+      throw e
+    }
+  }
   await db.insert(alertChannels).values({
     id: crypto.randomUUID(),
     name,

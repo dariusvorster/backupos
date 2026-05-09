@@ -358,6 +358,13 @@
       "when": 1778371200000,
       "tag": "0050_drop_hypervisor_targets_meta",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1778457600000,
+      "tag": "0051_license_state",
+      "breakpoints": true
     }
   ]
 }

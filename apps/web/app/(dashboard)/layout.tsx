@@ -10,9 +10,10 @@ import { FaviconManager }         from '@/components/favicon-manager'
 import { BreadcrumbProvider }     from '@/components/breadcrumb-provider'
 import { unstable_cache }         from 'next/cache'
 import {
-  getDb, backupJobs, backupRuns,
+  getDb, backupJobs, backupRuns, licenseState,
   eq, and, gte,
 } from '@backupos/db'
+import type { TierName } from '@backupos/license-client'
 
 const getLayoutData = unstable_cache(
   async () => {
@@ -29,7 +30,9 @@ const getLayoutData = unstable_cache(
         .where(eq(backupJobs.enabled, true))
         .all(),
     ])
-    return { hasFailed24h: failedRuns.length > 0, jobs }
+    const [licRow] = await db.select({ tier: licenseState.tier }).from(licenseState).limit(1).all()
+    const tier = (licRow?.tier ?? 'free') as TierName
+    return { hasFailed24h: failedRuns.length > 0, jobs, tier }
   },
   ['dashboard-layout'],
   { revalidate: 30 },
@@ -39,7 +42,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const currentUser = await getCurrentUser()
   if (!currentUser) redirect('/login')
 
-  const { hasFailed24h, jobs } = await getLayoutData()
+  const { hasFailed24h, jobs, tier } = await getLayoutData()
 
   const sidebarUser = {
     name:  currentUser.name,
@@ -52,7 +55,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <FaviconManager />
       <DrModeProvider hasFailed24h={hasFailed24h}>
         <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: 'var(--bg)' }}>
-          <Sidebar user={sidebarUser} />
+          <Sidebar user={sidebarUser} tier={tier} />
           <BreadcrumbProvider>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
               <Topbar />

@@ -2,10 +2,11 @@
 
 import { revalidatePath }           from 'next/cache'
 import { redirect }                 from 'next/navigation'
-import { getDb, repositories, backupJobs, backupDefaults, eq, and } from '@backupos/db'
+import { getDb, repositories, backupJobs, backupDefaults, eq, and, count } from '@backupos/db'
 import { ResticEngine }             from '@backupos/engine'
 import { encryptField, decryptField } from '@/lib/repo-crypto'
 import { requireAdmin } from '@/lib/user'
+import { enforceLimit, LicenseLimitError } from '@/lib/license'
 
 function parseRepoConfig(raw: string): Record<string, string> {
   return JSON.parse(decryptField(raw)) as Record<string, string>
@@ -33,6 +34,12 @@ export async function createRepository(formData: FormData): Promise<{ error: str
   if (!password) return { error: 'Repository password is required' }
 
   const db = getDb()
+  const repoRows = await db.select({ count: count() }).from(repositories).all()
+  const repoCount = repoRows[0]?.count ?? 0
+  try { await enforceLimit('repositories', repoCount) } catch (e) {
+    if (e instanceof LicenseLimitError) return { error: e.message }
+    throw e
+  }
   const id = crypto.randomUUID()
 
   const config: Record<string, string> = {}

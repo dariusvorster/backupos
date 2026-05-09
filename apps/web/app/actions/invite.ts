@@ -3,9 +3,10 @@
 import { revalidatePath }           from 'next/cache'
 import { randomBytes }              from 'crypto'
 import { getDb, invite, user }      from '@backupos/db'
-import { eq, and, isNull }          from '@backupos/db'
+import { eq, and, isNull, count }   from '@backupos/db'
 import { auth }                     from '@/lib/auth'
 import { getCurrentUser, requireAdmin } from '@/lib/user'
+import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { sendInviteEmail }          from '@/lib/mailer'
 import { appendAuditEntry }         from '@/lib/audit'
 
@@ -28,6 +29,12 @@ export async function createInvite(
   if (!email) return { error: 'Email is required' }
 
   const db    = getDb()
+  const userRows = await db.select({ userCount: count(user.id) }).from(user).all()
+  const userCount = userRows[0]?.userCount ?? 0
+  try { await enforceLimit('operators', userCount) } catch (e) {
+    if (e instanceof LicenseLimitError) return { error: e.message }
+    throw e
+  }
   const id    = crypto.randomUUID()
   const token = crypto.randomUUID()
   const now   = Date.now()
