@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { getDb, alerts, alertChannels, eq, ne, count } from '@backupos/db'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { dispatchToChannel, ALL_ALERT_TYPES, type AlertType } from '@/lib/alerts'
 import { encryptChannelConfig } from '@/lib/alert-channel-crypto'
@@ -63,7 +63,7 @@ function buildConfig(type: string, fd: FormData): Record<string, string> | null 
 }
 
 export async function snoozeAlert(id: string, hours: number): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   if (!id || hours <= 0) return
   const db = getDb()
   const until = new Date(Date.now() + hours * 60 * 60 * 1000)
@@ -72,7 +72,7 @@ export async function snoozeAlert(id: string, hours: number): Promise<void> {
 }
 
 export async function createAlertChannel(formData: FormData): Promise<void> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const name = str(formData, 'name')
   const type = str(formData, 'type')
 
@@ -110,7 +110,7 @@ export async function createAlertChannel(formData: FormData): Promise<void> {
 }
 
 export async function deleteAlertChannel(id: string): Promise<void> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   if (!id) return
   const db = getDb()
   await db.delete(alertChannels).where(eq(alertChannels.id, id))
@@ -118,7 +118,7 @@ export async function deleteAlertChannel(id: string): Promise<void> {
 }
 
 export async function createAlertChannelForType(integType: string, formData: FormData): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const name = str(formData, 'name')
   if (!name) return
   if (!(VALID_CHANNEL_TYPES as readonly string[]).includes(integType)) return
@@ -137,7 +137,7 @@ export async function createAlertChannelForType(integType: string, formData: For
 }
 
 export async function deleteAlertChannelForType(channelId: string, integType: string): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   if (!channelId) return
   const db = getDb()
   await db.delete(alertChannels).where(eq(alertChannels.id, channelId))
@@ -153,7 +153,7 @@ export type TestAlertChannelResult =
   | { ok: false; error: string }
 
 export async function testAlertChannel(input: TestAlertChannelInput): Promise<TestAlertChannelResult> {
-  await requireAdmin()
+  await requireAdminAction()
 
   let testChannel: { id: string; type: string; config: string }
 
@@ -185,7 +185,7 @@ export async function testAlertChannel(input: TestAlertChannelInput): Promise<Te
 }
 
 export async function updateChannelSubscriptions(channelId: string, events: AlertType[]): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   if (!channelId) return
   const db = getDb()
   await db.update(alertChannels)
@@ -195,13 +195,13 @@ export async function updateChannelSubscriptions(channelId: string, events: Aler
 }
 
 export async function saveChannelSubscriptions(channelId: string, formData: FormData): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const events = ALL_ALERT_TYPES.filter(t => formData.get(`event_${t}`) === 'on')
   await updateChannelSubscriptions(channelId, events)
 }
 
 export async function sendTestAlert(channelId: string): Promise<{ ok: boolean; error?: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   const [channel] = await db.select().from(alertChannels).where(eq(alertChannels.id, channelId)).limit(1)
   if (!channel) return { ok: false, error: 'Channel not found' }
