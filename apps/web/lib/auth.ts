@@ -11,9 +11,6 @@ function buildPlugins(): ReturnType<typeof twoFactorPlugin>[] {
 
   // Conditionally load genericOAuth from DB config.
   // NOTE: This runs at module-init. Changes to /settings/auth/sso require service restart.
-  // TODO #187 follow-up: wire databaseHooks.session.create to record user.login.sso vs user.login
-  // based on the account row's providerId. Currently login events are not audited at all
-  // because better-auth doesn't expose a clean post-login hook in this version.
   let oidc: ReturnType<typeof getOidcConfigDecrypted> = null
   try {
     oidc = getOidcConfigDecrypted()
