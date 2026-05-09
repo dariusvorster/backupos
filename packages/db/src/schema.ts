@@ -742,3 +742,14 @@ export const xcpBackupChains = sqliteTable('xcp_backup_chains', {
 }, t => ({
   pk: primaryKey({ columns: [t.jobId, t.vdiUuid] }),
 }))
+
+// ── License ───────────────────────────────────────────────────────────────
+// Singleton row (id = 'singleton') tracking the active license tier.
+
+export const licenseState = sqliteTable('license_state', {
+  id:         text('id').primaryKey().default('singleton'),
+  tier:       text('tier').notNull().default('free'),
+  licenseKey: text('license_key'),
+  expiresAt:  integer('expires_at',  { mode: 'timestamp_ms' }),
+  updatedAt:  integer('updated_at',  { mode: 'timestamp_ms' }).notNull(),
+})

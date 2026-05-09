@@ -2,8 +2,9 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { getDb, alerts, alertChannels, eq } from '@backupos/db'
+import { getDb, alerts, alertChannels, eq, count } from '@backupos/db'
 import { requireAdmin } from '@/lib/user'
+import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { dispatchToChannel, ALL_ALERT_TYPES, type AlertType } from '@/lib/alerts'
 import { encryptChannelConfig } from '@/lib/alert-channel-crypto'
 
@@ -69,7 +70,7 @@ export async function snoozeAlert(id: string, hours: number): Promise<void> {
   revalidatePath('/alerts')
 }
 
-export async function createAlertChannel(formData: FormData): Promise<void> {
+export async function createAlertChannel(formData: FormData): Promise<{ error?: string } | void> {
   await requireAdmin() // admin only
   const name = str(formData, 'name')
   const type = str(formData, 'type')
@@ -81,6 +82,11 @@ export async function createAlertChannel(formData: FormData): Promise<void> {
   if (!config) return
 
   const db = getDb()
+  const [{ ch }] = await db.select({ ch: count(alertChannels.id) }).from(alertChannels).all()
+  try { await enforceLimit('alertChannels', ch) } catch (e) {
+    if (e instanceof LicenseLimitError) return { error: e.message }
+    throw e
+  }
   await db.insert(alertChannels).values({
     id: crypto.randomUUID(),
     name,

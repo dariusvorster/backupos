@@ -14,6 +14,8 @@ interface NavItem  { href: string; label: string; icon: React.ReactNode }
 interface NavGroup { label: string; items: NavItem[] }
 interface SidebarUser { name: string; email: string; image?: string | null }
 
+type TierName = 'free' | 'solo' | 'team' | 'business'
+
 const NAV: NavGroup[] = [
   {
     label: 'Overview',
@@ -99,7 +101,7 @@ function Logo() {
   )
 }
 
-export function Sidebar({ user }: { user: SidebarUser }) {
+export function Sidebar({ user, tier = 'free' }: { user: SidebarUser; tier?: TierName }) {
   const pathname = usePathname()
   const allHrefs = NAV.flatMap(g => g.items.map(i => i.href))
 
@@ -161,8 +163,12 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         borderTop: '1px solid var(--border2)',
       }}>
         <ProfilePopover user={user} />
-        <div style={{ fontSize: 10, color: 'var(--fg-faint)', marginTop: 4 }}>
-          Solo · v0.1.0
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <span style={{
+            fontSize: 10, padding: '1px 6px', borderRadius: 3, textTransform: 'capitalize',
+            backgroundColor: 'var(--accent-dim)', color: 'var(--accent-deep)', fontWeight: 600,
+          }}>{tier}</span>
+          <span style={{ fontSize: 10, color: 'var(--fg-faint)' }}>v0.1.0</span>
         </div>
       </div>
     </aside>

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/user'
 import { upsertOidcConfig, disableOidc as disableOidcDb } from '@/lib/oidc-config'
 import { appendAuditEntry } from '@/lib/audit'
+import { requireFeature, LicenseFeatureError } from '@/lib/license'
 
 export async function saveOidcConfig(input: {
   enabled:       boolean
@@ -15,6 +16,11 @@ export async function saveOidcConfig(input: {
   buttonLabel:   string
 }): Promise<{ error?: string }> {
   const admin = await requireAdmin()
+
+  try { await requireFeature('oidc_sso') } catch (e) {
+    if (e instanceof LicenseFeatureError) return { error: e.message }
+    throw e
+  }
 
   if (!input.discoveryUrl?.trim()) return { error: 'Discovery URL is required' }
   if (!input.clientId?.trim())     return { error: 'Client ID is required' }

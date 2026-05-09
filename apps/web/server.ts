@@ -7,7 +7,7 @@ import type { IncomingMessage } from 'http'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
-import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
+import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc, count } from '@backupos/db'
 import { parseExpression } from 'cron-parser'
 import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, requestInitRepository, resolveInitRepository, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete, resolveSnapshotPaths } from './lib/ws-state'
 import { ensureRepoMountedOnAgent } from './lib/repo-mount'
@@ -18,6 +18,7 @@ import { migrateAlertChannelEncryption } from './lib/alert-channel-crypto'
 import { appendLog } from './lib/logger'
 import { auth } from './lib/auth'
 import type { AgentMessage, ServerMessage, MountConfig } from '@backupos/agent-protocol'
+import { enforceLimit, LicenseLimitError } from './lib/license'
 
 async function requireSession(req: IncomingMessage): Promise<{ userId: string } | null> {
   const headers = new Headers()
@@ -436,6 +437,14 @@ void app.prepare().then(async () => {
             .limit(1)
 
           if (!agent) { ws.close(4001, 'Unauthorized'); return }
+
+          const [{ agentCount }] = await db.select({ agentCount: count(agents.id) }).from(agents).all()
+          try {
+            await enforceLimit('agents', agentCount)
+          } catch (e) {
+            if (e instanceof LicenseLimitError) { ws.close(4029, e.message); return }
+            throw e
+          }
 
           agentId = agent.id
           registerAgent(agentId, ws)
