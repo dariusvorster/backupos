@@ -151,6 +151,7 @@ async function resolveBandwidthLimitKbps(db: ReturnType<typeof getDb>, jobId: st
 }
 
 export async function triggerJob(id: string): Promise<void> {
+  await requireAdmin()
   const db  = getDb()
   const now = new Date()
 
@@ -225,6 +226,7 @@ export async function updateJob(id: string, formData: FormData): Promise<void> {
 }
 
 export async function retryRun(jobId: string): Promise<void> {
+  await requireAdmin()
   const db  = getDb()
   const now = new Date()
 

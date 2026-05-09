@@ -135,6 +135,7 @@ export async function deleteMonitor(id: string): Promise<void> {
 }
 
 export async function syncMonitor(monitorId: string): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin()
   const db     = getDb()
   const result = await performMonitorSync(monitorId, db)
   if (result.ok) revalidatePath(`/monitors/${monitorId}`)
