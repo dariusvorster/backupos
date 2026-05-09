@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { getDb, backupJobs, backupRuns, repositories, eq } from '@backupos/db'
+import { requireAdmin } from '@/lib/user'
 import { decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { connectedAgentIds } from '@/lib/ws-state'
@@ -9,6 +10,7 @@ import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import type { ComposeProjectConfig } from '@backupos/agent-protocol'
 
 export async function triggerComposeRestore(formData: FormData): Promise<void> {
+  await requireAdmin()
   const jobId                 = (formData.get('jobId')                 as string | null)?.trim() ?? ''
   const sourceRunId           = (formData.get('sourceRunId')           as string | null)?.trim() ?? ''
   const rawMode = (formData.get('mode') as string | null)?.trim()
