@@ -6,15 +6,7 @@ import { getDb, backupRuns }         from '@backupos/db'
 import { lt, eq, and, desc }         from '@backupos/db'
 import { authenticate }              from '@/lib/integration-auth'
 import { triggerJobById }            from '@/lib/scheduler'
-
-function checkInternalAuth(req: NextRequest): NextResponse | null {
-  const expected = process.env.BACKUPOS_INTERNAL_SECRET
-  if (!expected) return NextResponse.json({ error: 'internal auth not configured' }, { status: 503 })
-  if (req.headers.get('authorization') !== `Bearer ${expected}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  }
-  return null
-}
+import { checkInternalAuth }         from '@/lib/internal-auth'
 
 export async function POST(req: NextRequest) {
   const deny = checkInternalAuth(req)

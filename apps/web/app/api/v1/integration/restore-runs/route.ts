@@ -5,13 +5,11 @@ import { NextRequest, NextResponse }                                            
 import { getDb, backupJobs, repositories, restoreRuns, hypervisorTargets, hypervisorIntegrations, eq } from '@backupos/db'
 import { decryptField }                                                             from '@/lib/repo-crypto'
 import { connectedAgentIds, dispatch }                                              from '@/lib/ws-state'
+import { checkInternalAuth }                                                       from '@/lib/internal-auth'
 
 export async function POST(req: NextRequest) {
-  const expected = process.env.BACKUPOS_INTERNAL_SECRET
-  if (!expected) return NextResponse.json({ error: 'internal auth not configured' }, { status: 503 })
-  if (req.headers.get('authorization') !== `Bearer ${expected}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  }
+  const deny = checkInternalAuth(req)
+  if (deny) return deny
 
   let body: { job_id?: string; target_sr_uuid?: string; vm_name?: string; target_template_name_label?: string }
   try { body = await req.json() as typeof body }
