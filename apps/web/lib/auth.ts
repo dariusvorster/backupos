@@ -133,6 +133,14 @@ export const auth = betterAuth({
       maxAge:  60 * 5,
     },
   },
+  // Better-auth's built-in rate limiter, applied to /api/auth/* endpoints.
+  // 10 requests per 60-second window per IP.
+  //
+  // SCOPE LIMITATION (audit finding #11): better-auth defaults to an in-memory
+  // store. Counter resets on every service restart (including deploys) and is
+  // not shared across multiple BackupOS instances. Acceptable for single-
+  // instance deployments. To be backed by SQLite/Redis when BackupOS supports
+  // horizontal scaling (V2 / multi-instance roadmap).
   rateLimit: {
     enabled: true,
     window:  60,
