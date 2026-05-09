@@ -438,7 +438,8 @@ void app.prepare().then(async () => {
 
           if (!agent) { ws.close(4001, 'Unauthorized'); return }
 
-          const [{ agentCount }] = await db.select({ agentCount: count(agents.id) }).from(agents).all()
+          const agentRows = await db.select({ agentCount: count(agents.id) }).from(agents).all()
+          const agentCount = agentRows[0]?.agentCount ?? 0
           try {
             await enforceLimit('agents', agentCount)
           } catch (e) {
