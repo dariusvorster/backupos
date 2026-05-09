@@ -34,7 +34,8 @@ export async function createRepository(formData: FormData): Promise<{ error: str
   if (!password) return { error: 'Repository password is required' }
 
   const db = getDb()
-  const [{ count: repoCount }] = await db.select({ count: count() }).from(repositories).all()
+  const repoRows = await db.select({ count: count() }).from(repositories).all()
+  const repoCount = repoRows[0]?.count ?? 0
   try { await enforceLimit('repositories', repoCount) } catch (e) {
     if (e instanceof LicenseLimitError) return { error: e.message }
     throw e

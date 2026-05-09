@@ -29,7 +29,8 @@ export async function createInvite(
   if (!email) return { error: 'Email is required' }
 
   const db    = getDb()
-  const [{ userCount }] = await db.select({ userCount: count(user.id) }).from(user).all()
+  const userRows = await db.select({ userCount: count(user.id) }).from(user).all()
+  const userCount = userRows[0]?.userCount ?? 0
   try { await enforceLimit('operators', userCount) } catch (e) {
     if (e instanceof LicenseLimitError) return { error: e.message }
     throw e

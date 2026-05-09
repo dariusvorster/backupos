@@ -17,7 +17,8 @@ export async function createIntegrationToken(formData: FormData): Promise<{ toke
   if (scopesRaw.length === 0) return { error: 'At least one scope is required' }
 
   const db = getDb()
-  const [{ tkCount }] = await db.select({ tkCount: count(integrationTokens.id) }).from(integrationTokens).all()
+  const tkRows = await db.select({ tkCount: count(integrationTokens.id) }).from(integrationTokens).all()
+  const tkCount = tkRows[0]?.tkCount ?? 0
   try { await enforceLimit('apiTokens', tkCount) } catch (e) {
     if (e instanceof LicenseLimitError) return { error: e.message }
     throw e
