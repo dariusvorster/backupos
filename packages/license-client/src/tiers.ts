@@ -4,11 +4,11 @@ const TIERS: Record<TierName, TierConfig> = {
   free: {
     name: 'free',
     limits: {
-      agents:        1,
-      repositories:  3,
+      agents:        3,
+      repositories:  2,
       operators:     1,
       alertChannels: 1,
-      apiTokens:     2,
+      apiTokens:     0,
       retentionDays: 30,
     },
     features: [],
@@ -16,26 +16,26 @@ const TIERS: Record<TierName, TierConfig> = {
   solo: {
     name: 'solo',
     limits: {
-      agents:        3,
-      repositories:  10,
+      agents:        10,
+      repositories:  5,
       operators:     1,
-      alertChannels: 3,
-      apiTokens:     10,
-      retentionDays: 365,
+      alertChannels: 9,
+      apiTokens:     1,
+      retentionDays: -1,
     },
-    features: [],
+    features: ['scheduled_verification'],
   },
   team: {
     name: 'team',
     limits: {
-      agents:        10,
-      repositories:  30,
+      agents:        50,
+      repositories:  25,
       operators:     10,
-      alertChannels: 10,
-      apiTokens:     50,
-      retentionDays: 365,
+      alertChannels: 9,
+      apiTokens:     10,
+      retentionDays: -1,
     },
-    features: ['oidc_sso', 'multi_user_rbac', 'compliance_export', 'scheduled_verification'],
+    features: ['scheduled_verification', 'oidc_sso', 'multi_user_rbac', 'compliance_export'],
   },
   business: {
     name: 'business',
@@ -47,7 +47,7 @@ const TIERS: Record<TierName, TierConfig> = {
       apiTokens:     -1,
       retentionDays: -1,
     },
-    features: ['oidc_sso', 'multi_user_rbac', 'compliance_export', 'scheduled_verification', 'priority_support'],
+    features: ['scheduled_verification', 'oidc_sso', 'multi_user_rbac', 'compliance_export', 'priority_support'],
   },
 }
 
