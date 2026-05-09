@@ -21,7 +21,7 @@ export async function getLicenseSummary(): Promise<{
   }
 }
 
-export async function applyLicenseKey(formData: FormData): Promise<{ error?: string }> {
+export async function applyLicenseKey(_prevState: { error?: string } | undefined, formData: FormData): Promise<{ error?: string }> {
   await requireAdmin()
   const key = (formData.get('licenseKey') as string | null)?.trim()
   if (!key) return { error: 'License key is required' }
