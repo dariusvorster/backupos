@@ -70,7 +70,7 @@ export async function snoozeAlert(id: string, hours: number): Promise<void> {
   revalidatePath('/alerts')
 }
 
-export async function createAlertChannel(formData: FormData): Promise<{ error?: string } | void> {
+export async function createAlertChannel(formData: FormData): Promise<void> {
   await requireAdmin() // admin only
   const name = str(formData, 'name')
   const type = str(formData, 'type')
@@ -82,10 +82,19 @@ export async function createAlertChannel(formData: FormData): Promise<{ error?: 
   if (!config) return
 
   const db = getDb()
-  const [{ ch }] = await db.select({ ch: count(alertChannels.id) }).from(alertChannels).all()
-  try { await enforceLimit('alertChannels', ch) } catch (e) {
-    if (e instanceof LicenseLimitError) return { error: e.message }
-    throw e
+
+  // License gate: count non-email channels (email is always free).
+  if (type !== 'email') {
+    const [{ ch }] = await db.select({ ch: count(alertChannels.id) }).from(alertChannels).where(ne(alertChannels.type, 'email')).all()
+    try {
+      await enforceLimit('maxAlertChannelsBeyondEmail', ch)
+    } catch (e) {
+      if (e instanceof LicenseLimitError) {
+        console.warn('[license] alert channel limit reached:', e.message)
+        return
+      }
+      throw e
+    }
   }
   await db.insert(alertChannels).values({
     id: crypto.randomUUID(),
