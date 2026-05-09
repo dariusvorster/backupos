@@ -2,7 +2,7 @@
 
 import { writeFileSync, copyFileSync, readFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { rotateEncryptionKey, type RotationStats } from '@/lib/key-rotation'
 
 const ENV_FILE_PATH = process.env['BACKUPOS_ENV_FILE'] ?? '/etc/backupos/server.env'
@@ -25,7 +25,7 @@ export interface RotateResult {
  * env file is untouched.
  */
 export async function rotateEncryptionKeyAction(): Promise<RotateResult> {
-  await requireAdmin()
+  await requireAdminAction()
 
   const oldKey = process.env['ENCRYPTION_KEY']
   if (!oldKey || oldKey.length < 64) {

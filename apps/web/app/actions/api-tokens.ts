@@ -4,10 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { randomBytes, createHash } from 'crypto'
 import { getDb, apiTokens, eq } from '@backupos/db'
 import { headers } from 'next/headers'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 
 export async function createApiToken(formData: FormData): Promise<{ token?: string; id?: string; error?: string }> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const { auth } = await import('@/lib/auth')
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session) return { error: 'Not authenticated' }
@@ -39,7 +39,7 @@ export async function createApiToken(formData: FormData): Promise<{ token?: stri
 }
 
 export async function revokeApiToken(id: string) {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const db = getDb()
   await db.delete(apiTokens).where(eq(apiTokens.id, id))
   revalidatePath('/settings/api-tokens')

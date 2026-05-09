@@ -2,7 +2,7 @@
 
 import { request as httpsRequest, Agent } from 'node:https'
 import { getDb, pbsTokens, pbsDatastores, eq } from '@backupos/db'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { getPbsServerInfo } from '@/lib/pbs-server'
 
 export interface TestConnectionResult {
@@ -17,7 +17,7 @@ export async function testPbsConnection(input: {
   tokenId:       string
   datastoreName: string
 }): Promise<TestConnectionResult> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
 
   const [tokenRow] = await db

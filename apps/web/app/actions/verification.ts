@@ -7,7 +7,7 @@ import { encryptField, decryptField } from '@/lib/repo-crypto'
 import { dispatchToAgent } from '@/lib/internal-dispatch'
 import { connectedAgentIds } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { appendAuditEntry } from '@/lib/audit'
 import { parseExpression } from 'cron-parser'
 
@@ -26,7 +26,7 @@ export async function createVerificationTest(data: {
     cleanupRemote?: boolean
   } | null
 }): Promise<void> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const { name, jobId, targetType, validationHook, schedule, targetConfig } = data
   if (!name || !jobId || !targetType || !schedule) return
 
@@ -155,7 +155,7 @@ export interface UpdateVerificationTestInput {
 }
 
 export async function updateVerificationTest(input: UpdateVerificationTestInput): Promise<{ error?: string }> {
-  const adminUser = await requireAdmin()
+  const adminUser = await requireAdminAction()
   const db = getDb()
 
   if (!input.name?.trim()) return { error: 'Name is required' }
@@ -218,7 +218,7 @@ export async function updateVerificationTest(input: UpdateVerificationTestInput)
 }
 
 export async function deleteVerificationTest(id: string): Promise<{ error?: string }> {
-  const adminUser = await requireAdmin()
+  const adminUser = await requireAdminAction()
   const db = getDb()
 
   const [existing] = await db.select().from(verificationTests).where(eq(verificationTests.id, id)).limit(1)

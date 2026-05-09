@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { getDb, hypervisorIntegrations, hypervisorTargets, eq } from '@backupos/db'
 import { ProxmoxHypervisorDriver, VMwareHypervisorDriver } from '@backupos/hypervisors'
 import type { ProxmoxConfig, VMwareConfig } from '@backupos/hypervisors'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 
 type DiscoverResult = { ok: boolean; count?: number; error?: string }
 
@@ -21,7 +21,7 @@ type TargetRow = {
 }
 
 export async function discoverHypervisorTargets(integrationId: string): Promise<DiscoverResult> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   const [integration] = await db
     .select()
@@ -135,7 +135,7 @@ export async function updateHypervisorIntegration(
   id: string,
   formData: FormData,
 ): Promise<{ error: string } | undefined> {
-  await requireAdmin()
+  await requireAdminAction()
 
   const name            = String(formData.get('name') ?? '').trim()
   const host            = String(formData.get('host') ?? '').trim()
@@ -190,7 +190,7 @@ export async function updateHypervisorIntegration(
 export async function deleteHypervisorIntegration(
   id: string,
 ): Promise<{ error: string } | undefined> {
-  await requireAdmin()
+  await requireAdminAction()
 
   const db = getDb()
 

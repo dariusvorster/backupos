@@ -3,7 +3,7 @@
 import { revalidatePath }                          from 'next/cache'
 import { randomBytes }                             from 'crypto'
 import { getDb, pbsTokens, eq, and }               from '@backupos/db'
-import { requireAdmin }                            from '@/lib/user'
+import { requireAdminAction }                            from '@/lib/user'
 import { generatePbsSecret, hashPbsSecret }        from '@/lib/pbs-tokens'
 import { appendAuditEntry }                        from '@/lib/audit'
 import { headers }                                 from 'next/headers'
@@ -17,7 +17,7 @@ export async function createPbsToken(formData: FormData): Promise<{
   id?:      string
   error?:   string
 }> {
-  await requireAdmin()
+  await requireAdminAction()
   const { api } = auth
   const session = await api.getSession({ headers: await headers() })
   if (!session) return { error: 'Not authenticated' }
@@ -77,7 +77,7 @@ export async function createPbsToken(formData: FormData): Promise<{
 }
 
 export async function revokePbsToken(id: string): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   await db.delete(pbsTokens).where(eq(pbsTokens.id, id))
   await appendAuditEntry({

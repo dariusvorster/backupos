@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getDb, licenseState } from '@backupos/db'
 import { eq } from '@backupos/db'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import type { TierName } from '@backupos/license-client'
 
 export async function getLicenseSummary(): Promise<{
@@ -22,7 +22,7 @@ export async function getLicenseSummary(): Promise<{
 }
 
 export async function applyLicenseKey(_prevState: { error?: string } | undefined, formData: FormData): Promise<{ error?: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const key = (formData.get('licenseKey') as string | null)?.trim()
   if (!key) return { error: 'License key is required' }
 
@@ -38,7 +38,7 @@ export async function applyLicenseKey(_prevState: { error?: string } | undefined
 }
 
 export async function clearLicenseKey(): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   await db.update(licenseState)
     .set({ licenseKey: null, tier: 'free', updatedAt: new Date() })
