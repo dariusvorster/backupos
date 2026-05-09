@@ -88,7 +88,7 @@ export async function createAlertChannel(formData: FormData): Promise<void> {
     const rows = await db.select({ ch: count(alertChannels.id) }).from(alertChannels).where(ne(alertChannels.type, 'email')).all()
     const ch = rows[0]?.ch ?? 0
     try {
-      await enforceLimit('maxAlertChannelsBeyondEmail', ch)
+      await enforceLimit('alertChannels', ch)
     } catch (e) {
       if (e instanceof LicenseLimitError) {
         console.warn('[license] alert channel limit reached:', e.message)
