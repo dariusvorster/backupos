@@ -8,7 +8,7 @@ import { randomBytes }    from 'node:crypto'
 import { request as httpsRequest, Agent } from 'node:https'
 import { getDb, pbsDatastores, eq } from '@backupos/db'
 import { FsChunkStore }   from '@backupos/pbs-storage'
-import { requireAdmin }   from '@/lib/user'
+import { requireAdminAction }   from '@/lib/user'
 import { appendAuditEntry } from '@/lib/audit'
 import { getPbsServerInfo } from '@/lib/pbs-server'
 
@@ -107,7 +107,7 @@ export interface CreatePbsDatastoreResult {
 export async function createPbsDatastore(
   formData: FormData,
 ): Promise<CreatePbsDatastoreResult> {
-  const adminUser = await requireAdmin()
+  const adminUser = await requireAdminAction()
   const name = (formData.get('name') as string | null)?.trim()
 
   if (!name) return { error: 'Datastore name is required' }
@@ -164,7 +164,7 @@ export async function createPbsDatastore(
 }
 
 export async function deletePbsDatastore(id: string): Promise<{ error?: string }> {
-  const adminUser = await requireAdmin()
+  const adminUser = await requireAdminAction()
   const db = getDb()
 
   const rows = await db
@@ -207,7 +207,7 @@ export interface UpdatePbsDatastoreInput {
 }
 
 export async function updatePbsDatastore(input: UpdatePbsDatastoreInput): Promise<{ error?: string }> {
-  const adminUser = await requireAdmin()
+  const adminUser = await requireAdminAction()
   const db = getDb()
 
   if (input.pruneSchedule !== null && input.pruneSchedule.length > 64) {
@@ -250,7 +250,7 @@ export interface SyncStatsResult {
 }
 
 export async function syncPbsDatastoreStats(id: string): Promise<SyncStatsResult> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
 
   const [ds] = await db.select().from(pbsDatastores).where(eq(pbsDatastores.id, id)).limit(1)
@@ -288,7 +288,7 @@ export interface TriggerGcResult {
 }
 
 export async function triggerPbsGc(id: string): Promise<TriggerGcResult> {
-  const adminUser = await requireAdmin()
+  const adminUser = await requireAdminAction()
   const db = getDb()
 
   const [ds] = await db.select().from(pbsDatastores).where(eq(pbsDatastores.id, id)).limit(1)
