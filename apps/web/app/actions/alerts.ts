@@ -63,6 +63,7 @@ function buildConfig(type: string, fd: FormData): Record<string, string> | null 
 }
 
 export async function snoozeAlert(id: string, hours: number): Promise<void> {
+  await requireAdmin()
   if (!id || hours <= 0) return
   const db = getDb()
   const until = new Date(Date.now() + hours * 60 * 60 * 1000)
@@ -184,6 +185,7 @@ export async function updateChannelSubscriptions(channelId: string, events: Aler
 }
 
 export async function saveChannelSubscriptions(channelId: string, formData: FormData): Promise<void> {
+  await requireAdmin()
   const events = ALL_ALERT_TYPES.filter(t => formData.get(`event_${t}`) === 'on')
   await updateChannelSubscriptions(channelId, events)
 }

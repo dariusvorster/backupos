@@ -330,6 +330,7 @@ export interface ReplicaEntry {
 }
 
 export async function setReplicas(repoId: string, replicas: ReplicaEntry[]): Promise<void> {
+  await requireAdmin()
   const db = getDb()
   await db
     .update(repositories)
@@ -344,6 +345,7 @@ function parseReplicas(raw: string | null): ReplicaEntry[] {
 }
 
 export async function addReplica(repoId: string, entry: ReplicaEntry): Promise<void> {
+  await requireAdmin()
   const db      = getDb()
   const [repo]  = await db.select({ replicas: repositories.replicas }).from(repositories).where(eq(repositories.id, repoId)).limit(1)
   if (!repo) return
@@ -352,6 +354,7 @@ export async function addReplica(repoId: string, entry: ReplicaEntry): Promise<v
 }
 
 export async function removeReplicaAt(repoId: string, index: number): Promise<void> {
+  await requireAdmin()
   const db      = getDb()
   const [repo]  = await db.select({ replicas: repositories.replicas }).from(repositories).where(eq(repositories.id, repoId)).limit(1)
   if (!repo) return
