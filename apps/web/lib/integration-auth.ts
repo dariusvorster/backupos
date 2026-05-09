@@ -5,7 +5,15 @@ import { eq }                        from '@backupos/db'
 import { hashToken, parseScopes, validateScope, isExpired, isRevoked } from './integration-tokens'
 import { appendAuditEntry }          from './audit'
 
-// Per-process in-memory rate limiter — resets every 60 s
+// Per-process in-memory rate limiter for integration tokens.
+// Counter resets every 60 s; per-token quota from rateLimitRpm column.
+//
+// SCOPE LIMITATION (audit finding #11): this state lives in process memory.
+// - Resets on every service restart (including deploys).
+// - Not shared across multiple BackupOS instances.
+// Acceptable for single-instance deployments. To be replaced with a
+// SQLite-backed limiter when BackupOS supports horizontal scaling
+// (V2 / multi-instance roadmap).
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
 
 function checkRateLimit(tokenId: string, limitRpm: number): boolean {

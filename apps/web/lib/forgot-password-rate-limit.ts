@@ -1,6 +1,12 @@
 // Per-process in-memory rate limiter for /forgot-password.
 // Two independent buckets: per-email (5 req / 15 min) and per-IP (20 req / 60 min).
-// Resets on process restart — acceptable for self-hosted single-instance deployment.
+//
+// SCOPE LIMITATION (audit finding #11): this state lives in process memory.
+// - Resets on every service restart (including deploys).
+// - Not shared across multiple BackupOS instances.
+// Acceptable for single-instance deployments. To be replaced with a
+// SQLite-backed limiter when BackupOS supports horizontal scaling
+// (V2 / multi-instance roadmap).
 
 interface Bucket { count: number; resetAt: number }
 
