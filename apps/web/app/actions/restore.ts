@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { getDb, restoreSpecs, restoreRuns, snapshots, repositories, backupJobs, backupRuns, alertChannels, hypervisorTargets, hypervisorIntegrations, eq, desc, and } from '@backupos/db'
 import type { ComposeProjectConfig } from '@backupos/agent-protocol'
 import { parseRestoreSpec, executeRestoreSpec, type RestoreRunResult, type NotifyDelivery, type DatabaseRestoreDelivery, type XcpngVmRestoreDelivery } from '@backupos/restore'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { dispatchToChannel, fireRestoreSucceeded, fireRestoreFailed } from '@/lib/alerts'
 import type { AlertType, AlertPayload } from '@/lib/alerts'
 import { decryptField } from '@/lib/repo-crypto'
@@ -23,7 +23,7 @@ export async function validateSpec(yaml: string): Promise<{ ok: true } | { ok: f
 }
 
 export async function createSpec(name: string, yaml: string): Promise<{ error: string } | never> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   if (!name.trim()) return { error: 'Name is required' }
 
   const validation = await validateSpec(yaml)
@@ -43,7 +43,7 @@ export async function createSpec(name: string, yaml: string): Promise<{ error: s
 }
 
 export async function updateSpec(id: string, name: string, yaml: string): Promise<{ error: string } | never> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   if (!name.trim()) return { error: 'Name is required' }
 
   const validation = await validateSpec(yaml)
@@ -60,7 +60,7 @@ export async function updateSpec(id: string, name: string, yaml: string): Promis
 }
 
 export async function forkSpec(name: string, yamlContent: string): Promise<void> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const db = getDb()
   const id = crypto.randomUUID()
   await db.insert(restoreSpecs).values({
@@ -328,7 +328,7 @@ interface RepoConfigShape {
 export async function restoreFromSnapshot(
   input: RestoreFromSnapshotInput,
 ): Promise<{ ok: true; runId: string } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
 
   const { snapshotId, sourcePath, targetType, customPath } = input
   const db = getDb()
@@ -431,7 +431,7 @@ export async function restoreFromSnapshot(
 export async function getLatestSnapshotForJob(
   jobId: string,
 ): Promise<{ ok: true; snapshotId: string; createdAt: Date | null } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
 
   const [latest] = await db
@@ -455,7 +455,7 @@ export async function getSnapshotRootPaths(
   | { ok: true; paths: string[]; snapshotId: string; createdAt: Date | null }
   | { ok: false; error: string }
 > {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
 
   const [latest] = await db
@@ -497,7 +497,7 @@ export interface ApphookService {
 export async function getApphookServicesForJob(
   jobId: string,
 ): Promise<{ ok: true; services: ApphookService[] } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
   if (!job) return { ok: false, error: 'Job not found' }
@@ -528,7 +528,7 @@ export async function findDumpInSnapshot(
   repositoryId: string,
   serviceName: string,
 ): Promise<{ ok: true; dumpPath: string } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
 
   const [repo] = await db.select().from(repositories).where(eq(repositories.id, repositoryId)).limit(1)
@@ -579,7 +579,7 @@ export async function triggerDatabaseRestore(
   serviceName: string,
   targetDatabase: string,
 ): Promise<{ ok: true; restoreId: string } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
 
   // 1. Look up the job to get the agent and apphook config
@@ -673,7 +673,7 @@ export async function triggerDatabaseRestore(
 export async function getLatestRunForJob(
   jobId: string,
 ): Promise<{ ok: true; runId: string; createdAt: Date | null } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
 
   const [latest] = await db
@@ -697,7 +697,7 @@ export async function getLatestRunForJob(
 export async function getJobComposeProjectName(
   jobId: string,
 ): Promise<{ ok: true; projectName: string } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
   if (!job?.sourceConfig) return { ok: false, error: 'Job has no source config' }
@@ -711,7 +711,7 @@ export async function getJobComposeProjectName(
 }
 
 export async function cancelRestore(restoreId: string): Promise<{ ok: boolean; error?: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   if (!restoreId) return { ok: false, error: 'restoreId required' }
 
   const db = getDb()
