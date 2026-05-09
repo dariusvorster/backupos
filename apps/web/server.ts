@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import { getDb, runMigrations, agents, backupRuns, backupJobs, repositories, restoreRuns, auditLog, backupDefaults, verificationRuns, verificationTests, snapshots, eq, and, desc } from '@backupos/db'
 import { parseExpression } from 'cron-parser'
-import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, requestInitRepository, resolveInitRepository, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete, resolveSnapshotPaths, resolveSnapshotContents } from './lib/ws-state'
+import { registerAgent, unregisterAgent, resolveDetect, requestDetect, resolveTestRepo, requestTestRepo, resolveTestMount, requestTestMount, requestInitRepository, resolveInitRepository, connectedAgentIds, dispatch, requestListCompose, resolveListCompose, resolveMountRepository, resolveFilesystemRestoreStarted, resolveDatabaseRestoreStarted, resolveDatabaseRestoreComplete, resolveSnapshotPaths } from './lib/ws-state'
 import { ensureRepoMountedOnAgent } from './lib/repo-mount'
 import { loadOrCreateInternalToken } from './lib/internal-token'
 import { decryptField } from './lib/repo-crypto'
@@ -598,10 +598,29 @@ void app.prepare().then(async () => {
               let paths: string | null = null
               if (snapJob?.sourceConfig) {
                 try {
-                  const cfg = JSON.parse(snapJob.sourceConfig) as { paths?: string[]; volumes?: string[] }
+                  const cfg = JSON.parse(snapJob.sourceConfig) as {
+                    paths?: string[]
+                    volumes?: string[]
+                    composeFilePath?: string
+                    services?: Array<{
+                      serviceName: string
+                      included: boolean
+                      includedVolumes?: string[]
+                    }>
+                  }
                   if (snapJob.sourceType === 'docker_volume') {
                     paths = JSON.stringify((cfg.volumes ?? []).map(v => `/var/lib/docker/volumes/${v}/_data`))
-                  } else if (snapJob.sourceType !== 'compose_project') {
+                  } else if (snapJob.sourceType === 'compose_project') {
+                    const composeRoots: string[] = []
+                    if (cfg.composeFilePath) composeRoots.push(cfg.composeFilePath)
+                    for (const svc of cfg.services ?? []) {
+                      if (!svc.included) continue
+                      for (const vol of svc.includedVolumes ?? []) {
+                        composeRoots.push(`/var/lib/docker/volumes/${vol}/_data`)
+                      }
+                    }
+                    paths = JSON.stringify(composeRoots)
+                  } else {
                     paths = JSON.stringify(cfg.paths ?? [])
                   }
                 } catch { /* paths stays null */ }
@@ -830,9 +849,6 @@ void app.prepare().then(async () => {
             error:       msg.error,
             durationSec: msg.durationSec,
           })
-
-        } else if (msg.type === 'list_snapshot_contents_result') {
-          resolveSnapshotContents(msg.requestId, { ok: msg.ok, entries: msg.entries, error: msg.error })
 
         } else if (msg.type === 'list_snapshot_paths_result') {
           resolveSnapshotPaths(msg.requestId, { ok: msg.ok, paths: msg.paths, error: msg.error })

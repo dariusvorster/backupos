@@ -9,7 +9,7 @@ import { requireAdmin } from '@/lib/user'
 import { dispatchToChannel, fireRestoreSucceeded, fireRestoreFailed } from '@/lib/alerts'
 import type { AlertType, AlertPayload } from '@/lib/alerts'
 import { decryptField } from '@/lib/repo-crypto'
-import { connectedAgentIds, requestFilesystemRestore, requestDatabaseRestore, requestSnapshotPaths, requestSnapshotContents, dispatch } from '@/lib/ws-state'
+import { connectedAgentIds, requestFilesystemRestore, requestDatabaseRestore, requestSnapshotPaths, dispatch } from '@/lib/ws-state'
 import { ensureRepoMountedOnAgent } from '@/lib/repo-mount'
 import { appendLog } from '@/lib/logger'
 
@@ -449,25 +449,21 @@ export async function getLatestSnapshotForJob(
   return { ok: true, snapshotId: latest.id, createdAt: latest.createdAt }
 }
 
-export async function browseSnapshot(
+export async function getSnapshotRootPaths(
   jobId: string,
 ): Promise<
-  | { ok: true; entries: Array<{ path: string; type: string; size?: number; mtime?: string }>; snapshotId: string }
+  | { ok: true; paths: string[]; snapshotId: string; createdAt: Date | null }
   | { ok: false; error: string }
 > {
   await requireAdmin()
   const db = getDb()
 
-  const [job] = await db.select().from(backupJobs).where(eq(backupJobs.id, jobId)).limit(1)
-  if (!job) return { ok: false, error: 'Job not found' }
-  if (!job.agentId) return { ok: false, error: 'Job has no agent assigned' }
-  const agentId = job.agentId
-  if (!connectedAgentIds().includes(agentId)) {
-    return { ok: false, error: `Agent ${agentId} is not currently connected` }
-  }
-
   const [latest] = await db
-    .select({ id: snapshots.id, repositoryId: snapshots.repositoryId })
+    .select({
+      id:        snapshots.id,
+      paths:     snapshots.paths,
+      createdAt: snapshots.createdAt,
+    })
     .from(snapshots)
     .where(eq(snapshots.jobId, jobId))
     .orderBy(desc(snapshots.createdAt))
@@ -475,34 +471,21 @@ export async function browseSnapshot(
     .all()
 
   if (!latest) return { ok: false, error: 'No snapshots available for this job yet' }
-  if (!latest.repositoryId) return { ok: false, error: 'Snapshot has no associated repository' }
 
-  const [repo] = await db.select().from(repositories).where(eq(repositories.id, latest.repositoryId)).limit(1)
-  if (!repo) return { ok: false, error: 'Repository not found' }
-
-  let repoConfig: RepoConfigShape
-  try {
-    repoConfig = JSON.parse(decryptField(repo.config)) as RepoConfigShape
-  } catch (err) {
-    return { ok: false, error: `Failed to decrypt repository config: ${err instanceof Error ? err.message : String(err)}` }
-  }
-  const password = decryptField(repo.resticPassword)
-
-  try {
-    await ensureRepoMountedOnAgent(agentId, latest.repositoryId)
-  } catch (err) {
-    return { ok: false, error: `Repo mount failed: ${err instanceof Error ? err.message : String(err)}` }
+  let parsedPaths: string[] = []
+  if (latest.paths) {
+    try {
+      const parsed = JSON.parse(latest.paths)
+      if (Array.isArray(parsed)) parsedPaths = parsed.filter((p): p is string => typeof p === 'string')
+    } catch { /* malformed JSON — fall back to empty */ }
   }
 
-  const result = await requestSnapshotContents(agentId, {
-    repoUrl:      repoConfig.repositoryUrl,
-    repoPassword: password,
-    envVars:      repoConfig.envVars,
-    snapshotId:   latest.id,
-  })
-
-  if (!result.ok) return { ok: false, error: result.error ?? 'list_snapshot_contents failed' }
-  return { ok: true, entries: result.entries ?? [], snapshotId: latest.id }
+  return {
+    ok:         true,
+    paths:      parsedPaths,
+    snapshotId: latest.id,
+    createdAt:  latest.createdAt,
+  }
 }
 
 export interface ApphookService {

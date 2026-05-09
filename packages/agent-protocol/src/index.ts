@@ -169,7 +169,6 @@ export type AgentMessage =
   | { type: 'database_restore_started'; requestId: string; restoreId: string }
   | { type: 'database_restore_complete'; restoreId: string; success: boolean; output?: string; error?: string; durationSec?: number }
   | { type: 'list_snapshot_paths_result'; requestId: string; ok: boolean; paths?: string[]; error?: string }
-  | { type: 'list_snapshot_contents_result'; requestId: string; ok: boolean; entries?: Array<{ path: string; type: string; size?: number; mtime?: string }>; error?: string }
   | { type: 'xcpng_vm_restore_started'; jobId: string; runId: string; diskCount: number }
   | { type: 'xcpng_vm_restore_complete'; jobId: string; runId: string; success: boolean; newVmUUID?: string; error?: string; log?: string }
   | { type: 'forget_prune_complete'; requestId: string; jobId: string; runId: string; success: boolean; error?: string; removed: number; kept: number; durationMs: number }
@@ -263,7 +262,6 @@ export type ServerMessage =
   | { type: 'cancel_filesystem_restore'; restoreId: string }
   | { type: 'run_database_restore'; requestId: string; restoreId: string; app: 'postgres' | 'mysql' | 'mariadb' | 'sqlite' | 'redis' | 'mongodb'; dumpFilePath: string; targetContainer?: string; targetDatabase?: string; targetUsername?: string; targetHost?: string; targetPort?: number; passwordEnv?: string; targetDbPath?: string; targetAuthDatabase?: string }
   | { type: 'list_snapshot_paths'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string; pattern?: string }
-  | { type: 'list_snapshot_contents'; requestId: string; repoUrl: string; repoPassword: string; envVars?: Record<string, string>; snapshotId: string }
   | { type: 'run_forget_prune'
       requestId:    string
       jobId:        string
