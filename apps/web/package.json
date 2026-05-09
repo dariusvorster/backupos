@@ -23,7 +23,7 @@
     "@backupos/restore": "workspace:*",
     "@trpc/client": "^11.0.0",
     "@trpc/server": "^11.0.0",
-    "better-auth": "^1.2.0",
+    "better-auth": "^1.6.9",
     "cron-parser": "^4.9.0",
     "lucide-react": "^0.468.0",
     "minisearch": "^7.2.0",
