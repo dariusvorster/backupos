@@ -4,10 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getDb, bandwidthProfiles, bandwidthRules, backupJobs } from '@backupos/db'
 import { eq } from '@backupos/db'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 
 export async function createProfile(formData: FormData): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const name        = (formData.get('name') as string).trim()
   const description = (formData.get('description') as string | null)?.trim() || null
   const isGlobal    = formData.get('isGlobal') === 'on'
@@ -34,7 +34,7 @@ export async function createProfile(formData: FormData): Promise<void> {
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   await db.update(backupJobs)
     .set({ bandwidthProfileId: null })
@@ -47,7 +47,7 @@ export async function deleteProfile(id: string): Promise<void> {
 }
 
 export async function addRule(profileId: string, formData: FormData): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const startHour = parseInt(formData.get('startHour') as string, 10)
   const endHour   = parseInt(formData.get('endHour')   as string, 10)
   const limitRaw  = (formData.get('limitKbps') as string).trim()
@@ -70,7 +70,7 @@ export async function addRule(profileId: string, formData: FormData): Promise<vo
 }
 
 export async function deleteRule(id: string): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   await db.delete(bandwidthRules).where(eq(bandwidthRules.id, id)).run()
   revalidatePath('/settings/bandwidth')
@@ -78,7 +78,7 @@ export async function deleteRule(id: string): Promise<void> {
 }
 
 export async function setJobProfile(jobId: string, formData: FormData): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const profileId = (formData.get('profileId') as string) || null
   const db = getDb()
   await db.update(backupJobs)
