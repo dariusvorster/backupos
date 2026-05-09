@@ -5,7 +5,7 @@ import { randomBytes }              from 'crypto'
 import { getDb, invite, user }      from '@backupos/db'
 import { eq, and, isNull, count }   from '@backupos/db'
 import { auth }                     from '@/lib/auth'
-import { getCurrentUser, requireAdmin } from '@/lib/user'
+import { getCurrentUser, requireAdminAction } from '@/lib/user'
 import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { sendInviteEmail }          from '@/lib/mailer'
 import { appendAuditEntry }         from '@/lib/audit'
@@ -193,7 +193,7 @@ export async function createUserDirect(formData: FormData): Promise<{
 }
 
 export async function updateUserRole(userId: string, role: 'admin' | 'viewer'): Promise<{ error?: string }> {
-  const admin = await requireAdmin()
+  const admin = await requireAdminAction()
   if (userId === admin.id) return { error: 'Cannot change your own role' }
   if (role !== 'admin' && role !== 'viewer') return { error: 'Invalid role' }
 

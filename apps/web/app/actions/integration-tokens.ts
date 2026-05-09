@@ -2,13 +2,13 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDb, integrationTokens, eq, count } from '@backupos/db'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { appendAuditEntry } from '@/lib/audit'
 import { generateRawToken, hashToken, extractPrefix, ALL_SCOPES } from '@/lib/integration-tokens'
 
 export async function createIntegrationToken(formData: FormData): Promise<{ token?: string; id?: string; error?: string }> {
-  const adminUser     = await requireAdmin()
+  const adminUser     = await requireAdminAction()
   const name          = (formData.get('name') as string | null)?.trim()
   const expiresInDays = parseInt((formData.get('expiresInDays') as string | null) ?? '90', 10)
   const scopesRaw     = formData.getAll('scopes') as string[]
@@ -63,7 +63,7 @@ export async function createIntegrationToken(formData: FormData): Promise<{ toke
 }
 
 export async function revokeIntegrationToken(id: string): Promise<{ error?: string }> {
-  const adminUser = await requireAdmin()
+  const adminUser = await requireAdminAction()
   const db = getDb()
 
   const [existing] = await db.select().from(integrationTokens).where(eq(integrationTokens.id, id)).limit(1)
@@ -85,7 +85,7 @@ export async function revokeIntegrationToken(id: string): Promise<{ error?: stri
 }
 
 export async function rotateIntegrationToken(id: string): Promise<{ token?: string; newId?: string; error?: string }> {
-  const adminUser = await requireAdmin()
+  const adminUser = await requireAdminAction()
   const db = getDb()
 
   const [existing] = await db.select().from(integrationTokens).where(eq(integrationTokens.id, id)).limit(1)

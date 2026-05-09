@@ -5,10 +5,10 @@ import { revalidatePath } from 'next/cache'
 import { getDb, infraOsServices, backupJobs } from '@backupos/db'
 import { eq } from '@backupos/db'
 import { randomUUID } from 'crypto'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 
 export async function addInfraService(formData: FormData): Promise<{ error?: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const name        = ((formData.get('name')        ?? '') as string).trim()
   const serviceType = ((formData.get('serviceType') ?? '') as string).trim()
   const host        = ((formData.get('host')        ?? '') as string).trim()
@@ -33,14 +33,14 @@ export async function addInfraService(formData: FormData): Promise<{ error?: str
 }
 
 export async function addInfraServiceAction(formData: FormData): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const result = await addInfraService(formData)
   if (result.error) throw new Error(result.error)
   redirect('/settings/infra-os?saved=1')
 }
 
 export async function removeInfraService(id: string): Promise<void> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   await db.update(backupJobs).set({ infraServiceId: null }).where(eq(backupJobs.infraServiceId, id)).run()
   await db.delete(infraOsServices).where(eq(infraOsServices.id, id)).run()

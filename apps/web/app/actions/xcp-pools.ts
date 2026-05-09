@@ -1,5 +1,5 @@
 'use server'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { getDb, xcpPools, xcpVms, eq } from '@backupos/db'
 import { XCPNGHypervisorDriver } from '@backupos/hypervisors'
 import type { XCPNGConfig } from '@backupos/hypervisors'
@@ -17,7 +17,7 @@ interface AddXcpPoolInput {
 export async function addXcpPool(
   input: AddXcpPoolInput,
 ): Promise<{ ok: true; poolId: string } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const config: XCPNGConfig = {
     poolMasterUrl:   input.poolMasterUrl,
     username:        input.username,
@@ -55,7 +55,7 @@ export async function addXcpPool(
 export async function refreshXcpPool(
   poolId: string,
 ): Promise<{ ok: true; vmCount: number } | { ok: false; error: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   const [pool] = await db.select().from(xcpPools).where(eq(xcpPools.id, poolId)).limit(1)
   if (!pool) return { ok: false, error: 'Pool not found' }
@@ -114,7 +114,7 @@ export async function refreshXcpPool(
 export async function deleteXcpPool(
   poolId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db = getDb()
   await db.delete(xcpPools).where(eq(xcpPools.id, poolId))
   return { ok: true }

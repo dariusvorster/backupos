@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { upsertOidcConfig, disableOidc as disableOidcDb } from '@/lib/oidc-config'
 import { appendAuditEntry } from '@/lib/audit'
 import { requireFeature, LicenseFeatureError } from '@/lib/license'
@@ -15,7 +15,7 @@ export async function saveOidcConfig(input: {
   scopes:        string
   buttonLabel:   string
 }): Promise<{ error?: string }> {
-  const admin = await requireAdmin()
+  const admin = await requireAdminAction()
 
   try { await requireFeature('oidc_sso') } catch (e) {
     if (e instanceof LicenseFeatureError) return { error: e.message }
@@ -46,7 +46,7 @@ export async function saveOidcConfig(input: {
 }
 
 export async function disableOidc(): Promise<{ error?: string }> {
-  const admin = await requireAdmin()
+  const admin = await requireAdminAction()
   try {
     disableOidcDb()
   } catch (err) {
@@ -66,7 +66,7 @@ export async function disableOidc(): Promise<{ error?: string }> {
 }
 
 export async function testOidcDiscovery(discoveryUrl: string): Promise<{ ok: boolean; message: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   if (!discoveryUrl.trim()) return { ok: false, message: 'No URL provided' }
 
   let parsed: URL
