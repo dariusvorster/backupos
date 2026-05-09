@@ -29,6 +29,7 @@ export async function setAgentUpdateChannel(
   agentId: string,
   channel: 'stable' | 'beta' | 'pinned',
 ): Promise<void> {
+  await requireAdmin()
   const db = getDb()
   await db.update(agents).set({ updateChannel: channel }).where(eq(agents.id, agentId))
   revalidatePath(`/agents/${agentId}`)
