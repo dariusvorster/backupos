@@ -328,6 +328,7 @@ pnpm --filter @backupos/agent-protocol build
 pnpm --filter @backupos/agent       build
 pnpm --filter @backupos/api         build
 pnpm --filter @backupos/docs-content build
+pnpm --filter @backupos/license-client build
 
 log "Building web app..."
 pnpm --filter @backupos/web exec next build
