@@ -5,11 +5,11 @@ import { redirect } from 'next/navigation'
 import { getDb, backupMonitors, repositories, eq } from '@backupos/db'
 import { type PBSConfig } from '@backupos/monitors'
 import { performMonitorSync } from '@/lib/monitors'
-import { requireAdmin } from '@/lib/user'
+import { requireAdminAction } from '@/lib/user'
 import { assertSafeUrl, SSRFViolation } from '@/lib/ssrf-guard'
 
 export async function promoteMonitorToRepo(monitorId: string, formData: FormData): Promise<void> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const password = (formData.get('password') as string)?.trim()
   if (!password) return
 
@@ -41,7 +41,7 @@ export async function promoteMonitorToRepo(monitorId: string, formData: FormData
 }
 
 export async function createMonitor(formData: FormData): Promise<void> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const name   = (formData.get('name')   as string)?.trim()
   const type   = (formData.get('type')   as string)
   const url    = (formData.get('url')    as string)?.trim()
@@ -100,7 +100,7 @@ export async function testMonitorConnection(url: string): Promise<{ ok: boolean;
 }
 
 export async function updateMonitor(id: string, formData: FormData): Promise<{ error: string } | void> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const name   = (formData.get('name')   as string)?.trim()
   const url    = (formData.get('url')    as string)?.trim()
   const apiKey = (formData.get('apiKey') as string)?.trim() || null
@@ -128,14 +128,14 @@ export async function updateMonitor(id: string, formData: FormData): Promise<{ e
 }
 
 export async function deleteMonitor(id: string): Promise<void> {
-  await requireAdmin() // admin only
+  await requireAdminAction() // admin only
   const db = getDb()
   await db.delete(backupMonitors).where(eq(backupMonitors.id, id))
   redirect('/monitors')
 }
 
 export async function syncMonitor(monitorId: string): Promise<{ ok: boolean; error?: string }> {
-  await requireAdmin()
+  await requireAdminAction()
   const db     = getDb()
   const result = await performMonitorSync(monitorId, db)
   if (result.ok) revalidatePath(`/monitors/${monitorId}`)
