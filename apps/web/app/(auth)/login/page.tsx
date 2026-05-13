@@ -17,6 +17,7 @@ export default async function LoginPage() {
     <LoginForm
       ssoEnabled={!!oidc?.enabled}
       ssoButtonLabel={oidc?.buttonLabel ?? 'Sign in with SSO'}
+      hasUsers={true}
     />
   )
 }

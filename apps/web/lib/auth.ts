@@ -1,9 +1,10 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { twoFactor as twoFactorPlugin, genericOAuth } from 'better-auth/plugins'
-import { getDb, user, session, account, verification, twoFactor, eq } from '@backupos/db'
+import { getDb, user, session, account, verification, twoFactor, eq, count } from '@backupos/db'
 import { isPrivateOrigin } from './private-origin'
 import { getOidcConfigDecrypted } from './oidc-config'
+import { isTrustedSignupContext } from './signup-trust'
 
 function buildPlugins(): ReturnType<typeof twoFactorPlugin>[] {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,6 +56,21 @@ export const auth = betterAuth({
     },
   },
   databaseHooks: {
+    user: {
+      create: {
+        async before(data: Record<string, unknown>) {
+          if (isTrustedSignupContext()) return { data }
+
+          const db   = getDb()
+          const rows = await db.select({ n: count(user.id) }).from(user).all()
+          const n    = rows[0]?.n ?? 0
+
+          if (n === 0) return { data }
+
+          throw new Error('Public signup is disabled. Contact an administrator for an invitation.')
+        },
+      },
+    },
     session: {
       create: {
         async after(session, context) {

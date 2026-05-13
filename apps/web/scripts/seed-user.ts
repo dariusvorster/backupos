@@ -1,13 +1,16 @@
-import { auth } from '../lib/auth'
+import { auth }          from '../lib/auth'
+import { trustedSignup } from '../lib/signup-trust'
 
 async function seed() {
   try {
-    await auth.api.signUpEmail({
-      body: {
-        name:     'Admin',
-        email:    'admin@backupos.local',
-        password: 'changeme',
-      },
+    await trustedSignup.run({}, async () => {
+      await auth.api.signUpEmail({
+        body: {
+          name:     'Admin',
+          email:    'admin@backupos.local',
+          password: 'changeme',
+        },
+      })
     })
     console.log('Default user created: admin@backupos.local / changeme')
   } catch (err: unknown) {

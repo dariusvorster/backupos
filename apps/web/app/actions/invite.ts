@@ -5,6 +5,7 @@ import { randomBytes }              from 'crypto'
 import { getDb, invite, user }      from '@backupos/db'
 import { eq, and, isNull, count }   from '@backupos/db'
 import { auth }                     from '@/lib/auth'
+import { trustedSignup }            from '@/lib/signup-trust'
 import { getCurrentUser, requireAdminAction } from '@/lib/user'
 import { enforceLimit, LicenseLimitError } from '@/lib/license'
 import { sendInviteEmail }          from '@/lib/mailer'
@@ -92,8 +93,10 @@ export async function acceptInvite(
   await db.update(invite).set({ usedAt: now }).where(eq(invite.token, token))
 
   try {
-    await auth.api.signUpEmail({
-      body: { email: row.email, name: name.trim() || row.name || row.email, password },
+    await trustedSignup.run({}, async () => {
+      await auth.api.signUpEmail({
+        body: { email: row.email, name: name.trim() || row.name || row.email, password },
+      })
     })
   } catch (err) {
     // Roll back so the invite can be retried
@@ -157,7 +160,9 @@ export async function createUserDirect(formData: FormData): Promise<{
   const isAutoGenPw  = rawPw === null
 
   try {
-    await auth.api.signUpEmail({ body: { email, name, password } })
+    await trustedSignup.run({}, async () => {
+      await auth.api.signUpEmail({ body: { email, name, password } })
+    })
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Could not create account' }
   }

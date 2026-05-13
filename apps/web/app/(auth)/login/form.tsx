@@ -9,9 +9,10 @@ import { SsoButton } from './sso-button'
 interface Props {
   ssoEnabled?:     boolean
   ssoButtonLabel?: string
+  hasUsers?:       boolean
 }
 
-export function LoginForm({ ssoEnabled = false, ssoButtonLabel = 'Sign in with SSO' }: Props) {
+export function LoginForm({ ssoEnabled = false, ssoButtonLabel = 'Sign in with SSO', hasUsers = false }: Props) {
   const router = useRouter()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -95,10 +96,12 @@ export function LoginForm({ ssoEnabled = false, ssoButtonLabel = 'Sign in with S
           {ssoEnabled && <SsoButton buttonLabel={ssoButtonLabel} />}
         </form>
 
-        <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginTop: 20, textAlign: 'center' }}>
-          Don&apos;t have an account?{' '}
-          <Link href="/signup" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Create one</Link>
-        </p>
+        {!hasUsers && (
+          <p style={{ fontSize: 13, color: 'var(--fg-mute)', marginTop: 20, textAlign: 'center' }}>
+            Don&apos;t have an account?{' '}
+            <Link href="/signup" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Create one</Link>
+          </p>
+        )}
       </div>
     </div>
   )
