@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const SESSION_COOKIE = 'better-auth.session_token'
+const SESSION_COOKIES = ['better-auth.session_token', '__Secure-better-auth.session_token']
 
 const PUBLIC_PATHS = [
   '/login',
@@ -86,7 +86,7 @@ export function middleware(request: NextRequest) {
     // but does NOT constitute validation. Route handlers must call validateApiToken
     // from @/lib/api-token-auth themselves before treating the request as authenticated.
     const authHeader = request.headers.get('authorization')
-    if (authHeader?.startsWith('Bearer ') || request.cookies.get(SESSION_COOKIE)) {
+    if (authHeader?.startsWith('Bearer ') || SESSION_COOKIES.some(n => request.cookies.get(n))) {
       return applySecurityHeaders(
         NextResponse.next({ request: { headers: requestHeaders } }),
         nonce,
@@ -98,7 +98,7 @@ export function middleware(request: NextRequest) {
     )
   }
 
-  if (!request.cookies.get(SESSION_COOKIE)) {
+  if (!SESSION_COOKIES.some(n => request.cookies.get(n))) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('next', pathname)
     return applySecurityHeaders(NextResponse.redirect(loginUrl), nonce)
