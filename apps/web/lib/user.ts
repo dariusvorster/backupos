@@ -61,6 +61,12 @@ export async function requireAdminAction(): Promise<AuthUser> {
   return u
 }
 
+export async function requireUserAction(): Promise<AuthUser> {
+  const u = await getCurrentUser()
+  if (!u) throw new AuthError(401, 'Authentication required')
+  return u
+}
+
 export function isAdmin(u: AuthUser | null): boolean {
   return u?.role === 'admin'
 }

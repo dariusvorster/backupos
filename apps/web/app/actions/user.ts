@@ -6,7 +6,7 @@ import { eq }                from '@backupos/db'
 import { writeFile, mkdir }  from 'fs/promises'
 import path                  from 'path'
 import { auth }              from '@/lib/auth'
-import { getCurrentUser }    from '@/lib/user'
+import { getCurrentUser, requireUserAction } from '@/lib/user'
 import { headers }           from 'next/headers'
 
 export async function updateProfile(formData: FormData): Promise<{ error?: string }> {
@@ -82,6 +82,8 @@ export async function removeAvatar(): Promise<void> {
 }
 
 export async function changePassword(formData: FormData): Promise<{ error?: string }> {
+  await requireUserAction()
+
   const currentPassword = (formData.get('currentPassword') ?? '') as string
   const newPassword     = (formData.get('newPassword')     ?? '') as string
   const confirm         = (formData.get('confirm')         ?? '') as string

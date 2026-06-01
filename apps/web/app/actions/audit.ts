@@ -3,6 +3,7 @@
 import { getDb, auditLog }  from '@backupos/db'
 import { desc, eq, and, like } from '@backupos/db'
 import { verifyAuditChain } from '@/lib/audit'
+import { requireAdminAction } from '@/lib/user'
 
 export interface AuditFilters {
   actor?:        string
@@ -23,7 +24,30 @@ export interface AuditEntry {
   createdAt:    Date
 }
 
+function cleanString(value: unknown, maxLength = 128): string | undefined {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) || undefined : undefined
+}
+
+function cleanLimit(value: unknown, fallback: number, max: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? Math.min(value, max)
+    : fallback
+}
+
+function cleanFilters(filters: AuditFilters | undefined): AuditFilters {
+  return {
+    actor:        cleanString(filters?.actor),
+    resourceType: cleanString(filters?.resourceType),
+    action:       cleanString(filters?.action),
+    search:       cleanString(filters?.search, 256),
+  }
+}
+
 export async function getAuditPage(filters: AuditFilters = {}, limit = 200): Promise<AuditEntry[]> {
+  await requireAdminAction()
+  filters = cleanFilters(filters)
+  limit   = cleanLimit(limit, 200, 1_000)
+
   const db         = getDb()
   const conditions = []
   if (filters.actor)        conditions.push(eq(auditLog.actor,        filters.actor))
@@ -44,6 +68,10 @@ export async function getAuditPage(filters: AuditFilters = {}, limit = 200): Pro
 }
 
 export async function getForensicTimeline(actor: string): Promise<AuditEntry[]> {
+  await requireAdminAction()
+  actor = cleanString(actor, 128) ?? ''
+  if (!actor) return []
+
   const db   = getDb()
   const rows = await db.select().from(auditLog)
     .where(like(auditLog.actor, `%${actor}%`))
@@ -53,6 +81,7 @@ export async function getForensicTimeline(actor: string): Promise<AuditEntry[]> 
 }
 
 export async function checkAuditIntegrity(): Promise<{ ok: boolean; brokenAt?: string; checkedCount: number }> {
+  await requireAdminAction()
   return verifyAuditChain()
 }
 
@@ -64,6 +93,8 @@ function csvCell(v: string): string {
 }
 
 export async function exportAuditLog(filters: AuditFilters, format: 'csv' | 'jsonl'): Promise<string> {
+  await requireAdminAction()
+  if (format !== 'csv' && format !== 'jsonl') throw new Error('Invalid export format')
   const rows = await getAuditPage(filters, 100_000)
   if (format === 'jsonl') return rows.map(r => JSON.stringify(r)).join('\n')
   const header = '"id","action","resource_type","resource_name","actor","created_at"'

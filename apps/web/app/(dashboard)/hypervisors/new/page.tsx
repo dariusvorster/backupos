@@ -1,9 +1,15 @@
 import { redirect } from 'next/navigation'
 import { getDb, hypervisorIntegrations } from '@backupos/db'
 import Link from 'next/link'
+import { requireAdminAction } from '@/lib/user'
+
+const HYPERVISOR_TYPES = ['proxmox', 'xcpng', 'vmware'] as const
+type HypervisorType = typeof HYPERVISOR_TYPES[number]
 
 async function createHypervisor(formData: FormData) {
   'use server'
+  await requireAdminAction()
+
   const name = (formData.get('name') as string).trim()
   const type = (formData.get('type') as string).trim()
   const host = (formData.get('host') as string).trim()
@@ -12,13 +18,14 @@ async function createHypervisor(formData: FormData) {
   const port = formData.get('port') ? Number(formData.get('port')) : undefined
   const certFingerprint = (formData.get('cert_fingerprint_sha256') as string | null)?.trim() ?? ''
 
-  if (!name || !type || !host) return
+  if (!name || !HYPERVISOR_TYPES.includes(type as HypervisorType) || !host) return
+  if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) return
 
   const db = getDb()
   await db.insert(hypervisorIntegrations).values({
     id:        crypto.randomUUID(),
     name,
-    type:      type as 'proxmox' | 'xcpng' | 'vmware',
+    type:      type as HypervisorType,
     config:    JSON.stringify({ host, username, password, port, cert_fingerprint_sha256: certFingerprint }),
     status:    'unknown',
     createdAt: new Date(),

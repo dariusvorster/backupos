@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { getCurrentUser } from '@/lib/user'
-import { getDb, session, eq } from '@backupos/db'
+import { getCurrentUser, requireUserAction } from '@/lib/user'
+import { getDb, session, eq, and } from '@backupos/db'
 
 export default async function SessionsPage() {
   const user = await getCurrentUser()
@@ -13,10 +13,11 @@ export default async function SessionsPage() {
 
   async function revokeSession(formData: FormData) {
     'use server'
-    const id = formData.get('sessionId') as string
-    if (!id) return
+    const actionUser = await requireUserAction()
+    const id = formData.get('sessionId')
+    if (typeof id !== 'string' || id.length === 0 || id.length > 128) return
     const db2 = getDb()
-    await db2.delete(session).where(eq(session.id, id))
+    await db2.delete(session).where(and(eq(session.id, id), eq(session.userId, actionUser.id)))
     revalidatePath('/settings/sessions')
   }
 
