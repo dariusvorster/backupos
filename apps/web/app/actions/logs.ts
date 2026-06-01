@@ -2,6 +2,7 @@
 
 import { getDb, operationalLogs } from '@backupos/db'
 import { desc, eq, and, like }    from '@backupos/db'
+import { requireAdminAction }     from '@/lib/user'
 
 export interface LogFilters {
   component?:  string
@@ -22,7 +23,31 @@ export interface LogEntry {
   createdAt:  Date
 }
 
+function cleanString(value: unknown, maxLength = 128): string | undefined {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) || undefined : undefined
+}
+
+function cleanLimit(value: unknown, fallback: number, max: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? Math.min(value, max)
+    : fallback
+}
+
+function cleanFilters(filters: LogFilters | undefined): LogFilters {
+  return {
+    component:  cleanString(filters?.component),
+    level:      cleanString(filters?.level),
+    entityType: cleanString(filters?.entityType),
+    entityId:   cleanString(filters?.entityId),
+    search:     cleanString(filters?.search, 256),
+  }
+}
+
 export async function getLogsPage(filters: LogFilters = {}, limit = 200): Promise<LogEntry[]> {
+  await requireAdminAction()
+  filters = cleanFilters(filters)
+  limit   = cleanLimit(limit, 200, 1_000)
+
   const db         = getDb()
   const conditions = []
   if (filters.component)  conditions.push(eq(operationalLogs.component,  filters.component))
@@ -50,6 +75,8 @@ function csvCell(v: string): string {
 }
 
 export async function exportLogs(filters: LogFilters, format: 'csv' | 'jsonl'): Promise<string> {
+  await requireAdminAction()
+  if (format !== 'csv' && format !== 'jsonl') throw new Error('Invalid export format')
   const rows = await getLogsPage(filters, 10_000)
   if (format === 'jsonl') return rows.map(r => JSON.stringify(r)).join('\n')
   const header = '"id","level","component","message","entity_type","entity_id","created_at"'

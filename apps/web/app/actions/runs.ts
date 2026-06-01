@@ -3,6 +3,7 @@
 import { getDb, backupRuns, backupJobs, repositories } from '@backupos/db'
 import { eq } from '@backupos/db'
 import { decryptField } from '@/lib/repo-crypto'
+import { requireUserAction } from '@/lib/user'
 
 export interface PhaseEntry {
   startMs:    number
@@ -34,6 +35,9 @@ export interface RunDetail {
 }
 
 export async function getRunDetail(runId: string): Promise<RunDetail | null> {
+  await requireUserAction()
+  if (typeof runId !== 'string' || runId.length === 0 || runId.length > 128) return null
+
   const db  = getDb()
   const row = await db.select({
     id:           backupRuns.id,
@@ -62,6 +66,9 @@ export async function getRunDetail(runId: string): Promise<RunDetail | null> {
 }
 
 export async function getResticCommand(runId: string): Promise<string> {
+  await requireUserAction()
+  if (typeof runId !== 'string' || runId.length === 0 || runId.length > 128) return '# invalid run id'
+
   const db  = getDb()
   const run = await db.select({
     jobId:        backupRuns.jobId,

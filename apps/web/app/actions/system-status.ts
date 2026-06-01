@@ -2,6 +2,7 @@
 
 import { getDb, backupRuns, storageAlerts } from '@backupos/db'
 import { eq, count, isNull }                 from '@backupos/db'
+import { requireUserAction }                 from '@/lib/user'
 
 export interface SystemStatus {
   activeRunCount: number
@@ -9,6 +10,7 @@ export interface SystemStatus {
 }
 
 export async function getSystemStatus(): Promise<SystemStatus> {
+  await requireUserAction()
   const db = getDb()
 
   const [runRow] = db
